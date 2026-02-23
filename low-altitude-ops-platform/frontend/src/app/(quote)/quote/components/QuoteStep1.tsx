@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import type { AirspaceResult } from "@/lib/types"
 import type { QuoteFormData } from "./quote-defaults"
-import { SERVICE_OPTIONS } from "./quote-defaults"
+import { SERVICE_OPTIONS, getWeatherRisk } from "./quote-defaults"
 import { calcPolygonPerimeter } from "./quote-defaults"
 import { QuoteMap } from "./QuoteMap"
 
@@ -168,6 +168,19 @@ export function QuoteStep1({
         </select>
       </div>
 
+      {/* Expected date + weather risk */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 mb-1">預計施工日期</label>
+        <input
+          type="date"
+          value={formData.expectedDate ?? ""}
+          min={new Date().toISOString().split("T")[0]}
+          onChange={e => updateForm({ expectedDate: e.target.value })}
+          className="px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+        <WeatherRiskBadge date={formData.expectedDate} />
+      </div>
+
       {/* Urgent */}
       <div className="flex items-center gap-2">
         <input
@@ -192,6 +205,46 @@ export function QuoteStep1({
           下一步
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Weather risk badge ───────────────────────────────────────────────────────
+
+const RISK_STYLES: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+  low:    { bg: "bg-green-50",  border: "border-green-200",  text: "text-green-800",  badge: "bg-green-100 text-green-700" },
+  medium: { bg: "bg-amber-50",  border: "border-amber-200",  text: "text-amber-800",  badge: "bg-amber-100 text-amber-700" },
+  high:   { bg: "bg-red-50",    border: "border-red-200",    text: "text-red-800",    badge: "bg-red-100   text-red-700"   },
+}
+
+const RISK_LABELS: Record<string, string> = {
+  low: "低風險", medium: "中度風險", high: "高風險",
+}
+
+function WeatherRiskBadge({ date }: { date?: string }) {
+  const risk = getWeatherRisk(date)
+  const s = RISK_STYLES[risk.level]
+
+  return (
+    <div className={`mt-2 p-3 rounded-lg border ${s.bg} ${s.border}`}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-base">{risk.icon}</span>
+        <span className={`text-sm font-semibold ${s.text}`}>{risk.season}</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.badge}`}>
+          {RISK_LABELS[risk.level]}
+        </span>
+        {risk.bufferDays > 0 && (
+          <span className="text-xs text-zinc-500 ml-auto">
+            建議預留 +{risk.bufferDays} 天緩衝
+          </span>
+        )}
+      </div>
+      <ul className={`text-xs space-y-0.5 ${s.text} opacity-90`}>
+        {risk.concerns.map(c => (
+          <li key={c}>• {c}</li>
+        ))}
+      </ul>
+      <p className={`text-xs mt-1.5 font-medium ${s.text}`}>{risk.advice}</p>
     </div>
   )
 }

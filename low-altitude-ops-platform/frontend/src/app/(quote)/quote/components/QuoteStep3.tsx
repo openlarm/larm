@@ -9,6 +9,7 @@ import {
   buildFacadesFromInputs, buildFacades,
   inferRiskLevel, worstContamination,
   mapServiceToMissionType, mapTimeSlot,
+  getWeatherRisk,
 } from "./quote-defaults"
 
 interface Props {
@@ -139,6 +140,9 @@ export function QuoteStep3({
               label="水電供應"
               value={`${formData.waterSupply === "Provided" ? "業主提供" : "自備"} / ${formData.powerSupply === "Provided" ? "業主提供" : "自備"}`}
             />
+            {formData.expectedDate && (
+              <InfoRow label="預計施工日期" value={formData.expectedDate} />
+            )}
           </div>
         </div>
 
@@ -170,6 +174,9 @@ export function QuoteStep3({
             </div>
           </div>
         )}
+
+        {/* Weather risk advisory */}
+        <WeatherAdvisory date={formData.expectedDate} suggestedDays={timeResult.suggested_days} />
 
         {/* Line items */}
         <div className="px-6 py-4">
@@ -278,6 +285,49 @@ export function QuoteStep3({
   )
 }
 
+// ─── Weather advisory ─────────────────────────────────────────────────────────
+
+const RISK_STYLES = {
+  low:    { bg: "bg-green-50",  border: "border-green-200",  text: "text-green-800",  badge: "bg-green-100 text-green-700"  },
+  medium: { bg: "bg-amber-50",  border: "border-amber-200",  text: "text-amber-800",  badge: "bg-amber-100 text-amber-700"  },
+  high:   { bg: "bg-red-50",    border: "border-red-200",    text: "text-red-800",    badge: "bg-red-100   text-red-700"    },
+}
+const RISK_LABELS = { low: "低風險", medium: "中度風險", high: "高風險" }
+
+function WeatherAdvisory({ date, suggestedDays }: { date?: string; suggestedDays: number }) {
+  const risk = getWeatherRisk(date)
+  const s = RISK_STYLES[risk.level]
+  const totalDays = suggestedDays + risk.bufferDays
+
+  return (
+    <div className={`mx-6 mb-4 p-4 rounded-lg border ${s.bg} ${s.border}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-base">{risk.icon}</span>
+        <span className={`text-sm font-semibold ${s.text}`}>天氣風險評估</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.badge}`}>
+          {RISK_LABELS[risk.level]}
+        </span>
+        <span className={`text-xs ml-auto ${s.text} opacity-80`}>{risk.season}</span>
+      </div>
+
+      <div className={`text-xs space-y-0.5 ${s.text} opacity-90 mb-2`}>
+        {risk.concerns.map(c => <p key={c}>• {c}</p>)}
+      </div>
+
+      <p className={`text-xs font-medium ${s.text}`}>{risk.advice}</p>
+
+      {risk.bufferDays > 0 && (
+        <div className={`mt-2 pt-2 border-t ${s.border} flex items-center justify-between text-xs ${s.text}`}>
+          <span>含天氣緩衝估算工期</span>
+          <span className="font-semibold">
+            {suggestedDays} 天（施作）+ {risk.bufferDays} 天（緩衝）= {totalDays} 天
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -315,6 +365,17 @@ function buildPlainText(
     ``,
     `報價總額：NTD ${pricing.total.toLocaleString()}`,
     `預估工期：${time.suggested_days} 天`,
+    ...(form.expectedDate ? (() => {
+      const w = getWeatherRisk(form.expectedDate)
+      const total = time.suggested_days + w.bufferDays
+      return [
+        ``,
+        `--- 天氣風險評估（${w.season}，${["低風險","中度風險","高風險"][["low","medium","high"].indexOf(w.level)]}）---`,
+        ...w.concerns.map(c => `• ${c}`),
+        w.bufferDays > 0 ? `建議含緩衝工期：${time.suggested_days} + ${w.bufferDays} = ${total} 天` : "",
+        w.advice,
+      ].filter(Boolean)
+    })() : []),
     ``,
     `⚠️ 本報價為快速估算，正式報價需現場勘查確認。`,
   ]

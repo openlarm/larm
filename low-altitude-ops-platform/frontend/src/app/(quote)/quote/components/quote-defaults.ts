@@ -11,6 +11,58 @@ export type ServiceType = "cleaning" | "coating" | "inspection"
 export type TimeSlot = "day" | "weekend" | "night"
 export type DirtType = "dust" | "scale" | "mold" | "grease"
 
+// ─── Taiwan seasonal weather risk matrix ─────────────────────────────────────
+
+export type WeatherRiskLevel = "low" | "medium" | "high"
+
+export interface WeatherRisk {
+  level: WeatherRiskLevel
+  season: string           // season label
+  icon: string
+  concerns: string[]       // specific hazards for that period
+  advice: string           // recommended action
+  bufferDays: number       // suggested schedule buffer
+}
+
+// Month 1–12 → risk entry
+const WEATHER_RISK_BY_MONTH: WeatherRisk[] = [
+  // Jan
+  { level: "low",    season: "冬季乾燥",   icon: "☀️", concerns: ["偶有東北季風強風"], advice: "施工最佳時段，可正常安排工期", bufferDays: 0 },
+  // Feb
+  { level: "low",    season: "冬末",       icon: "☀️", concerns: ["東北季風漸弱", "偶有霧氣"], advice: "施工條件佳，留意霧日能見度", bufferDays: 1 },
+  // Mar
+  { level: "medium", season: "梅雨前期",   icon: "🌦", concerns: ["降雨機率上升", "濕度高，塗料固化受影響"], advice: "建議預留 2 天緩衝，確認施工前 72h 無雨", bufferDays: 2 },
+  // Apr
+  { level: "medium", season: "梅雨初期",   icon: "🌧", concerns: ["間歇性降雨", "高濕度影響防水塗層效果"], advice: "密切追蹤降雨預報，排定備用工期", bufferDays: 2 },
+  // May
+  // May
+  { level: "medium", season: "梅雨盛期",   icon: "🌧", concerns: ["連續降雨常見", "能見度低", "高濕度"], advice: "強烈建議預留 3 天緩衝，塗層施工宜避開", bufferDays: 3 },
+  // Jun
+  { level: "high",   season: "梅雨末 / 颱風季開始", icon: "⛈️", concerns: ["颱風路徑影響", "豪大雨", "強陣風 >10m/s"], advice: "高風險期，建議延後至 10 月後或增加 5 天緩衝", bufferDays: 5 },
+  // Jul
+  { level: "high",   season: "颱風季盛期", icon: "🌀", concerns: ["颱風頻率最高", "強風 >15m/s 停工", "大量降雨"], advice: "強烈建議避開，若必要請規劃緊急停工預案", bufferDays: 7 },
+  // Aug
+  { level: "high",   season: "颱風季盛期", icon: "🌀", concerns: ["颱風頻率高", "強對流雨", "高溫暴曬"], advice: "強烈建議避開，若必要請規劃緊急停工預案", bufferDays: 7 },
+  // Sep
+  { level: "high",   season: "颱風季末期", icon: "🌀", concerns: ["秋颱活躍", "強風 >12m/s", "東北季風加強"], advice: "風險仍高，預留 5 天緩衝，確認停工觸發條件", bufferDays: 5 },
+  // Oct
+  { level: "medium", season: "東北季風轉強", icon: "🌬", concerns: ["東北季風強化", "迎風面風速 >8m/s", "東北部降雨增多"], advice: "留意迎風面作業，預留 2 天緩衝", bufferDays: 2 },
+  // Nov
+  { level: "medium", season: "東北季風盛期", icon: "🌬", concerns: ["持續東北風", "北部 / 迎風面多雨", "低溫影響塗層"], advice: "南部施工條件尚可；北部需預留 3 天緩衝", bufferDays: 2 },
+  // Dec
+  { level: "low",    season: "冬季乾燥",   icon: "☀️", concerns: ["偶有強北風", "日夜溫差大"], advice: "施工最佳時段，注意低溫對塗料的最低施作溫度", bufferDays: 0 },
+]
+
+/**
+ * Returns weather risk for a given date string (YYYY-MM-DD or Date).
+ * Falls back to current month if no date provided.
+ */
+export function getWeatherRisk(dateStr?: string): WeatherRisk & { month: number } {
+  const d = dateStr ? new Date(dateStr) : new Date()
+  const month = d.getMonth() + 1 // 1-12
+  return { ...WEATHER_RISK_BY_MONTH[month - 1], month }
+}
+
 export const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = [
   { value: "cleaning", label: "外牆清洗" },
   { value: "coating", label: "外牆防水塗層" },
@@ -73,6 +125,7 @@ export interface QuoteFormData {
   waterSupply: Supply           // global (building-level decision)
   powerSupply: Supply
   facadeInputs: QuoteFacadeInput[]
+  expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
 }
 
 // ─── Mapping tables ─────────────────────────────────────────────────────────
