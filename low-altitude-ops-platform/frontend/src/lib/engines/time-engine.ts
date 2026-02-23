@@ -6,10 +6,10 @@ import type {
 // ─── Baseline productivity (m²/hr) ───────────────────────────────────────────
 
 const BASELINE: Record<string, number> = {
-  "Cleaning-commercial": 250,
-  "Cleaning-luxury":     200,
-  "Cleaning-factory":    280,
-  "Cleaning-solar":      500,
+  "Cleaning-commercial": 600,
+  "Cleaning-luxury":     600,
+  "Cleaning-factory":    800,
+  "Cleaning-solar":      600,
   "Inspection-any":      600,
   "Coating-any":         150,
 }
@@ -26,25 +26,25 @@ function getBaseline(taskType: MissionType, buildingType: BuildingType): number 
 
 const HEIGHT_COEFF: { max: number; coeff: number }[] = [
   { max: 10,  coeff: 1.00 },
-  { max: 20,  coeff: 0.90 },
-  { max: 30,  coeff: 0.85 },
+  { max: 20,  coeff: 1.00 },
+  { max: 30,  coeff: 0.95 },
   { max: 999, coeff: 0.75 },
 ]
 
 const WIND_COEFF: { max: number; coeff: number | null }[] = [
   { max: 3,   coeff: 1.00 },
-  { max: 5,   coeff: 0.90 },
-  { max: 7,   coeff: 0.80 },
-  { max: 9,   coeff: 0.65 },
+  { max: 5,   coeff: 1.00 },
+  { max: 7,   coeff: 1.00 },
+  { max: 9,   coeff: 0.95 },
   { max: 999, coeff: null }, // halt
 ]
 
 const COMPLEXITY_COEFF: Record<Complexity, number> = {
-  none: 1.00, light: 0.95, medium: 0.85, heavy: 0.70,
+  none: 1.00, light: 0.98, medium: 0.9, heavy: 0.70,
 }
 
 const CONTAMINATION_COEFF: Record<Contamination, number> = {
-  dust: 1.00, scale: 0.85, mold: 0.80, grease: 0.70, multi: 0.65,
+  dust: 1.00, scale: 0.85, mold: 0.90, grease: 0.80, multi: 0.75,
 }
 
 const TIME_WINDOW_COEFF: Record<TimeWindow, number> = {
@@ -57,7 +57,7 @@ function calcSetup(
   water: Supply, power: Supply,
   rooftop: RooftopAccess, roadClosure: boolean
 ): number {
-  let mins = 90
+  let mins = 60
   if (water === "SelfSupply") mins += 30
   if (power === "SelfSupply") mins += 20
   if (roadClosure) mins += 45
