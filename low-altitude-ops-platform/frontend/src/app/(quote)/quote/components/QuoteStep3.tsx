@@ -6,8 +6,9 @@ import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
 import {
-  buildFacades, inferRiskLevel,
-  mapServiceToMissionType, mapTimeSlot, mapDirtLevel,
+  buildFacadesFromInputs, buildFacades,
+  inferRiskLevel, worstContamination,
+  mapServiceToMissionType, mapTimeSlot,
 } from "./quote-defaults"
 
 interface Props {
@@ -29,10 +30,15 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 const FLOOR_MULTIPLIER_LABEL: Record<string, string> = {
-  "1": "無加價",
+  "1":   "無加價",
   "1.3": "11-20F 加價",
-  "2": "21-30F 加價",
-  "3": ">30F 加價",
+  "2":   "21-30F 加價",
+  "3":   ">30F 加價",
+}
+
+const BUILDING_LABELS: Record<string, string> = {
+  commercial: "商辦大樓", luxury: "豪宅大樓",
+  house: "透天厝", factory: "廠房", solar: "太陽能板",
 }
 
 export function QuoteStep3({
@@ -40,29 +46,34 @@ export function QuoteStep3({
   pricing, setPricing, timeResult, setTimeResult,
   onBack, onReset,
 }: Props) {
-  // Run engines on mount
   useEffect(() => {
-    const facades = buildFacades(areaEstimate, formData.buildingType)
-    const riskLevel = inferRiskLevel(formData.floors)
-    const contamination = mapDirtLevel(formData.dirtLevel)
-    const timeWindow = mapTimeSlot(formData.timeSlot)
+    const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
+    const facades = hasPerFacade
+      ? buildFacadesFromInputs(formData.facadeInputs!, areaEstimate, formData.buildingType)
+      : buildFacades(areaEstimate, formData.buildingType)
 
-    // Pricing
-    const pr = generateQuote({
+    const contamination = hasPerFacade
+      ? worstContamination(formData.facadeInputs!)
+      : "dust"
+
+    const riskLevel = inferRiskLevel(formData.floors)
+    const timeWindow = mapTimeSlot(formData.timeSlot)
+    const waterSupply = formData.waterSupply ?? "Provided"
+    const powerSupply = formData.powerSupply ?? "Provided"
+
+    setPricing(generateQuote({
       buildingType: formData.buildingType,
       floors: formData.floors,
       facades,
       contamination,
       timeWindow,
       riskLevel,
-      waterSupply: "Provided",
-      powerSupply: "Provided",
+      waterSupply,
+      powerSupply,
       urgent: formData.urgent,
-    })
-    setPricing(pr)
+    }))
 
-    // Time
-    const tr = estimateTime({
+    setTimeResult(estimateTime({
       missionType: mapServiceToMissionType(formData.serviceType),
       buildingType: formData.buildingType,
       floors: formData.floors,
@@ -71,11 +82,10 @@ export function QuoteStep3({
       contamination,
       timeWindow,
       riskLevel,
-      waterSupply: "Provided",
-      powerSupply: "Provided",
+      waterSupply,
+      powerSupply,
       rooftopAccess: "Good",
-    })
-    setTimeResult(tr)
+    }))
   }, [formData, areaEstimate, setPricing, setTimeResult])
 
   if (!pricing || !timeResult) {
@@ -83,15 +93,15 @@ export function QuoteStep3({
   }
 
   const handleCopy = () => {
-    const text = buildPlainText(formData, airspace, areaEstimate, pricing, timeResult)
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(
+      buildPlainText(formData, airspace, areaEstimate, pricing, timeResult)
+    )
   }
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-zinc-900">Step 3 — 報價結果</h2>
 
-      {/* Quote card */}
       <div className="border border-zinc-300 rounded-xl overflow-hidden">
         {/* Header */}
         <div className="bg-zinc-800 text-white px-6 py-4">
@@ -107,44 +117,59 @@ export function QuoteStep3({
           </div>
         </div>
 
-        {/* Info */}
+        {/* Info grid */}
         <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-200">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-zinc-500">客戶：</span>
-              <span className="font-medium">{formData.clientName}</span>
-            </div>
-            <div>
-              <span className="text-zinc-500">地址：</span>
-              <span className="font-medium">{formData.address}</span>
-            </div>
-            <div>
-              <span className="text-zinc-500">建物：</span>
-              <span className="font-medium">
-                {formData.buildingType === "commercial" ? "商辦大樓" :
-                 formData.buildingType === "luxury" ? "豪宅大樓" :
-                 formData.buildingType === "house" ? "透天厝" :
-                 formData.buildingType === "factory" ? "廠房" : "太陽能板"}
-                {" "}{formData.floors}F（{(formData.floors * 3.5).toFixed(1)}m）
-              </span>
-            </div>
-            <div>
-              <span className="text-zinc-500">空域：</span>
-              <span className="font-medium">
-                {!airspace || airspace.status === "OK" ? "✅ 可直接作業" :
-                 airspace.status === "NeedPermit" ? "⚠️ 需申請許可" : "🚫 禁飛區"}
-              </span>
-            </div>
-            <div>
-              <span className="text-zinc-500">面積來源：</span>
-              <span className="font-medium">{SOURCE_LABELS[areaEstimate.source]}</span>
-            </div>
-            <div>
-              <span className="text-zinc-500">施作總面積：</span>
-              <span className="font-medium">{areaEstimate.total_area_m2.toLocaleString()} ㎡</span>
-            </div>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+            <InfoRow label="客戶" value={formData.clientName} />
+            <InfoRow label="地址" value={formData.address} />
+            <InfoRow
+              label="建物"
+              value={`${BUILDING_LABELS[formData.buildingType] ?? formData.buildingType} ${formData.floors}F（${(formData.floors * 3.5).toFixed(1)}m）`}
+            />
+            <InfoRow
+              label="空域"
+              value={
+                !airspace || airspace.status === "OK" ? "✅ 可直接作業" :
+                airspace.status === "NeedPermit" ? "⚠️ 需申請許可" : "🚫 禁飛區"
+              }
+            />
+            <InfoRow label="面積來源" value={SOURCE_LABELS[areaEstimate.source]} />
+            <InfoRow label="施作總面積" value={`${areaEstimate.total_area_m2.toLocaleString()} ㎡`} />
+            <InfoRow
+              label="水電供應"
+              value={`${formData.waterSupply === "Provided" ? "業主提供" : "自備"} / ${formData.powerSupply === "Provided" ? "業主提供" : "自備"}`}
+            />
           </div>
         </div>
+
+        {/* Per-facade summary */}
+        {formData.facadeInputs && formData.facadeInputs.length > 0 && (
+          <div className="px-6 py-4 border-b border-zinc-200">
+            <h4 className="text-sm font-semibold text-zinc-600 mb-3">各立面概況</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {formData.facadeInputs.map(f => (
+                <div key={f.id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 text-xs">
+                  <div className="font-semibold text-zinc-800 mb-1">立面 {f.label}</div>
+                  <div className="text-zinc-500">
+                    {f.dirtTypes.map(d =>
+                      d === "dust" ? "灰塵" : d === "scale" ? "鏽斑" :
+                      d === "mold" ? "青苔" : "油汙"
+                    ).join("、")}
+                  </div>
+                  <div className="text-zinc-500">
+                    {f.complexity === "none" ? "無複雜" : f.complexity === "light" ? "輕微" :
+                     f.complexity === "medium" ? "中等" : "複雜"}
+                  </div>
+                  {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}
+                  {f.isHighRisk && <div className="text-red-600">高風險環境</div>}
+                  {f.photos.length > 0 && (
+                    <div className="text-blue-600">{f.photos.length} 張照片</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Line items */}
         <div className="px-6 py-4">
@@ -190,10 +215,10 @@ export function QuoteStep3({
             {Object.entries(pricing.multiplier_breakdown).map(([key, val]) => (
               <div key={key} className="flex justify-between">
                 <span className="text-zinc-600">
-                  {key === "floor" ? `高樓加價（${FLOOR_MULTIPLIER_LABEL[String(val)] ?? val}）` :
-                   key === "time_window" ? `施工時段` :
-                   key === "risk" ? `風險係數` :
-                   key === "urgent" ? `急件加價` : key}
+                  {key === "floor"       ? `高樓加價（${FLOOR_MULTIPLIER_LABEL[String(val)] ?? ""}）` :
+                   key === "time_window" ? "施工時段" :
+                   key === "risk"        ? "風險係數" :
+                   key === "urgent"      ? "急件加價" : key}
                 </span>
                 <span className={val > 1 ? "text-orange-600 font-medium" : "text-zinc-500"}>
                   × {val.toFixed(2)}
@@ -223,10 +248,8 @@ export function QuoteStep3({
 
         {/* Disclaimer */}
         <div className="px-6 py-3 bg-amber-50 border-t border-amber-200 text-sm text-amber-800">
-          <p>
-            ⚠️ 本報價為快速估算，正式報價需現場勘查確認。
-            面積估算基於{SOURCE_LABELS[areaEstimate.source]}，誤差範圍約 ±15%。
-          </p>
+          ⚠️ 本報價為快速估算，正式報價需現場勘查確認。
+          面積估算基於{SOURCE_LABELS[areaEstimate.source]}，誤差範圍約 ±15%。
         </div>
       </div>
 
@@ -255,7 +278,16 @@ export function QuoteStep3({
   )
 }
 
-// ─── Plain text export ──────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="text-zinc-500">{label}：</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  )
+}
 
 function buildPlainText(
   form: QuoteFormData,

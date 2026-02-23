@@ -1,9 +1,8 @@
 // ─── GET /api/geocode?q=<address> ────────────────────────────────────────────
 //
 // Multi-strategy Taiwan geocoding:
-//   1. Nominatim (OSM) — full address
-//   2. Nominatim — progressive truncation (remove house number, then district)
-//   3. NLSC (National Land Surveying and Mapping Center, Taiwan) — best coverage
+//   1. Nominatim (OSM) — full address, then progressive truncation
+//   2. NLSC (Taiwan MOI) — best local coverage; handles TWD97 → WGS84
 //
 // All providers are free with no API key required.
 
@@ -11,7 +10,81 @@ import { NextResponse } from "next/server"
 
 const USER_AGENT = "GDS-LAOP-Mock/1.0 (demo only)"
 
-// ─── Strategy 1 & 2: Nominatim ───────────────────────────────────────────────
+// ─── Taiwan WGS84 bounding box ────────────────────────────────────────────────
+
+function isWithinTaiwan(lat: number, lng: number): boolean {
+  return lat >= 21.8 && lat <= 25.4 && lng >= 119.2 && lng <= 122.1
+}
+
+// ─── TWD97 TM2 Zone 1 (EPSG:3826) → WGS84 ───────────────────────────────────
+//
+// NLSC often returns TWD97 easting/northing even when EPSG:4326 is requested.
+// TWD97 Zone 1: central meridian 121°E, false easting 250,000m, scale 0.9999.
+// Typical Taiwan values: x≈150,000–320,000m, y≈2,400,000–2,850,000m.
+
+function isTWD97Range(x: number, y: number): boolean {
+  return x >= 100_000 && x <= 400_000 && y >= 2_300_000 && y <= 3_000_000
+}
+
+function twd97ToWGS84(easting: number, northing: number): { lat: number; lng: number } {
+  const a = 6_378_137.0
+  const f = 1.0 / 298.257_222_101
+  const b = a * (1 - f)
+  const e2 = 2 * f - f * f
+  const e = Math.sqrt(e2)
+  const k0 = 0.9999
+  const lon0 = 121.0 * (Math.PI / 180)
+  const FE = 250_000.0
+
+  const x = easting - FE
+  const y = northing
+
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2))
+  const M = y / k0
+  const mu = M / (a * (1 - e2 / 4 - (3 * e2 ** 2) / 64 - (5 * e2 ** 3) / 256))
+
+  const phi1 =
+    mu +
+    ((3 * e1) / 2 - (27 * e1 ** 3) / 32) * Math.sin(2 * mu) +
+    ((21 * e1 ** 2) / 16 - (55 * e1 ** 4) / 32) * Math.sin(4 * mu) +
+    ((151 * e1 ** 3) / 96) * Math.sin(6 * mu) +
+    ((1097 * e1 ** 4) / 512) * Math.sin(8 * mu)
+
+  const sinPhi1 = Math.sin(phi1)
+  const cosPhi1 = Math.cos(phi1)
+  const tanPhi1 = Math.tan(phi1)
+
+  const N1 = a / Math.sqrt(1 - e2 * sinPhi1 ** 2)
+  const T1 = tanPhi1 ** 2
+  const C1 = (e2 / (1 - e2)) * cosPhi1 ** 2
+  const R1 = (a * (1 - e2)) / (1 - e2 * sinPhi1 ** 2) ** 1.5
+  const D = x / (N1 * k0)
+
+  const lat =
+    phi1 -
+    ((N1 * tanPhi1) / R1) *
+    (D ** 2 / 2 -
+      ((5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * (e2 / (1 - e2))) * D ** 4) / 24 +
+      ((61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * (e2 / (1 - e2)) - 3 * C1 ** 2) *
+        D ** 6) /
+      720)
+
+  const lon =
+    lon0 +
+    (D -
+      ((1 + 2 * T1 + C1) * D ** 3) / 6 +
+      ((5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * (e2 / (1 - e2)) + 24 * T1 ** 2) *
+        D ** 5) /
+      120) /
+    cosPhi1
+
+  return {
+    lat: lat * (180 / Math.PI),
+    lng: lon * (180 / Math.PI),
+  }
+}
+
+// ─── Strategy 1: Nominatim ───────────────────────────────────────────────────
 
 async function tryNominatim(q: string) {
   const url = new URL("https://nominatim.openstreetmap.org/search")
@@ -25,7 +98,6 @@ async function tryNominatim(q: string) {
     headers: {
       "User-Agent": USER_AGENT,
       "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-      "Accept": "application/json",
     },
     next: { revalidate: 3600 },
   })
@@ -35,25 +107,23 @@ async function tryNominatim(q: string) {
   if (!Array.isArray(results) || results.length === 0) return null
 
   const item = results[0]
-  const addr = item.address ?? {}
+  const lat = parseFloat(item.lat)
+  const lng = parseFloat(item.lon)
 
+  if (!isWithinTaiwan(lat, lng)) return null
+
+  const addr = item.address ?? {}
   return {
-    lat: parseFloat(item.lat),
-    lng: parseFloat(item.lon),
-    district:
-      addr.suburb ?? addr.city_district ?? addr.borough ??
-      addr.county ?? addr.township ?? "",
-    city:
-      addr.city ?? addr.town ?? addr.county ?? addr.state ?? "",
+    lat,
+    lng,
+    district: addr.suburb ?? addr.city_district ?? addr.borough ?? addr.township ?? "",
+    city: addr.city ?? addr.town ?? addr.county ?? addr.state ?? "",
     source: "nominatim",
     _display_name: item.display_name,
   }
 }
 
-// ─── Strategy 3: NLSC (Taiwan MOI) ───────────────────────────────────────────
-// Endpoint: https://geocoder.nlsc.gov.tw/query.aspx
-// Returns GeoJSON-like JSON with TWD97 or WGS84 coords.
-// queryType=26 = address search, oSRS=EPSG:4326 = WGS84 output
+// ─── Strategy 2: NLSC ────────────────────────────────────────────────────────
 
 async function tryNLSC(q: string) {
   const url = new URL("https://geocoder.nlsc.gov.tw/query.aspx")
@@ -68,40 +138,64 @@ async function tryNLSC(q: string) {
   })
   if (!res.ok) return null
 
-  const text = await res.text()
   let data: Record<string, unknown>
   try {
-    data = JSON.parse(text)
+    data = await res.json()
   } catch {
     return null
   }
 
-  // NLSC response: { "lgcode": "...", "x": "121.xxx", "y": "25.xxx", ... }
-  const x = parseFloat(String(data.x ?? data.X ?? ""))
-  const y = parseFloat(String(data.y ?? data.Y ?? ""))
-
-  if (!isFinite(x) || !isFinite(y) || x === 0 || y === 0) return null
-
-  // NLSC returns x=lng, y=lat in EPSG:4326
-  return {
-    lat: y,
-    lng: x,
-    district: String(data.district ?? data.town ?? ""),
-    city: String(data.city ?? data.county ?? ""),
-    source: "nlsc",
-    _display_name: q,
+  // Try structured geometry first (EPSG:4326 array [lng, lat])
+  const geom = data.theGeometry as { coordinates?: number[] } | undefined
+  if (geom?.coordinates && geom.coordinates.length >= 2) {
+    const lng = geom.coordinates[0]
+    const lat = geom.coordinates[1]
+    if (isWithinTaiwan(lat, lng)) {
+      return {
+        lat, lng,
+        district: String(data.town ?? data.district ?? ""),
+        city: String(data.city ?? data.county ?? ""),
+        source: "nlsc",
+      }
+    }
   }
+
+  // Fallback: raw x/y fields
+  const rawX = parseFloat(String(data.x ?? data.X ?? ""))
+  const rawY = parseFloat(String(data.y ?? data.Y ?? ""))
+  if (!isFinite(rawX) || !isFinite(rawY)) return null
+
+  // Detect TWD97 by magnitude and convert
+  if (isTWD97Range(rawX, rawY)) {
+    const wgs = twd97ToWGS84(rawX, rawY)
+    if (!isWithinTaiwan(wgs.lat, wgs.lng)) return null
+    return {
+      lat: wgs.lat, lng: wgs.lng,
+      district: String(data.town ?? data.district ?? ""),
+      city: String(data.city ?? data.county ?? ""),
+      source: "nlsc-converted",
+    }
+  }
+
+  // Already WGS84
+  if (isWithinTaiwan(rawY, rawX)) {
+    return {
+      lat: rawY, lng: rawX,
+      district: String(data.town ?? data.district ?? ""),
+      city: String(data.city ?? data.county ?? ""),
+      source: "nlsc",
+    }
+  }
+
+  return null
 }
 
 // ─── Progressive address truncation ──────────────────────────────────────────
-// "台北市信義區松高路92號" → "台北市信義區松高路" → "台北市信義區"
 
 function truncateVariants(q: string): string[] {
   const variants: string[] = [q]
-  // Remove house number (e.g. "92號", "92-1號")
   const noNumber = q.replace(/\d+(?:-\d+)?號.*$/, "").trim()
   if (noNumber && noNumber !== q) variants.push(noNumber)
-  // Remove lane/alley (弄/巷)
   const noLane = noNumber.replace(/\d+[弄巷].*$/, "").trim()
   if (noLane && noLane !== noNumber) variants.push(noLane)
   return variants
@@ -119,30 +213,20 @@ export async function GET(request: Request) {
 
   const variants = truncateVariants(q.trim())
 
-  // Strategy 1 & 2: Nominatim with progressive truncation
   for (const variant of variants) {
     try {
       const result = await tryNominatim(variant)
-      if (result) {
-        return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
-      }
-    } catch {
-      // continue to next strategy
-    }
+      if (result) return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
+    } catch { /* continue */ }
   }
 
-  // Strategy 3: NLSC — best coverage for Taiwan granular addresses
   try {
     const result = await tryNLSC(q.trim())
-    if (result) {
-      return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
-    }
-  } catch {
-    // fall through
-  }
+    if (result) return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
+  } catch { /* continue */ }
 
   return NextResponse.json({
     status: "failed",
-    reason: "找不到此地址，請確認地址格式正確（縣市＋鄉鎮區＋路名＋門牌）",
+    reason: "找不到此地址，請確認格式為「縣市＋區＋路名＋門牌號」",
   })
 }

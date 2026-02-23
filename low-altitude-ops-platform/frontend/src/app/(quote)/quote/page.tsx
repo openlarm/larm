@@ -3,25 +3,28 @@
 import { useState, useCallback } from "react"
 import type { AirspaceResult, PricingResult, TimeResult } from "@/lib/types"
 import type { QuoteFormData, AreaEstimate } from "./components/quote-defaults"
+import { buildDefaultFacadeInputs } from "./components/quote-defaults"
 import { QuoteStep1 } from "./components/QuoteStep1"
 import { QuoteStep2 } from "./components/QuoteStep2"
 import { QuoteStep3 } from "./components/QuoteStep3"
 
 const STEPS = ["基本資訊", "建物概況", "報價結果"] as const
 
+const INITIAL_FORM: Partial<QuoteFormData> = {
+  serviceType: "cleaning",
+  buildingType: "commercial",
+  floors: 10,
+  numFacades: 4,
+  timeSlot: "day",
+  urgent: false,
+  waterSupply: "Provided",
+  powerSupply: "Provided",
+  facadeInputs: buildDefaultFacadeInputs(4),
+}
+
 export default function QuotePage() {
   const [step, setStep] = useState(0)
-
-  // Shared state across steps
-  const [formData, setFormData] = useState<Partial<QuoteFormData>>({
-    serviceType: "cleaning",
-    buildingType: "commercial",
-    floors: 10,
-    numFacades: 4,
-    dirtLevel: "light",
-    timeSlot: "day",
-    urgent: false,
-  })
+  const [formData, setFormData] = useState<Partial<QuoteFormData>>(INITIAL_FORM)
   const [airspace, setAirspace] = useState<AirspaceResult | null>(null)
   const [buildingPerimeter, setBuildingPerimeter] = useState<number | null>(null)
   const [buildingPolygon, setBuildingPolygon] = useState<{ lat: number; lon: number }[] | null>(null)
@@ -37,15 +40,7 @@ export default function QuotePage() {
   const goBack = () => setStep(s => Math.max(s - 1, 0))
   const reset = () => {
     setStep(0)
-    setFormData({
-      serviceType: "cleaning",
-      buildingType: "commercial",
-      floors: 10,
-      numFacades: 4,
-      dirtLevel: "light",
-      timeSlot: "day",
-      urgent: false,
-    })
+    setFormData(INITIAL_FORM)
     setAirspace(null)
     setBuildingPerimeter(null)
     setBuildingPolygon(null)
@@ -79,7 +74,6 @@ export default function QuotePage() {
         ))}
       </div>
 
-      {/* Step content */}
       {step === 0 && (
         <QuoteStep1
           formData={formData}

@@ -2,14 +2,14 @@
 
 import type {
   BuildingType, FacadeData, FacadeMaterial, Complexity,
-  Contamination, RiskLevel, TimeWindow,
+  Contamination, RiskLevel, TimeWindow, Supply,
 } from "@/lib/types"
 
 // ─── Business-friendly labels → engine values ────────────────────────────────
 
 export type ServiceType = "cleaning" | "coating" | "inspection"
-export type DirtLevel = "light" | "moderate" | "heavy"
 export type TimeSlot = "day" | "weekend" | "night"
+export type DirtType = "dust" | "scale" | "mold" | "grease"
 
 export const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = [
   { value: "cleaning", label: "外牆清洗" },
@@ -25,45 +25,70 @@ export const BUILDING_TYPE_OPTIONS: { value: BuildingType; label: string }[] = [
   { value: "solar", label: "太陽能板" },
 ]
 
-export const DIRT_OPTIONS: { value: DirtLevel; label: string; desc: string }[] = [
-  { value: "light", label: "輕微", desc: "灰塵 / 水漬" },
-  { value: "moderate", label: "中度", desc: "鏽斑 / 青苔" },
-  { value: "heavy", label: "嚴重", desc: "油汙 / 重度附著" },
+export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string }[] = [
+  { value: "dust",   label: "灰塵 / 水漬", emoji: "💨" },
+  { value: "scale",  label: "鏽斑 / 水垢", emoji: "🟤" },
+  { value: "mold",   label: "青苔 / 霉菌", emoji: "🟢" },
+  { value: "grease", label: "油汙 / 重附著", emoji: "⚫" },
+]
+
+export const COMPLEXITY_OPTIONS: { value: Complexity; label: string; desc: string }[] = [
+  { value: "none",   label: "無",   desc: "平整外牆" },
+  { value: "light",  label: "輕微", desc: "少量凸出" },
+  { value: "medium", label: "中等", desc: "窗框、線條較多" },
+  { value: "heavy",  label: "複雜", desc: "大量裝飾/格柵" },
 ]
 
 export const TIME_SLOT_OPTIONS: { value: TimeSlot; label: string }[] = [
-  { value: "day", label: "一般白天" },
+  { value: "day",     label: "一般白天" },
   { value: "weekend", label: "週末 / 假日" },
-  { value: "night", label: "夜間施工" },
+  { value: "night",   label: "夜間施工" },
 ]
 
-// ─── Mapping tables ─────────────────────────────────────────────────────────
+// ─── Per-facade input (what the sales form collects) ─────────────────────────
 
-const DIRT_MAP: Record<DirtLevel, Contamination> = {
-  light: "dust", moderate: "scale", heavy: "grease",
+export interface QuoteFacadeInput {
+  id: string
+  label: string                // A / B / C / D
+  dirtTypes: DirtType[]        // multi-select
+  complexity: Complexity
+  hasRecesses: boolean         // 有內縮 / 露台 / 天井
+  isHighRisk: boolean          // 緊鄰特殊風險環境
+  photos: { name: string; url: string }[]  // preview only
 }
+
+// ─── Form data (full) ────────────────────────────────────────────────────────
+
+export interface QuoteFormData {
+  clientName: string
+  address: string
+  lat: number
+  lng: number
+  serviceType: ServiceType
+  urgent: boolean
+  buildingType: BuildingType
+  floors: number
+  numFacades: number
+  timeSlot: TimeSlot
+  waterSupply: Supply           // global (building-level decision)
+  powerSupply: Supply
+  facadeInputs: QuoteFacadeInput[]
+}
+
+// ─── Mapping tables ─────────────────────────────────────────────────────────
 
 const DEFAULT_MATERIAL: Record<BuildingType, FacadeMaterial> = {
   commercial: "glass", luxury: "stone", house: "tile", factory: "metal", solar: "solar",
 }
 
-const DEFAULT_COMPLEXITY: Record<BuildingType, Complexity> = {
-  commercial: "light", luxury: "medium", house: "none", factory: "none", solar: "none",
-}
+// ─── Default building dimensions ────────────────────────────────────────────
 
-// ─── Default building dimensions (fallback when no map data) ─────────────────
-
-interface BuildingDefaults {
-  width_m: number
-  depth_m: number
-}
-
-const BUILDING_DIMENSIONS: Record<BuildingType, BuildingDefaults> = {
+const BUILDING_DIMENSIONS: Record<BuildingType, { width_m: number; depth_m: number }> = {
   commercial: { width_m: 25, depth_m: 25 },
-  luxury: { width_m: 20, depth_m: 20 },
-  house: { width_m: 5, depth_m: 15 },
-  factory: { width_m: 50, depth_m: 30 },
-  solar: { width_m: 10, depth_m: 5 },
+  luxury:     { width_m: 20, depth_m: 20 },
+  house:      { width_m: 5,  depth_m: 15 },
+  factory:    { width_m: 50, depth_m: 30 },
+  solar:      { width_m: 10, depth_m: 5  },
 }
 
 // ─── Risk level from floors ──────────────────────────────────────────────────
@@ -90,7 +115,6 @@ export interface AreaEstimate {
 
 const FLOOR_HEIGHT_M = 3.5
 
-/** Estimate from Overpass building polygon perimeter */
 export function estimateFromPerimeter(
   perimeter_m: number,
   floors: number,
@@ -111,7 +135,6 @@ export function estimateFromPerimeter(
   }
 }
 
-/** Fallback: estimate from default building dimensions */
 export function estimateFromDefaults(
   buildingType: BuildingType,
   floors: number,
@@ -122,7 +145,6 @@ export function estimateFromDefaults(
   return estimateFromPerimeter(perimeter, floors, numFacades, "default")
 }
 
-/** Estimate from user-drawn rectangle on map (width × depth in meters) */
 export function estimateFromRect(
   width_m: number,
   depth_m: number,
@@ -133,45 +155,82 @@ export function estimateFromRect(
   return estimateFromPerimeter(perimeter, floors, numFacades, "manual-draw")
 }
 
+// ─── Default facade inputs ───────────────────────────────────────────────────
+
+const FACE_LABELS = ["A", "B", "C", "D"]
+
+export function buildDefaultFacadeInputs(numFacades: number): QuoteFacadeInput[] {
+  return Array.from({ length: numFacades }, (_, i) => ({
+    id: String(i + 1),
+    label: FACE_LABELS[i] ?? String(i + 1),
+    dirtTypes: ["dust"] as DirtType[],
+    complexity: "light" as Complexity,
+    hasRecesses: false,
+    isHighRisk: false,
+    photos: [],
+  }))
+}
+
+// ─── Contamination: derive from multi-select dirt types ──────────────────────
+
+export function inferContamination(dirtTypes: DirtType[]): Contamination {
+  if (dirtTypes.length === 0) return "dust"
+  if (dirtTypes.length >= 2) return "multi"
+  const map: Record<DirtType, Contamination> = {
+    dust: "dust", scale: "scale", mold: "mold", grease: "grease",
+  }
+  return map[dirtTypes[0]]
+}
+
+/** Worst contamination across all facades (for engine input) */
+export function worstContamination(facadeInputs: QuoteFacadeInput[]): Contamination {
+  const priority: Contamination[] = ["multi", "grease", "mold", "scale", "dust"]
+  const all = facadeInputs.map(f => inferContamination(f.dirtTypes))
+  for (const p of priority) {
+    if (all.includes(p)) return p
+  }
+  return "dust"
+}
+
 // ─── Build FacadeData[] for engine input ─────────────────────────────────────
 
-const FACE_LABELS = ["A", "B", "C", "D", "E", "F"]
+export function buildFacadesFromInputs(
+  facadeInputs: QuoteFacadeInput[],
+  estimate: AreaEstimate,
+  buildingType: BuildingType,
+): FacadeData[] {
+  const material = DEFAULT_MATERIAL[buildingType]
+  return facadeInputs.map((input, i) => ({
+    id: input.id,
+    label: input.label,
+    area_m2: estimate.facade_area_m2,
+    material,
+    complexity: input.complexity,
+    road_closure: false,
+    tight_perimeter: input.hasRecesses,
+    high_risk_env: input.isHighRisk,
+  }))
+}
 
+/** Fallback: build facades from estimate when no per-facade inputs exist */
 export function buildFacades(
   estimate: AreaEstimate,
   buildingType: BuildingType,
 ): FacadeData[] {
   const material = DEFAULT_MATERIAL[buildingType]
-  const complexity = DEFAULT_COMPLEXITY[buildingType]
-
   return Array.from({ length: estimate.num_facades }, (_, i) => ({
     id: String(i + 1),
     label: FACE_LABELS[i] ?? String(i + 1),
     area_m2: estimate.facade_area_m2,
     material,
-    complexity,
+    complexity: "light" as Complexity,
     road_closure: false,
     tight_perimeter: false,
     high_risk_env: false,
   }))
 }
 
-// ─── Build full engine inputs from quote form ────────────────────────────────
-
-export interface QuoteFormData {
-  clientName: string
-  address: string
-  lat: number
-  lng: number
-  serviceType: ServiceType
-  urgent: boolean
-  buildingType: BuildingType
-  floors: number
-  numFacades: number
-  dirtLevel: DirtLevel
-  timeSlot: TimeSlot
-  overrideWidthM?: number   // manual override for facade width
-}
+// ─── Engine input mapping ────────────────────────────────────────────────────
 
 export function mapServiceToMissionType(s: ServiceType) {
   const map = { cleaning: "Cleaning", coating: "Coating", inspection: "Inspection" } as const
@@ -182,13 +241,8 @@ export function mapTimeSlot(t: TimeSlot): TimeWindow {
   return t as TimeWindow
 }
 
-export function mapDirtLevel(d: DirtLevel): Contamination {
-  return DIRT_MAP[d]
-}
+// ─── Overpass polygon perimeter ──────────────────────────────────────────────
 
-// ─── Overpass building perimeter calculation ─────────────────────────────────
-
-/** Calculate perimeter in meters from a polygon (array of {lat, lon} points) */
 export function calcPolygonPerimeter(points: { lat: number; lon: number }[]): number {
   if (points.length < 3) return 0
   let total = 0
@@ -201,7 +255,7 @@ export function calcPolygonPerimeter(points: { lat: number; lon: number }[]): nu
 }
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000 // meters
+  const R = 6_371_000
   const dLat = (lat2 - lat1) * (Math.PI / 180)
   const dLon = (lon2 - lon1) * (Math.PI / 180)
   const a =

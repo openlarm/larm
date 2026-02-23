@@ -1,12 +1,15 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
+import type { Supply } from "@/lib/types"
+import type { QuoteFormData, AreaEstimate, QuoteFacadeInput } from "./quote-defaults"
 import {
-  BUILDING_TYPE_OPTIONS, DIRT_OPTIONS, TIME_SLOT_OPTIONS,
+  BUILDING_TYPE_OPTIONS, TIME_SLOT_OPTIONS,
   estimateFromPerimeter, estimateFromDefaults, estimateFromRect,
+  buildDefaultFacadeInputs,
 } from "./quote-defaults"
 import { QuoteMap } from "./QuoteMap"
+import { QuoteFacadeEditor } from "./QuoteFacadeEditor"
 
 interface Props {
   formData: Partial<QuoteFormData>
@@ -34,13 +37,22 @@ export function QuoteStep2({
   const buildingType = formData.buildingType ?? "commercial"
   const [overrideWidth, setOverrideWidth] = useState<string>("")
 
-  // Recalculate area when inputs change
+  // Keep facade inputs in sync with numFacades
+  useEffect(() => {
+    const existing = formData.facadeInputs ?? []
+    if (existing.length !== numFacades) {
+      const defaults = buildDefaultFacadeInputs(numFacades)
+      // Preserve any previously filled data
+      const merged = defaults.map((d, i) => existing[i] ?? d)
+      updateForm({ facadeInputs: merged })
+    }
+  }, [numFacades]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recalculate area when building params change
   useEffect(() => {
     if (overrideWidth && Number(overrideWidth) > 0) {
-      // Manual override: treat as if all facades have this width
       const w = Number(overrideWidth)
-      const fakePerimeter = w * numFacades
-      setAreaEstimate(estimateFromPerimeter(fakePerimeter, floors, numFacades, "manual-draw"))
+      setAreaEstimate(estimateFromPerimeter(w * numFacades, floors, numFacades, "manual-draw"))
     } else if (buildingPerimeter && buildingPerimeter > 0) {
       setAreaEstimate(estimateFromPerimeter(buildingPerimeter, floors, numFacades, "overpass"))
     } else {
@@ -48,21 +60,23 @@ export function QuoteStep2({
     }
   }, [floors, numFacades, buildingType, buildingPerimeter, overrideWidth, setAreaEstimate])
 
-  // Handle rectangle draw from map
   const handleRectDraw = useCallback((width_m: number, depth_m: number) => {
-    const est = estimateFromRect(width_m, depth_m, floors, numFacades)
-    setAreaEstimate(est)
+    setAreaEstimate(estimateFromRect(width_m, depth_m, floors, numFacades))
     setOverrideWidth("")
   }, [floors, numFacades, setAreaEstimate])
 
+  const handleFacadesChange = useCallback((facades: QuoteFacadeInput[]) => {
+    updateForm({ facadeInputs: facades })
+  }, [updateForm])
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <h2 className="text-xl font-semibold text-zinc-900">Step 2 — 建物概況</h2>
 
+      {/* ── Section 1: Building basics + map ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left column: form fields */}
+        {/* Left: building fields */}
         <div className="space-y-4">
-          {/* Building type */}
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">建物類型</label>
             <select
@@ -76,20 +90,17 @@ export function QuoteStep2({
             </select>
           </div>
 
-          {/* Floors */}
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">樓層數</label>
             <input
               type="number"
               value={floors}
               onChange={e => updateForm({ floors: Math.max(1, parseInt(e.target.value) || 1) })}
-              min={1}
-              max={100}
+              min={1} max={100}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
 
-          {/* Number of facades */}
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">施作面數</label>
             <select
@@ -103,21 +114,6 @@ export function QuoteStep2({
             </select>
           </div>
 
-          {/* Dirt level */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">髒汙程度</label>
-            <select
-              value={formData.dirtLevel ?? "light"}
-              onChange={e => updateForm({ dirtLevel: e.target.value as QuoteFormData["dirtLevel"] })}
-              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              {DIRT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}（{o.desc}）</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Time slot */}
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">施工時段</label>
             <select
@@ -130,11 +126,28 @@ export function QuoteStep2({
               ))}
             </select>
           </div>
+
+          {/* Water / Power supply */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-700 mb-1">用水</p>
+              <SupplyToggle
+                value={formData.waterSupply ?? "Provided"}
+                onChange={v => updateForm({ waterSupply: v })}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-700 mb-1">用電</p>
+              <SupplyToggle
+                value={formData.powerSupply ?? "Provided"}
+                onChange={v => updateForm({ powerSupply: v })}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Right column: area estimation + map */}
+        {/* Right: map + area estimation */}
         <div className="space-y-4">
-          {/* Map with draw support */}
           {formData.lat && formData.lng && (
             <QuoteMap
               lat={formData.lat}
@@ -145,7 +158,6 @@ export function QuoteStep2({
             />
           )}
 
-          {/* Area estimation card */}
           {areaEstimate && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -155,7 +167,6 @@ export function QuoteStep2({
                   {SOURCE_LABELS[areaEstimate.source]}
                 </span>
               </div>
-
               <div className="space-y-1 text-sm text-blue-800">
                 {areaEstimate.source === "overpass" && (
                   <p>偵測到建物輪廓，周長 ≈ {areaEstimate.perimeter_m}m</p>
@@ -170,11 +181,8 @@ export function QuoteStep2({
             </div>
           )}
 
-          {/* Manual override */}
           <div>
-            <label className="block text-sm text-zinc-500 mb-1">
-              手動調整每面寬度（可選）
-            </label>
+            <label className="block text-sm text-zinc-500 mb-1">手動調整每面寬度（可選）</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -182,15 +190,12 @@ export function QuoteStep2({
                 onChange={e => setOverrideWidth(e.target.value)}
                 placeholder={areaEstimate ? String(areaEstimate.facade_width_m) : ""}
                 min={1}
-                className="w-32 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                className="w-28 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               />
               <span className="text-sm text-zinc-500">公尺</span>
               {overrideWidth && (
-                <button
-                  onClick={() => setOverrideWidth("")}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  恢復自動估算
+                <button onClick={() => setOverrideWidth("")} className="text-xs text-blue-600 hover:underline">
+                  恢復自動
                 </button>
               )}
             </div>
@@ -198,8 +203,18 @@ export function QuoteStep2({
         </div>
       </div>
 
+      {/* ── Section 2: Per-facade editor ── */}
+      <div className="border-t border-zinc-200 pt-6">
+        {formData.facadeInputs && formData.facadeInputs.length > 0 && (
+          <QuoteFacadeEditor
+            facades={formData.facadeInputs}
+            onChange={handleFacadesChange}
+          />
+        )}
+      </div>
+
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between pt-2">
         <button
           onClick={onBack}
           className="px-6 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
@@ -214,6 +229,29 @@ export function QuoteStep2({
           產生報價
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Supply toggle ────────────────────────────────────────────────────────────
+
+function SupplyToggle({ value, onChange }: { value: Supply; onChange: (v: Supply) => void }) {
+  return (
+    <div className="flex rounded-lg border border-zinc-300 overflow-hidden text-sm">
+      {(["Provided", "SelfSupply"] as Supply[]).map(opt => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onChange(opt)}
+          className={`flex-1 py-2 text-center transition-colors ${
+            value === opt
+              ? "bg-blue-600 text-white"
+              : "bg-white text-zinc-600 hover:bg-zinc-50"
+          }`}
+        >
+          {opt === "Provided" ? "業主提供" : "自備"}
+        </button>
+      ))}
     </div>
   )
 }
