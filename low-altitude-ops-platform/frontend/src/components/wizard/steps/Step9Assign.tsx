@@ -14,8 +14,10 @@ function checkQual(member: TeamMember, isNight: boolean, floors: number): QualCh
   const checks: QualCheck[] = []
   const expired = new Date(member.cert_expires) < new Date()
   checks.push({ item: "證照有效期限", result: expired ? "fail" : "pass", reason: expired ? `已於 ${member.cert_expires} 過期` : undefined })
-  if (isNight) checks.push({ item: "夜間資格", result: member.night_qualified ? "pass" : "fail", reason: member.night_qualified ? undefined : "不具備夜間作業資格" })
-  if (floors > 20) checks.push({ item: "高樓資格", result: member.highrise_qualified ? "pass" : "fail", reason: member.highrise_qualified ? undefined : "不具備高樓作業資格" })
+  // Night / highrise checks apply only to flight-operational roles, not PM
+  const isFlightRole = member.role === "RPIC" || member.role === "Observer" || member.role === "Safety"
+  if (isNight && isFlightRole) checks.push({ item: "夜間資格", result: member.night_qualified ? "pass" : "fail", reason: member.night_qualified ? undefined : "不具備夜間作業資格" })
+  if (floors > 20 && isFlightRole) checks.push({ item: "高樓資格", result: member.highrise_qualified ? "pass" : "fail", reason: member.highrise_qualified ? undefined : "不具備高樓作業資格" })
   return checks
 }
 
