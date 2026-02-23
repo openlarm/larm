@@ -1,26 +1,28 @@
-// ─── GET /api/geocode?q=<address> ────────────────────────────────────────────
+// ─── GET /api/geocode?q=<query>&mode=address|name ─────────────────────────────
 //
-// Multi-strategy Taiwan geocoding:
-//   1. Nominatim (OSM) — full address, then progressive truncation
-//   2. NLSC (Taiwan MOI) — best local coverage; handles TWD97 → WGS84
+// Multi-strategy Taiwan geocoding.
+// Strategy order (most accurate for Taiwan first):
+//   1. NLSC (Taiwan MOI) — primary; converts TWD97 → WGS84 when needed
+//   2. Nominatim (OSM)  — fallback; bounded to Taiwan viewbox
+//   3. Progressive address truncation for both providers
 //
-// All providers are free with no API key required.
+// mode=name  → treats query as a POI / building name, not an address
 
 import { NextResponse } from "next/server"
 
 const USER_AGENT = "GDS-LAOP-Mock/1.0 (demo only)"
 
 // ─── Taiwan WGS84 bounding box ────────────────────────────────────────────────
+//  Main island + Penghu; excludes Kinmen/Matsu (still Taiwan, just tighter box)
+const TW_BOUNDS = { minLat: 21.8, maxLat: 25.4, minLng: 119.0, maxLng: 122.1 }
 
 function isWithinTaiwan(lat: number, lng: number): boolean {
-  return lat >= 21.8 && lat <= 25.4 && lng >= 119.2 && lng <= 122.1
+  return lat >= TW_BOUNDS.minLat && lat <= TW_BOUNDS.maxLat &&
+    lng >= TW_BOUNDS.minLng && lng <= TW_BOUNDS.maxLng
 }
 
 // ─── TWD97 TM2 Zone 1 (EPSG:3826) → WGS84 ───────────────────────────────────
-//
-// NLSC often returns TWD97 easting/northing even when EPSG:4326 is requested.
-// TWD97 Zone 1: central meridian 121°E, false easting 250,000m, scale 0.9999.
-// Typical Taiwan values: x≈150,000–320,000m, y≈2,400,000–2,850,000m.
+// Typical Taiwan values: x ≈ 150,000–320,000 m, y ≈ 2,400,000–2,850,000 m
 
 function isTWD97Range(x: number, y: number): boolean {
   return x >= 100_000 && x <= 400_000 && y >= 2_300_000 && y <= 3_000_000
@@ -29,9 +31,7 @@ function isTWD97Range(x: number, y: number): boolean {
 function twd97ToWGS84(easting: number, northing: number): { lat: number; lng: number } {
   const a = 6_378_137.0
   const f = 1.0 / 298.257_222_101
-  const b = a * (1 - f)
   const e2 = 2 * f - f * f
-  const e = Math.sqrt(e2)
   const k0 = 0.9999
   const lon0 = 121.0 * (Math.PI / 180)
   const FE = 250_000.0
@@ -66,64 +66,19 @@ function twd97ToWGS84(easting: number, northing: number): { lat: number; lng: nu
     (D ** 2 / 2 -
       ((5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * (e2 / (1 - e2))) * D ** 4) / 24 +
       ((61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * (e2 / (1 - e2)) - 3 * C1 ** 2) *
-        D ** 6) /
-      720)
+        D ** 6) / 720)
 
   const lon =
     lon0 +
     (D -
       ((1 + 2 * T1 + C1) * D ** 3) / 6 +
       ((5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * (e2 / (1 - e2)) + 24 * T1 ** 2) *
-        D ** 5) /
-      120) /
-    cosPhi1
+        D ** 5) / 120) / cosPhi1
 
-  return {
-    lat: lat * (180 / Math.PI),
-    lng: lon * (180 / Math.PI),
-  }
+  return { lat: lat * (180 / Math.PI), lng: lon * (180 / Math.PI) }
 }
 
-// ─── Strategy 1: Nominatim ───────────────────────────────────────────────────
-
-async function tryNominatim(q: string) {
-  const url = new URL("https://nominatim.openstreetmap.org/search")
-  url.searchParams.set("q", q)
-  url.searchParams.set("format", "json")
-  url.searchParams.set("countrycodes", "tw")
-  url.searchParams.set("limit", "1")
-  url.searchParams.set("addressdetails", "1")
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      "User-Agent": USER_AGENT,
-      "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-    },
-    next: { revalidate: 3600 },
-  })
-  if (!res.ok) return null
-
-  const results = await res.json()
-  if (!Array.isArray(results) || results.length === 0) return null
-
-  const item = results[0]
-  const lat = parseFloat(item.lat)
-  const lng = parseFloat(item.lon)
-
-  if (!isWithinTaiwan(lat, lng)) return null
-
-  const addr = item.address ?? {}
-  return {
-    lat,
-    lng,
-    district: addr.suburb ?? addr.city_district ?? addr.borough ?? addr.township ?? "",
-    city: addr.city ?? addr.town ?? addr.county ?? addr.state ?? "",
-    source: "nominatim",
-    _display_name: item.display_name,
-  }
-}
-
-// ─── Strategy 2: NLSC ────────────────────────────────────────────────────────
+// ─── Strategy 1: NLSC (primary for Taiwan) ───────────────────────────────────
 
 async function tryNLSC(q: string) {
   const url = new URL("https://geocoder.nlsc.gov.tw/query.aspx")
@@ -135,37 +90,33 @@ async function tryNLSC(q: string) {
   const res = await fetch(url.toString(), {
     headers: { "User-Agent": USER_AGENT },
     next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) return null
 
   let data: Record<string, unknown>
-  try {
-    data = await res.json()
-  } catch {
-    return null
-  }
+  try { data = await res.json() } catch { return null }
 
-  // Try structured geometry first (EPSG:4326 array [lng, lat])
+  // Try structured geometry [lng, lat] first
   const geom = data.theGeometry as { coordinates?: number[] } | undefined
   if (geom?.coordinates && geom.coordinates.length >= 2) {
-    const lng = geom.coordinates[0]
-    const lat = geom.coordinates[1]
+    const lng = geom.coordinates[0], lat = geom.coordinates[1]
     if (isWithinTaiwan(lat, lng)) {
       return {
         lat, lng,
         district: String(data.town ?? data.district ?? ""),
         city: String(data.city ?? data.county ?? ""),
+        displayName: [data.city, data.town, data.road, data.num].filter(Boolean).join(""),
         source: "nlsc",
       }
     }
   }
 
-  // Fallback: raw x/y fields
+  // Fallback: raw x/y
   const rawX = parseFloat(String(data.x ?? data.X ?? ""))
   const rawY = parseFloat(String(data.y ?? data.Y ?? ""))
   if (!isFinite(rawX) || !isFinite(rawY)) return null
 
-  // Detect TWD97 by magnitude and convert
   if (isTWD97Range(rawX, rawY)) {
     const wgs = twd97ToWGS84(rawX, rawY)
     if (!isWithinTaiwan(wgs.lat, wgs.lng)) return null
@@ -173,31 +124,97 @@ async function tryNLSC(q: string) {
       lat: wgs.lat, lng: wgs.lng,
       district: String(data.town ?? data.district ?? ""),
       city: String(data.city ?? data.county ?? ""),
+      displayName: [data.city, data.town, data.road, data.num].filter(Boolean).join(""),
       source: "nlsc-converted",
     }
   }
 
-  // Already WGS84
   if (isWithinTaiwan(rawY, rawX)) {
     return {
       lat: rawY, lng: rawX,
-      district: String(data.town ?? data.district ?? ""),
-      city: String(data.city ?? data.county ?? ""),
+      district: String(data.town ?? ""),
+      city: String(data.city ?? ""),
+      displayName: [data.city, data.town, data.road, data.num].filter(Boolean).join(""),
       source: "nlsc",
     }
   }
-
   return null
+}
+
+// ─── Strategy 2: Nominatim with Taiwan viewbox ────────────────────────────────
+
+const TW_VIEWBOX = `${TW_BOUNDS.minLng},${TW_BOUNDS.minLat},${TW_BOUNDS.maxLng},${TW_BOUNDS.maxLat}`
+
+async function tryNominatim(q: string, mode: "address" | "name" = "address") {
+  const url = new URL("https://nominatim.openstreetmap.org/search")
+  url.searchParams.set("q", q)
+  url.searchParams.set("format", "json")
+  url.searchParams.set("countrycodes", "tw")
+  url.searchParams.set("limit", "5")
+  url.searchParams.set("addressdetails", "1")
+  url.searchParams.set("namedetails", "1")
+  // Hard-constrain to Taiwan — prevents matching same road name elsewhere
+  url.searchParams.set("viewbox", TW_VIEWBOX)
+  url.searchParams.set("bounded", "1")
+
+  if (mode === "name") {
+    // For building/POI name search, include buildings and amenities
+    url.searchParams.set("featureType", "building")
+  }
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": USER_AGENT,
+      "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) return null
+
+  const results = await res.json()
+  if (!Array.isArray(results) || results.length === 0) return null
+
+  // Pick best match — prefer higher importance and results with address number
+  const candidates = results
+    .filter((r: { lat: string; lon: string }) =>
+      isWithinTaiwan(parseFloat(r.lat), parseFloat(r.lon)))
+    .sort((a: { importance: number; display_name: string }, b: { importance: number; display_name: string }) => {
+      // Boost results that contain 號 (house number) in display_name
+      const aHasNum = a.display_name.includes("號") ? 0.05 : 0
+      const bHasNum = b.display_name.includes("號") ? 0.05 : 0
+      return (b.importance + bHasNum) - (a.importance + aHasNum)
+    })
+
+  if (candidates.length === 0) return null
+
+  const item = candidates[0]
+  const lat = parseFloat(item.lat)
+  const lng = parseFloat(item.lon)
+  const addr = item.address ?? {}
+
+  return {
+    lat, lng,
+    district: addr.suburb ?? addr.city_district ?? addr.borough ?? addr.township ?? "",
+    city: addr.city ?? addr.town ?? addr.county ?? addr.state ?? "",
+    displayName: item.namedetails?.name ?? item.display_name?.split(",")[0] ?? "",
+    source: "nominatim",
+  }
 }
 
 // ─── Progressive address truncation ──────────────────────────────────────────
 
-function truncateVariants(q: string): string[] {
+function addressVariants(q: string): string[] {
   const variants: string[] = [q]
-  const noNumber = q.replace(/\d+(?:-\d+)?號.*$/, "").trim()
-  if (noNumber && noNumber !== q) variants.push(noNumber)
-  const noLane = noNumber.replace(/\d+[弄巷].*$/, "").trim()
-  if (noLane && noLane !== noNumber) variants.push(noLane)
+  // Remove unit/floor suffix: 號X樓 → 號
+  const noFloor = q.replace(/號\d+樓.*$/, "號").trim()
+  if (noFloor !== q) variants.push(noFloor)
+  // Remove house number: keep up to street name
+  const noNum = noFloor.replace(/\d+(?:之\d+)?號.*$/, "").trim()
+  if (noNum && noNum !== noFloor) variants.push(noNum)
+  // Remove lane/alley
+  const noLane = noNum.replace(/\d+[弄巷].*$/, "").trim()
+  if (noLane && noLane !== noNum) variants.push(noLane)
   return variants
 }
 
@@ -205,28 +222,34 @@ function truncateVariants(q: string): string[] {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const q = searchParams.get("q")
+  const q = searchParams.get("q")?.trim()
+  const mode = (searchParams.get("mode") ?? "address") as "address" | "name"
 
-  if (!q || q.trim().length < 4) {
+  if (!q || q.length < 2) {
     return NextResponse.json({ status: "failed", reason: "query too short" }, { status: 400 })
   }
 
-  const variants = truncateVariants(q.trim())
+  const variants = mode === "name" ? [q] : addressVariants(q)
+
+  // NLSC first (most accurate for Taiwan addresses), then Nominatim
+  for (const variant of variants) {
+    try {
+      const result = await tryNLSC(variant)
+      if (result) return NextResponse.json({ ...result, raw: q, status: "success" })
+    } catch { /* timeout or unreachable — fall through */ }
+  }
 
   for (const variant of variants) {
     try {
-      const result = await tryNominatim(variant)
-      if (result) return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
-    } catch { /* continue */ }
+      const result = await tryNominatim(variant, mode)
+      if (result) return NextResponse.json({ ...result, raw: q, status: "success" })
+    } catch { /* fall through */ }
   }
-
-  try {
-    const result = await tryNLSC(q.trim())
-    if (result) return NextResponse.json({ ...result, raw: q, altitude_m: 0, status: "success" })
-  } catch { /* continue */ }
 
   return NextResponse.json({
     status: "failed",
-    reason: "找不到此地址，請確認格式為「縣市＋區＋路名＋門牌號」",
+    reason: mode === "name"
+      ? "找不到此建案名稱，請改用完整地址搜尋"
+      : "找不到此地址，請確認格式為「縣市＋區＋路名＋門牌號」（例：台北市信義區松仁路100號）",
   })
 }

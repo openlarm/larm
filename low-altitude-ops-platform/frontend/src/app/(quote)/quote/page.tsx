@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react"
 import type { AirspaceResult, PricingResult, TimeResult } from "@/lib/types"
-import type { QuoteFormData, AreaEstimate } from "./components/quote-defaults"
+import type { QuoteFormData, AreaEstimate, BuildingDimensions } from "./components/quote-defaults"
 import { buildDefaultFacadeInputs } from "./components/quote-defaults"
 import { QuoteStep1 } from "./components/QuoteStep1"
 import { QuoteStep2 } from "./components/QuoteStep2"
@@ -17,8 +17,6 @@ const INITIAL_FORM: Partial<QuoteFormData> = {
   numFacades: 4,
   timeSlot: "day",
   urgent: false,
-  waterSupply: "Provided",
-  powerSupply: "Provided",
   facadeInputs: buildDefaultFacadeInputs(4),
 }
 
@@ -28,6 +26,8 @@ export default function QuotePage() {
   const [airspace, setAirspace] = useState<AirspaceResult | null>(null)
   const [buildingPerimeter, setBuildingPerimeter] = useState<number | null>(null)
   const [buildingPolygon, setBuildingPolygon] = useState<{ lat: number; lon: number }[] | null>(null)
+  const [buildingDimensions, setBuildingDimensions] = useState<BuildingDimensions | null>(null)
+  const [buildingName, setBuildingName] = useState<string | null>(null)
   const [areaEstimate, setAreaEstimate] = useState<AreaEstimate | null>(null)
   const [pricing, setPricing] = useState<PricingResult | null>(null)
   const [timeResult, setTimeResult] = useState<TimeResult | null>(null)
@@ -44,6 +44,8 @@ export default function QuotePage() {
     setAirspace(null)
     setBuildingPerimeter(null)
     setBuildingPolygon(null)
+    setBuildingDimensions(null)
+    setBuildingName(null)
     setAreaEstimate(null)
     setPricing(null)
     setTimeResult(null)
@@ -55,15 +57,11 @@ export default function QuotePage() {
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((label, i) => (
           <div key={label} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                i < step
-                  ? "bg-blue-600 text-white"
-                  : i === step
-                    ? "bg-blue-600 text-white ring-2 ring-blue-300"
-                    : "bg-zinc-200 text-zinc-500"
-              }`}
-            >
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+              i < step ? "bg-blue-600 text-white" :
+              i === step ? "bg-blue-600 text-white ring-2 ring-blue-300" :
+              "bg-zinc-200 text-zinc-500"
+            }`}>
               {i < step ? "✓" : i + 1}
             </div>
             <span className={`text-sm ${i === step ? "text-zinc-900 font-medium" : "text-zinc-400"}`}>
@@ -82,6 +80,9 @@ export default function QuotePage() {
           setAirspace={setAirspace}
           setBuildingPerimeter={setBuildingPerimeter}
           setBuildingPolygon={setBuildingPolygon}
+          setBuildingDimensions={setBuildingDimensions}
+          setBuildingName={setBuildingName}
+          buildingName={buildingName}
           onNext={goNext}
         />
       )}
@@ -91,6 +92,7 @@ export default function QuotePage() {
           updateForm={updateForm}
           buildingPerimeter={buildingPerimeter}
           buildingPolygon={buildingPolygon}
+          buildingDimensions={buildingDimensions}
           areaEstimate={areaEstimate}
           setAreaEstimate={setAreaEstimate}
           onNext={goNext}
@@ -102,6 +104,7 @@ export default function QuotePage() {
           formData={formData as QuoteFormData}
           airspace={airspace}
           areaEstimate={areaEstimate!}
+          buildingName={buildingName}
           pricing={pricing}
           setPricing={setPricing}
           timeResult={timeResult}

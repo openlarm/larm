@@ -106,7 +106,21 @@ export interface QuoteFacadeInput {
   complexity: Complexity
   hasRecesses: boolean         // 有內縮 / 露台 / 天井
   isHighRisk: boolean          // 緊鄰特殊風險環境
-  photos: { name: string; url: string }[]  // preview only
+  waterSupply: Supply          // 用水：業主提供 or 自備
+  powerSupply: Supply          // 用電：業主提供 or 自備
+  supplyPhotos: { name: string; url: string }[]  // water/power access photos
+  photos: { name: string; url: string }[]        // general facade photos
+}
+
+// ─── Building MBR dimensions (from Overpass polygon analysis) ─────────────────
+
+export interface BuildingDimensions {
+  width_m: number     // longer side
+  depth_m: number     // shorter side
+  sides_m: number[]   // [w, d, w, d] for rectangular building
+  angle_deg: number
+  name?: string | null
+  address?: string | null
 }
 
 // ─── Form data (full) ────────────────────────────────────────────────────────
@@ -122,8 +136,6 @@ export interface QuoteFormData {
   floors: number
   numFacades: number
   timeSlot: TimeSlot
-  waterSupply: Supply           // global (building-level decision)
-  powerSupply: Supply
   facadeInputs: QuoteFacadeInput[]
   expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
 }
@@ -159,11 +171,12 @@ export type AreaSource = "overpass" | "manual-draw" | "default"
 export interface AreaEstimate {
   source: AreaSource
   perimeter_m: number
-  facade_width_m: number
+  facade_width_m: number          // average (for display)
   building_height_m: number
-  facade_area_m2: number
+  facade_area_m2: number          // average facade area
   total_area_m2: number
   num_facades: number
+  facadeWidths_m?: number[]       // actual per-facade widths when MBR is available
 }
 
 const FLOOR_HEIGHT_M = 3.5
@@ -185,6 +198,33 @@ export function estimateFromPerimeter(
     facade_area_m2: facadeArea,
     total_area_m2: facadeArea * numFacades,
     num_facades: numFacades,
+  }
+}
+
+/** Use actual MBR width × depth from polygon analysis — most accurate */
+export function estimateFromDimensions(
+  dims: BuildingDimensions,
+  floors: number,
+  numFacades: number,
+): AreaEstimate {
+  const height = floors * FLOOR_HEIGHT_M
+  // Assign side widths to each requested facade (repeating w,d,w,d pattern)
+  const facadeWidths = Array.from({ length: numFacades }, (_, i) => {
+    // sides_m is [w, d, w, d] for a rect; cycle if fewer sides defined
+    return dims.sides_m[i % dims.sides_m.length] ?? dims.width_m
+  })
+  const totalArea = Math.round(facadeWidths.reduce((s, w) => s + w * height, 0))
+  const avgWidth = Math.round(facadeWidths.reduce((s, w) => s + w, 0) / numFacades)
+  const perimeter = 2 * (dims.width_m + dims.depth_m)
+  return {
+    source: "overpass",
+    perimeter_m: Math.round(perimeter),
+    facade_width_m: avgWidth,
+    building_height_m: height,
+    facade_area_m2: Math.round(totalArea / numFacades),
+    total_area_m2: totalArea,
+    num_facades: numFacades,
+    facadeWidths_m: facadeWidths,
   }
 }
 
@@ -220,6 +260,9 @@ export function buildDefaultFacadeInputs(numFacades: number): QuoteFacadeInput[]
     complexity: "light" as Complexity,
     hasRecesses: false,
     isHighRisk: false,
+    waterSupply: "Provided" as Supply,
+    powerSupply: "Provided" as Supply,
+    supplyPhotos: [],
     photos: [],
   }))
 }
@@ -245,6 +288,12 @@ export function worstContamination(facadeInputs: QuoteFacadeInput[]): Contaminat
   return "dust"
 }
 
+/** If ANY facade needs self-supply, use SelfSupply (conservative) */
+export function aggregateSupply(facadeInputs: QuoteFacadeInput[], type: "water" | "power"): Supply {
+  const field = type === "water" ? "waterSupply" : "powerSupply"
+  return facadeInputs.some(f => f[field] === "SelfSupply") ? "SelfSupply" : "Provided"
+}
+
 // ─── Build FacadeData[] for engine input ─────────────────────────────────────
 
 export function buildFacadesFromInputs(
@@ -253,16 +302,22 @@ export function buildFacadesFromInputs(
   buildingType: BuildingType,
 ): FacadeData[] {
   const material = DEFAULT_MATERIAL[buildingType]
-  return facadeInputs.map((input, i) => ({
-    id: input.id,
-    label: input.label,
-    area_m2: estimate.facade_area_m2,
-    material,
-    complexity: input.complexity,
-    road_closure: false,
-    tight_perimeter: input.hasRecesses,
-    high_risk_env: input.isHighRisk,
-  }))
+  const height = estimate.building_height_m
+  return facadeInputs.map((input, i) => {
+    // Use per-facade width from MBR if available, otherwise average
+    const width_m = estimate.facadeWidths_m?.[i] ?? (estimate.facade_area_m2 / height)
+    const area_m2 = Math.round(width_m * height)
+    return {
+      id: input.id,
+      label: input.label,
+      area_m2,
+      material,
+      complexity: input.complexity,
+      road_closure: false,
+      tight_perimeter: input.hasRecesses,
+      high_risk_env: input.isHighRisk,
+    }
+  })
 }
 
 /** Fallback: build facades from estimate when no per-facade inputs exist */

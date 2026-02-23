@@ -7,7 +7,7 @@ import { estimateTime } from "@/lib/engines/time-engine"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
 import {
   buildFacadesFromInputs, buildFacades,
-  inferRiskLevel, worstContamination,
+  inferRiskLevel, worstContamination, aggregateSupply,
   mapServiceToMissionType, mapTimeSlot,
   getWeatherRisk,
 } from "./quote-defaults"
@@ -16,6 +16,7 @@ interface Props {
   formData: QuoteFormData
   airspace: AirspaceResult | null
   areaEstimate: AreaEstimate
+  buildingName: string | null
   pricing: PricingResult | null
   setPricing: (p: PricingResult) => void
   timeResult: TimeResult | null
@@ -43,7 +44,7 @@ const BUILDING_LABELS: Record<string, string> = {
 }
 
 export function QuoteStep3({
-  formData, airspace, areaEstimate,
+  formData, airspace, areaEstimate, buildingName,
   pricing, setPricing, timeResult, setTimeResult,
   onBack, onReset,
 }: Props) {
@@ -59,8 +60,9 @@ export function QuoteStep3({
 
     const riskLevel = inferRiskLevel(formData.floors)
     const timeWindow = mapTimeSlot(formData.timeSlot)
-    const waterSupply = formData.waterSupply ?? "Provided"
-    const powerSupply = formData.powerSupply ?? "Provided"
+    // Aggregate supply: if any facade needs self-supply, use SelfSupply (conservative)
+    const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
+    const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
 
     setPricing(generateQuote({
       buildingType: formData.buildingType,
@@ -123,6 +125,7 @@ export function QuoteStep3({
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <InfoRow label="客戶" value={formData.clientName} />
             <InfoRow label="地址" value={formData.address} />
+            {buildingName && <InfoRow label="建物名稱" value={buildingName} />}
             <InfoRow
               label="建物"
               value={`${BUILDING_LABELS[formData.buildingType] ?? formData.buildingType} ${formData.floors}F（${(formData.floors * 3.5).toFixed(1)}m）`}
@@ -136,10 +139,6 @@ export function QuoteStep3({
             />
             <InfoRow label="面積來源" value={SOURCE_LABELS[areaEstimate.source]} />
             <InfoRow label="施作總面積" value={`${areaEstimate.total_area_m2.toLocaleString()} ㎡`} />
-            <InfoRow
-              label="水電供應"
-              value={`${formData.waterSupply === "Provided" ? "業主提供" : "自備"} / ${formData.powerSupply === "Provided" ? "業主提供" : "自備"}`}
-            />
             {formData.expectedDate && (
               <InfoRow label="預計施工日期" value={formData.expectedDate} />
             )}
@@ -166,8 +165,13 @@ export function QuoteStep3({
                   </div>
                   {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}
                   {f.isHighRisk && <div className="text-red-600">高風險環境</div>}
+                  {f.waterSupply === "SelfSupply" && <div className="text-orange-600">自備用水</div>}
+                  {f.powerSupply === "SelfSupply" && <div className="text-orange-600">自備用電</div>}
+                  {f.supplyPhotos.length > 0 && (
+                    <div className="text-blue-600">{f.supplyPhotos.length} 張水電照</div>
+                  )}
                   {f.photos.length > 0 && (
-                    <div className="text-blue-600">{f.photos.length} 張照片</div>
+                    <div className="text-blue-600">{f.photos.length} 張立面照</div>
                   )}
                 </div>
               ))}

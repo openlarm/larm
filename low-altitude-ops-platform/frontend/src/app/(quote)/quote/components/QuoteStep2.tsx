@@ -1,11 +1,10 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import type { Supply } from "@/lib/types"
-import type { QuoteFormData, AreaEstimate, QuoteFacadeInput } from "./quote-defaults"
+import type { QuoteFormData, AreaEstimate, QuoteFacadeInput, BuildingDimensions } from "./quote-defaults"
 import {
   BUILDING_TYPE_OPTIONS, TIME_SLOT_OPTIONS,
-  estimateFromPerimeter, estimateFromDefaults, estimateFromRect,
+  estimateFromPerimeter, estimateFromDefaults, estimateFromRect, estimateFromDimensions,
   buildDefaultFacadeInputs,
 } from "./quote-defaults"
 import { QuoteMap } from "./QuoteMap"
@@ -16,6 +15,7 @@ interface Props {
   updateForm: (patch: Partial<QuoteFormData>) => void
   buildingPerimeter: number | null
   buildingPolygon: { lat: number; lon: number }[] | null
+  buildingDimensions: BuildingDimensions | null
   areaEstimate: AreaEstimate | null
   setAreaEstimate: (a: AreaEstimate) => void
   onNext: () => void
@@ -23,14 +23,14 @@ interface Props {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  overpass: "地圖自動偵測",
+  overpass: "地圖自動偵測（MBR）",
   "manual-draw": "手動框選",
   default: "智慧預設值",
 }
 
 export function QuoteStep2({
   formData, updateForm, buildingPerimeter, buildingPolygon,
-  areaEstimate, setAreaEstimate, onNext, onBack,
+  buildingDimensions, areaEstimate, setAreaEstimate, onNext, onBack,
 }: Props) {
   const floors = formData.floors ?? 10
   const numFacades = formData.numFacades ?? 4
@@ -42,23 +42,23 @@ export function QuoteStep2({
     const existing = formData.facadeInputs ?? []
     if (existing.length !== numFacades) {
       const defaults = buildDefaultFacadeInputs(numFacades)
-      // Preserve any previously filled data
-      const merged = defaults.map((d, i) => existing[i] ?? d)
-      updateForm({ facadeInputs: merged })
+      updateForm({ facadeInputs: defaults.map((d, i) => existing[i] ?? d) })
     }
   }, [numFacades]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Recalculate area when building params change
+  // Recalculate area — MBR dimensions take priority over raw perimeter
   useEffect(() => {
     if (overrideWidth && Number(overrideWidth) > 0) {
       const w = Number(overrideWidth)
       setAreaEstimate(estimateFromPerimeter(w * numFacades, floors, numFacades, "manual-draw"))
+    } else if (buildingDimensions && buildingDimensions.width_m > 0) {
+      setAreaEstimate(estimateFromDimensions(buildingDimensions, floors, numFacades))
     } else if (buildingPerimeter && buildingPerimeter > 0) {
       setAreaEstimate(estimateFromPerimeter(buildingPerimeter, floors, numFacades, "overpass"))
     } else {
       setAreaEstimate(estimateFromDefaults(buildingType, floors, numFacades))
     }
-  }, [floors, numFacades, buildingType, buildingPerimeter, overrideWidth, setAreaEstimate])
+  }, [floors, numFacades, buildingType, buildingPerimeter, buildingDimensions, overrideWidth, setAreaEstimate])
 
   const handleRectDraw = useCallback((width_m: number, depth_m: number) => {
     setAreaEstimate(estimateFromRect(width_m, depth_m, floors, numFacades))
@@ -92,9 +92,7 @@ export function QuoteStep2({
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">樓層數</label>
-            <input
-              type="number"
-              value={floors}
+            <input type="number" value={floors}
               onChange={e => updateForm({ floors: Math.max(1, parseInt(e.target.value) || 1) })}
               min={1} max={100}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -103,46 +101,22 @@ export function QuoteStep2({
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">施作面數</label>
-            <select
-              value={numFacades}
+            <select value={numFacades}
               onChange={e => updateForm({ numFacades: parseInt(e.target.value) })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              {[1, 2, 3, 4].map(n => (
-                <option key={n} value={n}>{n} 面</option>
-              ))}
+              {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} 面</option>)}
             </select>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">施工時段</label>
-            <select
-              value={formData.timeSlot ?? "day"}
+            <select value={formData.timeSlot ?? "day"}
               onChange={e => updateForm({ timeSlot: e.target.value as QuoteFormData["timeSlot"] })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              {TIME_SLOT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              {TIME_SLOT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-          </div>
-
-          {/* Water / Power supply */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-sm font-medium text-zinc-700 mb-1">用水</p>
-              <SupplyToggle
-                value={formData.waterSupply ?? "Provided"}
-                onChange={v => updateForm({ waterSupply: v })}
-              />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-700 mb-1">用電</p>
-              <SupplyToggle
-                value={formData.powerSupply ?? "Provided"}
-                onChange={v => updateForm({ powerSupply: v })}
-              />
-            </div>
           </div>
         </div>
 
@@ -150,10 +124,8 @@ export function QuoteStep2({
         <div className="space-y-4">
           {formData.lat && formData.lng && (
             <QuoteMap
-              lat={formData.lat}
-              lng={formData.lng}
-              airspace={null}
-              polygon={buildingPolygon}
+              lat={formData.lat} lng={formData.lng}
+              airspace={null} polygon={buildingPolygon}
               onRectDraw={handleRectDraw}
             />
           )}
@@ -168,12 +140,27 @@ export function QuoteStep2({
                 </span>
               </div>
               <div className="space-y-1 text-sm text-blue-800">
-                {areaEstimate.source === "overpass" && (
-                  <p>偵測到建物輪廓，周長 ≈ {areaEstimate.perimeter_m}m</p>
+                {buildingDimensions && buildingDimensions.width_m > 0 && (
+                  <p className="font-medium">
+                    建物尺寸：{buildingDimensions.width_m} × {buildingDimensions.depth_m} m
+                    <span className="text-xs font-normal ml-1 opacity-70">
+                      （方位 {buildingDimensions.angle_deg}°）
+                    </span>
+                  </p>
                 )}
-                <p>每面均寬 ≈ {areaEstimate.facade_width_m}m</p>
+                {/* Per-facade widths when MBR available */}
+                {areaEstimate.facadeWidths_m && areaEstimate.facadeWidths_m.length > 1 ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {areaEstimate.facadeWidths_m.map((w, i) => (
+                      <span key={i} className="text-xs bg-blue-100 px-2 py-0.5 rounded">
+                        立面 {["A","B","C","D"][i] ?? i+1}：{w} m
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p>每面均寬 ≈ {areaEstimate.facade_width_m} m</p>
+                )}
                 <p>建物高度 = {floors}F × 3.5m = {areaEstimate.building_height_m}m</p>
-                <p>每面面積 ≈ {areaEstimate.facade_area_m2.toLocaleString()} ㎡</p>
                 <p className="font-semibold text-base pt-1">
                   施作總面積 ≈ {areaEstimate.total_area_m2.toLocaleString()} ㎡
                 </p>
@@ -184,9 +171,7 @@ export function QuoteStep2({
           <div>
             <label className="block text-sm text-zinc-500 mb-1">手動調整每面寬度（可選）</label>
             <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={overrideWidth}
+              <input type="number" value={overrideWidth}
                 onChange={e => setOverrideWidth(e.target.value)}
                 placeholder={areaEstimate ? String(areaEstimate.facade_width_m) : ""}
                 min={1}
@@ -208,6 +193,7 @@ export function QuoteStep2({
         {formData.facadeInputs && formData.facadeInputs.length > 0 && (
           <QuoteFacadeEditor
             facades={formData.facadeInputs}
+            facadeWidths_m={areaEstimate?.facadeWidths_m}
             onChange={handleFacadesChange}
           />
         )}
@@ -215,43 +201,15 @@ export function QuoteStep2({
 
       {/* Navigation */}
       <div className="flex justify-between pt-2">
-        <button
-          onClick={onBack}
-          className="px-6 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
-        >
+        <button onClick={onBack}
+          className="px-6 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
           上一步
         </button>
-        <button
-          onClick={onNext}
-          disabled={!areaEstimate}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium"
-        >
+        <button onClick={onNext} disabled={!areaEstimate}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
           產生報價
         </button>
       </div>
-    </div>
-  )
-}
-
-// ─── Supply toggle ────────────────────────────────────────────────────────────
-
-function SupplyToggle({ value, onChange }: { value: Supply; onChange: (v: Supply) => void }) {
-  return (
-    <div className="flex rounded-lg border border-zinc-300 overflow-hidden text-sm">
-      {(["Provided", "SelfSupply"] as Supply[]).map(opt => (
-        <button
-          key={opt}
-          type="button"
-          onClick={() => onChange(opt)}
-          className={`flex-1 py-2 text-center transition-colors ${
-            value === opt
-              ? "bg-blue-600 text-white"
-              : "bg-white text-zinc-600 hover:bg-zinc-50"
-          }`}
-        >
-          {opt === "Provided" ? "業主提供" : "自備"}
-        </button>
-      ))}
     </div>
   )
 }
