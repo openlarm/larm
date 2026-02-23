@@ -184,6 +184,7 @@ export interface Mission {
   building?: BuildingData
   facades?: FacadeData[]
   selected_date?: string
+  selected_dates?: string[]
   weather?: WeatherDay
   risk?: RiskResult
   time_estimate?: TimeResult

@@ -50,8 +50,9 @@ export function Step7Time({ mission, update, next, back }: Props) {
     next()
   }
 
-  const AVAILABLE_DAYS = 14
-  const needSplit = (result?.suggested_days ?? 0) > AVAILABLE_DAYS
+  const selectedDays = mission.selected_dates?.length ?? 0
+  const needMoreDays = result ? selectedDays < result.suggested_days : false
+  const dayGap = result ? result.suggested_days - selectedDays : 0
 
   return (
     <StepShell title="Step 7 — Time Estimation" subtitle="作業時間預測" onBack={back} onNext={handleNext} nextDisabled={!result || loading}>
@@ -127,10 +128,36 @@ export function Step7Time({ mission, update, next, back }: Props) {
             </CardContent>
           </Card>
 
-          {needSplit && (
+          {/* Date sufficiency check */}
+          {selectedDays > 0 && (
+            <div className={`flex flex-wrap items-center gap-4 px-4 py-3 rounded-lg border text-sm transition-colors ${ !needMoreDays ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5" }`}>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xs text-zinc-500">Step 5 已選</span>
+                <span className="text-xl font-bold text-white">{selectedDays}</span>
+                <span className="text-xs text-zinc-500">天</span>
+              </div>
+              <div className="h-4 w-px bg-zinc-700" />
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xs text-zinc-500">引擎需要</span>
+                <span className="text-xl font-bold text-white">{result.suggested_days}</span>
+                <span className="text-xs text-zinc-500">天</span>
+              </div>
+              <div className="ml-auto text-xs">
+                {!needMoreDays
+                  ? <span className="text-emerald-400">✓ 日期充足</span>
+                  : <span className="text-amber-400">⚠ 尚缺 {dayGap} 天，建議返回 Step 5 補選</span>
+                }
+              </div>
+            </div>
+          )}
+
+          {needMoreDays && (
             <Alert className="border-amber-500/30 bg-amber-500/5 text-amber-300">
               <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>建議作業天數（{result.suggested_days} 天）超過可用窗口，建議拆分為多次任務或返回 Step 5 重新選擇日期。</AlertDescription>
+              <AlertDescription>
+                精確工時估算需 {result.suggested_days} 天，但 Step 5 僅選擇 {selectedDays} 天（差 {dayGap} 天）。
+                可返回 Step 5 補選日期，或繼續並於 Mission Plan 中標記分批施工。
+              </AlertDescription>
             </Alert>
           )}
         </>

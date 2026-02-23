@@ -174,3 +174,17 @@ export const SYSTEM_VERSIONS = {
   pricing: "v1.0",
   time_model: "v1.0",
 }
+
+// ─── Scheduled conflicts (for Step 5 conflict check) ─────────────────────────
+
+export interface ConflictEntry {
+  mission_id: string
+  client: string
+  type: string
+}
+
+export const MOCK_CONFLICTS: Record<string, ConflictEntry[]> = {
+  [dateStr(2)]: [{ mission_id: "M-SCHED-001", client: "大安商業大廈", type: "Cleaning" }],
+  [dateStr(5)]: [{ mission_id: "M-SCHED-002", client: "南港科技園區", type: "Inspection" }],
+  [dateStr(8)]: [{ mission_id: "M-SCHED-003", client: "中和工業廠房", type: "Coating" }],
+}

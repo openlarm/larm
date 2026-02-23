@@ -10,14 +10,15 @@ interface Props {
   nextLabel?: string
   nextDisabled?: boolean
   hideBack?: boolean
+  wide?: boolean
 }
 
 export function StepShell({
   title, subtitle, children,
-  onBack, onNext, nextLabel = "Next →", nextDisabled, hideBack,
+  onBack, onNext, nextLabel = "Next →", nextDisabled, hideBack, wide,
 }: Props) {
   return (
-    <div className="max-w-3xl">
+    <div className={wide ? "max-w-6xl" : "max-w-3xl"}>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-white">{title}</h2>
         {subtitle && <p className="text-sm text-zinc-400 mt-1">{subtitle}</p>}
