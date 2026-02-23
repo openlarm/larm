@@ -38,7 +38,11 @@ export function QuoteStep1({
       const geoRes = await fetch(`/api/geocode?q=${encodeURIComponent(addressInput)}`)
       const geo = await geoRes.json()
       if (geo.status !== "success") {
-        setGeocodeError("找不到此地址，請嘗試更完整的地址")
+        setGeocodeError(
+          geo.reason?.startsWith("找不到")
+            ? geo.reason + "（例：台北市信義區松高路92號）"
+            : "找不到此地址，請確認格式為「縣市＋區＋路名＋門牌號」"
+        )
         setGeocoding(false)
         return
       }
