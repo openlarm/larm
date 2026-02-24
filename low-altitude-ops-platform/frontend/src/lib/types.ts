@@ -61,6 +61,9 @@ export interface FacadeData {
   road_closure: boolean
   tight_perimeter: boolean
   high_risk_env: boolean
+  adjacent_trees: boolean     // 鄰樹：+5 NTD/㎡ (whole face)
+  tree_area_m2: number        // m² covered by trees (0 if none)
+  clean_tree_floors: boolean  // true → clean tree area at +10 NTD/㎡; false → exclude tree area
 }
 
 // ─── Weather ─────────────────────────────────────────────────────────────────

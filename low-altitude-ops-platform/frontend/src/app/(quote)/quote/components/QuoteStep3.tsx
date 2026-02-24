@@ -124,8 +124,8 @@ export function QuoteStep3({
   }
 
   const numBuildings = formData.numBuildings ?? 1
-  // areaEstimate reflects one building; multiply by numBuildings for project total
-  const totalArea = areaEstimate.total_area_m2 * numBuildings
+  // project_total_m2 is set when buildings have different sizes; otherwise multiply
+  const totalArea = areaEstimate.project_total_m2 ?? (areaEstimate.total_area_m2 * numBuildings)
 
   // Group line items by building for display
   type BldgGroup = { name: string; area: number; subtotal: number; facades: number }
@@ -191,9 +191,11 @@ export function QuoteStep3({
             <InfoRow
               label="施作總面積"
               value={
-                numBuildings > 1
-                  ? `${totalArea.toLocaleString()} ㎡（${areaEstimate.total_area_m2.toLocaleString()} ㎡ × ${numBuildings} 棟）`
-                  : `${totalArea.toLocaleString()} ㎡`
+                areaEstimate.project_total_m2 != null
+                  ? `${totalArea.toLocaleString()} ㎡（各棟實測合計）`
+                  : numBuildings > 1
+                    ? `${totalArea.toLocaleString()} ㎡（${areaEstimate.total_area_m2.toLocaleString()} ㎡ × ${numBuildings} 棟）`
+                    : `${totalArea.toLocaleString()} ㎡`
               }
             />
             {formData.expectedDate && (
@@ -223,6 +225,12 @@ export function QuoteStep3({
                   </div>
                   {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}
                   {f.isHighRisk && <div className="text-red-600">高風險環境</div>}
+                  {f.hasAdjacentTrees && (
+                    <div className="text-green-700">
+                      鄰樹 {f.treeFloors > 0 ? `${f.treeFloors}F` : ""}
+                      {f.treeFloors > 0 ? (f.cleanTreeFloors ? "（含清洗+10）" : "（不計入清洗）") : ""}
+                    </div>
+                  )}
                   {f.waterSupply === "SelfSupply" && <div className="text-orange-600">自備用水</div>}
                   {f.powerSupply === "SelfSupply"
                     ? <div className="text-orange-600">自備用電</div>
@@ -253,6 +261,7 @@ export function QuoteStep3({
               <tr className="text-zinc-500 border-b">
                 <th className="text-left py-2 font-medium">項目</th>
                 <th className="text-right py-2 font-medium">施作面積</th>
+                <th className="text-right py-2 font-medium">單價</th>
                 <th className="text-right py-2 font-medium">小計</th>
               </tr>
             </thead>
@@ -266,6 +275,9 @@ export function QuoteStep3({
                   <td className="text-right py-2 text-zinc-600">
                     {grp.area.toLocaleString()} ㎡
                   </td>
+                  <td className="text-right py-2 text-zinc-500 text-xs">
+                    {grp.area > 0 ? `${Math.round(grp.subtotal / grp.area)} NTD/㎡` : "—"}
+                  </td>
                   <td className="text-right py-2 font-medium">
                     {grp.subtotal.toLocaleString()} NTD
                   </td>
@@ -275,6 +287,7 @@ export function QuoteStep3({
                 <tr key={item.code} className="border-b border-zinc-100">
                   <td className="py-2">{item.label}</td>
                   <td className="text-right py-2 text-zinc-600">—</td>
+                  <td className="text-right py-2 text-zinc-500">—</td>
                   <td className="text-right py-2 font-medium">
                     {item.subtotal.toLocaleString()} NTD
                   </td>
@@ -283,7 +296,7 @@ export function QuoteStep3({
             </tbody>
             <tfoot>
               <tr className="border-t border-zinc-200">
-                <td colSpan={2} className="py-2 text-right text-zinc-500">小計</td>
+                <td colSpan={3} className="py-2 text-right text-zinc-500">小計</td>
                 <td className="text-right py-2 font-medium">{pricing.subtotal.toLocaleString()} NTD</td>
               </tr>
             </tfoot>

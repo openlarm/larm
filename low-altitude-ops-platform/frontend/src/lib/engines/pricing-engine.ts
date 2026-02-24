@@ -15,7 +15,7 @@ const BASE_PRICE: Record<BuildingType, number> = {
 const COMPLEXITY_SURCHARGE: Record<Complexity, number> = {
   none: 0, light: 4, medium: 6, heavy: 8,
 }
-// road_closure: +4, tight_perimeter: +6, high_risk_env: +7 applied inline
+// road_closure: +4, tight_perimeter: +6, high_risk_env: +7, adjacent_trees: +5 applied inline
 // waterSupply SelfSupply: +7, powerSupply SelfSupply: +7, rooftopAccess !Good: +12
 
 // ─── Project-wide surcharges (Section C) ─────────────────────────────────────
@@ -89,6 +89,7 @@ export function generateQuote(input: PricingEngineInput): PricingResult {
     const roadSurcharge       = facade.road_closure    ? 4 : 0
     const tightSurcharge      = facade.tight_perimeter ? 6 : 0
     const riskEnvSurcharge    = facade.high_risk_env   ? 7 : 0
+    const treeSurcharge       = facade.adjacent_trees  ? 5 : 0   // whole-face access surcharge
 
     const unitPrice =
       basePrice +
@@ -96,19 +97,44 @@ export function generateQuote(input: PricingEngineInput): PricingResult {
       roadSurcharge +
       tightSurcharge +
       riskEnvSurcharge +
+      treeSurcharge +
       waterSurcharge +
       powerSurcharge +
       rooftopSurcharge +
       projectWideSurcharge
 
-    const facetSubtotal = facade.area_m2 * unitPrice
-    subtotal += facetSubtotal
+    // ── Tree-floor area handling ────────────────────────────────────────────
+    // tree_area_m2: m² covered by adjacent trees
+    // clean_tree_floors: true → include those m² at unitPrice+10; false → exclude them
+    let effectiveArea: number
+    let facetSubtotal: number
+    let itemLabel: string
 
+    if (facade.adjacent_trees && facade.tree_area_m2 > 0) {
+      if (facade.clean_tree_floors) {
+        const normalArea = facade.area_m2 - facade.tree_area_m2
+        facetSubtotal =
+          normalArea * unitPrice +
+          facade.tree_area_m2 * (unitPrice + 10)
+        effectiveArea = facade.area_m2
+        itemLabel = `立面 ${facade.label}（${facade.area_m2}㎡，含鄰樹${facade.tree_area_m2}㎡×+10）`
+      } else {
+        effectiveArea = facade.area_m2 - facade.tree_area_m2
+        facetSubtotal = effectiveArea * unitPrice
+        itemLabel = `立面 ${facade.label}（${effectiveArea}㎡，鄰樹${facade.tree_area_m2}㎡不計）`
+      }
+    } else {
+      effectiveArea = facade.area_m2
+      facetSubtotal = effectiveArea * unitPrice
+      itemLabel = `立面 ${facade.label}（${facade.area_m2}㎡）`
+    }
+
+    subtotal += facetSubtotal
     lineItems.push({
       code: `FACE-${facade.id}`,
-      label: `立面 ${facade.label}（${facade.area_m2}㎡）`,
-      unit_price: unitPrice,
-      area_m2: facade.area_m2,
+      label: itemLabel,
+      unit_price: effectiveArea > 0 ? Math.round(facetSubtotal / effectiveArea) : unitPrice,
+      area_m2: effectiveArea,
       subtotal: facetSubtotal,
     })
   }

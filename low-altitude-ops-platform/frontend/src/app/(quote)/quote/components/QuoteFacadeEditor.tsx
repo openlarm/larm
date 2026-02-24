@@ -109,6 +109,12 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
               onComplexity={(c) => update(globalIndex, { complexity: c })}
               onToggleRecesses={() => update(globalIndex, { hasRecesses: !facade.hasRecesses })}
               onToggleHighRisk={() => update(globalIndex, { isHighRisk: !facade.isHighRisk })}
+              onToggleAdjacentTrees={() => update(globalIndex, {
+                hasAdjacentTrees: !facade.hasAdjacentTrees,
+                treeFloors: facade.hasAdjacentTrees ? 0 : facade.treeFloors,
+              })}
+              onTreeFloorsChange={(n) => update(globalIndex, { treeFloors: n })}
+              onCleanTreeFloorsChange={(v) => update(globalIndex, { cleanTreeFloors: v })}
               onWaterSupply={(v) => update(globalIndex, { waterSupply: v })}
               onPowerChange={(supply, voltages) => handlePowerChange(globalIndex, supply, voltages)}
               onPhotoUpload={(f) => handlePhotos(globalIndex, "photos", f)}
@@ -132,6 +138,9 @@ interface CardProps {
   onComplexity: (c: Complexity) => void
   onToggleRecesses: () => void
   onToggleHighRisk: () => void
+  onToggleAdjacentTrees: () => void
+  onTreeFloorsChange: (n: number) => void
+  onCleanTreeFloorsChange: (v: boolean) => void
   onWaterSupply: (v: Supply) => void
   onPowerChange: (supply: Supply, voltages: PowerVoltage[]) => void
   onPhotoUpload: (files: FileList | null) => void
@@ -143,6 +152,7 @@ interface CardProps {
 function FacadeCard({
   facade, width_m,
   onToggleDirt, onComplexity, onToggleRecesses, onToggleHighRisk,
+  onToggleAdjacentTrees, onTreeFloorsChange, onCleanTreeFloorsChange,
   onWaterSupply, onPowerChange,
   onPhotoUpload, onSupplyPhotoUpload,
   onRemovePhoto, onRemoveSupplyPhoto,
@@ -217,6 +227,44 @@ function FacadeCard({
             <span className="text-sm text-zinc-700">緊鄰特殊風險環境</span>
             <span className="text-xs text-zinc-400">（電線 / 交通要道）</span>
           </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={facade.hasAdjacentTrees} onChange={onToggleAdjacentTrees}
+              className="w-4 h-4 accent-green-600" />
+            <span className="text-sm text-zinc-700">鄰樹</span>
+            <span className="text-xs text-zinc-400">（+5 NTD/㎡）</span>
+          </label>
+          {facade.hasAdjacentTrees && (
+            <div className="ml-6 space-y-2 border-l-2 border-green-200 pl-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">樹木遮蔽樓層數：</span>
+                <input
+                  type="number"
+                  value={facade.treeFloors}
+                  min={0}
+                  max={facade.hasAdjacentTrees ? 999 : 0}
+                  onChange={e => onTreeFloorsChange(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-16 px-2 py-1 border border-zinc-300 rounded text-sm text-center focus:ring-1 focus:ring-green-500 outline-none"
+                />
+                <span className="text-xs text-zinc-400">F</span>
+              </div>
+              {facade.treeFloors > 0 && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={facade.cleanTreeFloors}
+                    onChange={e => onCleanTreeFloorsChange(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-green-600"
+                  />
+                  <span className="text-xs text-zinc-600">
+                    清洗樹遮樓層（+10 NTD/㎡）
+                  </span>
+                  {!facade.cleanTreeFloors && (
+                    <span className="text-xs text-amber-600">不計入清洗範圍</span>
+                  )}
+                </label>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

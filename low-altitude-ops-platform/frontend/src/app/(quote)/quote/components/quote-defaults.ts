@@ -88,10 +88,8 @@ export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string;
 ]
 
 export const CLEANING_AGENT_OPTIONS: { value: CleaningAgent; label: string; surcharge: number }[] = [
-  { value: "water",   label: "清水",       surcharge: 0  },
-  { value: "neutral", label: "中性清潔劑", surcharge: 3  },
-  { value: "acid",    label: "酸性清潔劑", surcharge: 10 },
-  { value: "alkali",  label: "鹼性清潔劑", surcharge: 10 },
+  { value: "water",   label: "清水",       surcharge: 0 },
+  { value: "neutral", label: "中性清潔劑", surcharge: 3 },
 ]
 
 export const COMPLEXITY_OPTIONS: { value: Complexity; label: string; desc: string }[] = [
@@ -118,8 +116,11 @@ export interface QuoteFacadeInput {
   label: string                // A / B / C / D (within the building)
   dirtTypes: DirtType[]        // multi-select
   complexity: Complexity
-  hasRecesses: boolean         // 有內縮 / 露台 / 天井
-  isHighRisk: boolean          // 緊鄰特殊風險環境
+  hasRecesses: boolean         // 有內縮 / 露台 / 天井 (+6)
+  isHighRisk: boolean          // 緊鄰特殊風險環境 (+7)
+  hasAdjacentTrees: boolean    // 鄰樹：+5 whole-face; +10 tree-covered floors if cleaned
+  treeFloors: number           // floors covered by trees (0 if hasAdjacentTrees is false)
+  cleanTreeFloors: boolean     // true → clean tree floors at +10; false → exclude from scope
   waterSupply: Supply          // 用水：業主提供 or 自備
   powerSupply: Supply          // 用電：業主提供 or 自備 (derived from powerVoltage)
   powerVoltage: PowerVoltage[] // which voltages are available ([] = 自備)
@@ -191,10 +192,14 @@ export interface AreaEstimate {
   perimeter_m: number
   facade_width_m: number          // average (for display)
   building_height_m: number
-  facade_area_m2: number          // average facade area
-  total_area_m2: number
+  facade_area_m2: number          // average per-facade area (one building)
+  total_area_m2: number           // one building total
   num_facades: number
-  facadeWidths_m?: number[]       // actual per-facade widths when MBR is available
+  facadeWidths_m?: number[]       // per-facade widths for one building (MBR)
+  /** Per-building facade widths when buildings differ in size [buildingIdx][facadeIdx] */
+  perBuildingFacadeWidths?: number[][]
+  /** Actual project total when buildings have different sizes; omit when all equal */
+  project_total_m2?: number
 }
 
 const FLOOR_HEIGHT_M = 3.5
@@ -266,6 +271,58 @@ export function estimateFromRect(
   return estimateFromPerimeter(perimeter, floors, numFacades, "manual-draw")
 }
 
+/** Per-building rectangle bounds (from map draw) */
+export interface DrawnRectBounds {
+  w: number; d: number
+  sw: [number, number]; ne: [number, number]
+}
+
+/**
+ * Multi-building area estimate where each building may have different dimensions.
+ * `total_area_m2` = per-building average; `project_total_m2` = sum of all buildings.
+ */
+export function estimateFromMultiRects(
+  rects: (DrawnRectBounds | null)[],
+  numBuildings: number,
+  floors: number,
+  numFacades: number,
+): AreaEstimate {
+  const height = floors * FLOOR_HEIGHT_M
+  const fallback = rects.find(r => r !== null) ?? null
+  const perBuildingFacadeWidths: number[][] = []
+  let totalProjectArea = 0
+
+  for (let b = 0; b < numBuildings; b++) {
+    const rect = rects[b] ?? fallback
+    if (rect) {
+      const sides = [rect.w, rect.d, rect.w, rect.d]
+      const facadeWidths = Array.from({ length: numFacades }, (_, i) => sides[i % 4])
+      perBuildingFacadeWidths.push(facadeWidths)
+      totalProjectArea += facadeWidths.reduce((s, w) => s + w * height, 0)
+    } else {
+      perBuildingFacadeWidths.push([])
+    }
+  }
+
+  const avgBuildingArea = numBuildings > 0 ? totalProjectArea / numBuildings : 0
+  const allWidths = perBuildingFacadeWidths.flat().filter(w => w > 0)
+  const avgWidth = allWidths.length > 0
+    ? Math.round(allWidths.reduce((s, w) => s + w, 0) / allWidths.length)
+    : 0
+
+  return {
+    source: "manual-draw",
+    perimeter_m: Math.round(avgWidth * numFacades * 2),
+    facade_width_m: avgWidth,
+    building_height_m: height,
+    facade_area_m2: Math.round(avgBuildingArea / numFacades),
+    total_area_m2: Math.round(avgBuildingArea),
+    num_facades: numFacades,
+    perBuildingFacadeWidths,
+    project_total_m2: Math.round(totalProjectArea),
+  }
+}
+
 // ─── Default facade inputs ───────────────────────────────────────────────────
 
 const FACE_LABELS = ["正面", "左側", "右側", "背面"]
@@ -285,6 +342,9 @@ export function buildDefaultFacadeInputs(numFacades: number, numBuildings: numbe
         complexity: "light" as Complexity,
         hasRecesses: false,
         isHighRisk: false,
+        hasAdjacentTrees: false,
+        treeFloors: 0,
+        cleanTreeFloors: true,
         waterSupply: "Provided" as Supply,
         powerSupply: "Provided" as Supply,
         powerVoltage: ["110V", "220V"] as PowerVoltage[],
@@ -336,12 +396,18 @@ export function buildFacadesFromInputs(
   const height = estimate.building_height_m
   const facadesPerBuilding = estimate.num_facades
   return facadeInputs.map((input, globalIndex) => {
-    // Cycle per-facade widths within each building (MBR applies to one building)
-    const facadeIndexInBuilding = globalIndex % facadesPerBuilding
-    const width_m = estimate.facadeWidths_m?.[facadeIndexInBuilding] ?? (estimate.facade_area_m2 / height)
+    const buildingIdx = input.buildingIndex
+    const facadeIdxInBuilding = globalIndex % facadesPerBuilding
+    // Per-building widths (multi-rect draw) take priority over shared MBR widths
+    const width_m =
+      estimate.perBuildingFacadeWidths?.[buildingIdx]?.[facadeIdxInBuilding] ??
+      estimate.facadeWidths_m?.[facadeIdxInBuilding] ??
+      (estimate.facade_area_m2 / height)
     const area_m2 = Math.round(width_m * height)
-    // Build display label: "棟A-A" when multi-building, else just "A"
     const displayLabel = input.buildingLabel ? `棟${input.buildingLabel}-${input.label}` : input.label
+    const tree_area_m2 = input.hasAdjacentTrees && input.treeFloors > 0
+      ? Math.min(Math.round(width_m * input.treeFloors * FLOOR_HEIGHT_M), area_m2)
+      : 0
     return {
       id: input.id,
       label: displayLabel,
@@ -351,6 +417,9 @@ export function buildFacadesFromInputs(
       road_closure: false,
       tight_perimeter: input.hasRecesses,
       high_risk_env: input.isHighRisk,
+      adjacent_trees: input.hasAdjacentTrees,
+      tree_area_m2,
+      clean_tree_floors: input.cleanTreeFloors,
     }
   })
 }
@@ -370,6 +439,9 @@ export function buildFacades(
     road_closure: false,
     tight_perimeter: false,
     high_risk_env: false,
+    adjacent_trees: false,
+    tree_area_m2: 0,
+    clean_tree_floors: true,
   }))
 }
 

@@ -3,6 +3,12 @@
 import { useEffect, useRef } from "react"
 import type { AirspaceResult } from "@/lib/types"
 
+export interface PersistedRect {
+  sw: [number, number]
+  ne: [number, number]
+  label: string
+}
+
 interface Props {
   lat: number
   lng: number
@@ -10,9 +16,14 @@ interface Props {
   polygon?: { lat: number; lon: number }[] | null
   /** Draw mode active — any drag draws a rectangle */
   drawMode?: boolean
+  /** Label shown in dim overlay while drawing (e.g. "棟A") */
+  drawLabel?: string
+  /** Saved rects to display persistently on the map */
+  persistedRects?: PersistedRect[]
   /** Called after a rectangle is successfully drawn (so parent can exit draw mode) */
   onDrawModeEnd?: () => void
-  onRectDraw?: (width_m: number, depth_m: number) => void
+  /** width_m, depth_m, sw lat/lng, ne lat/lng */
+  onRectDraw?: (width_m: number, depth_m: number, sw: [number, number], ne: [number, number]) => void
   /** When provided the marker becomes draggable and map clicks also reposition it */
   onPositionChange?: (lat: number, lng: number) => void
 }
@@ -22,14 +33,16 @@ const SATELLITE_ATTR = "Tiles &copy; Esri"
 
 export function QuoteMap({
   lat, lng, airspace, polygon,
-  drawMode, onDrawModeEnd, onRectDraw, onPositionChange,
+  drawMode, drawLabel, persistedRects,
+  onDrawModeEnd, onRectDraw, onPositionChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<unknown>(null)
   const drawModeRef = useRef(drawMode ?? false)
+  const drawLabelRef = useRef(drawLabel ?? "")
+  const persistedLayersRef = useRef<unknown[]>([])
 
   // ── Main effect: initialise / re-initialise the Leaflet map ─────────────────
-  // drawMode intentionally NOT in deps — handled by secondary effect below
   useEffect(() => {
     if (!containerRef.current) return
     let cancelled = false
@@ -68,7 +81,7 @@ export function QuoteMap({
           onPositionChange(newLat, newLng)
         })
         map.on("click", (e: L.LeafletMouseEvent) => {
-          if (drawModeRef.current) return   // ignore clicks in draw mode
+          if (drawModeRef.current) return
           marker.setLatLng(e.latlng)
           onPositionChange(e.latlng.lat, e.latlng.lng)
         })
@@ -105,7 +118,6 @@ export function QuoteMap({
         let startLatLng: L.LatLng | null = null
         let rectLayer: L.Rectangle | null = null
 
-        // Live dimension overlay
         const dimDiv = L.DomUtil.create("div", "")
         dimDiv.style.cssText =
           "display:none;background:rgba(30,30,30,.85);color:#fff;padding:4px 10px;border-radius:6px;" +
@@ -129,12 +141,12 @@ export function QuoteMap({
             color: "#2563eb", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2,
             dashArray: "6 4",
           }).addTo(map)
-          // Live dimensions
           const ne = L.latLngBounds(startLatLng, e.latlng).getNorthEast()
           const sw = L.latLngBounds(startLatLng, e.latlng).getSouthWest()
           const w = Math.round(ne.distanceTo(L.latLng(ne.lat, sw.lng)))
           const d = Math.round(ne.distanceTo(L.latLng(sw.lat, ne.lng)))
-          dimDiv.textContent = `📐 ${w} × ${d} m`
+          const prefix = drawLabelRef.current ? `📐 ${drawLabelRef.current}  ` : "📐 "
+          dimDiv.textContent = `${prefix}${w} × ${d} m`
           dimDiv.style.display = "block"
         })
         map.on("mouseup", (e: L.LeafletMouseEvent) => {
@@ -148,12 +160,13 @@ export function QuoteMap({
           dimDiv.style.display = "none"
           startLatLng = null
           if (w > 2 && d > 2) {
-            onRectDraw(w, d)
+            onRectDraw(w, d, [sw.lat, sw.lng], [ne.lat, ne.lng])
             onDrawModeEnd?.()
           }
         })
       }
 
+      persistedLayersRef.current = []
       mapInstance.current = map
     }
 
@@ -167,7 +180,7 @@ export function QuoteMap({
     }
   }, [lat, lng, airspace, polygon, onRectDraw, onPositionChange, onDrawModeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Secondary effect: update draw mode without re-creating the map ────────────
+  // ── Secondary: update draw mode ────────────────────────────────────────────
   useEffect(() => {
     drawModeRef.current = drawMode ?? false
     const map = mapInstance.current as (L.Map & { dragging: L.Handler }) | null
@@ -180,6 +193,28 @@ export function QuoteMap({
       ;(map.getContainer() as HTMLElement).style.cursor = ""
     }
   }, [drawMode])
+
+  // ── Secondary: update draw label ref ──────────────────────────────────────
+  useEffect(() => { drawLabelRef.current = drawLabel ?? "" }, [drawLabel])
+
+  // ── Secondary: update persisted rect layers ────────────────────────────────
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map) return
+    import("leaflet").then(L => {
+      const m = map as L.Map
+      for (const layer of persistedLayersRef.current) m.removeLayer(layer as L.Layer)
+      persistedLayersRef.current = []
+      if (!persistedRects?.length) return
+      for (const rect of persistedRects) {
+        const layer = L.rectangle(
+          L.latLngBounds(L.latLng(rect.sw[0], rect.sw[1]), L.latLng(rect.ne[0], rect.ne[1])),
+          { color: "#16a34a", weight: 2, fillColor: "#22c55e", fillOpacity: 0.15 },
+        ).bindTooltip(rect.label, { permanent: true, direction: "center" }).addTo(m)
+        persistedLayersRef.current.push(layer)
+      }
+    })
+  }, [persistedRects])
 
   return (
     <div ref={containerRef} className="w-full h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />

@@ -131,10 +131,10 @@ export const MOCK_BUILDINGS: Record<string, BuildingData> = {
 }
 
 export const MOCK_FACADES: FacadeData[] = [
-  { id: "N", label: "N（北面）", area_m2: 800, material: "glass", complexity: "light", road_closure: false, tight_perimeter: false, high_risk_env: false },
-  { id: "E", label: "E（東面）", area_m2: 600, material: "glass", complexity: "none", road_closure: false, tight_perimeter: false, high_risk_env: false },
-  { id: "S", label: "S（南面）", area_m2: 800, material: "glass", complexity: "light", road_closure: true, tight_perimeter: true, high_risk_env: false },
-  { id: "W", label: "W（西面）", area_m2: 600, material: "glass", complexity: "none", road_closure: false, tight_perimeter: false, high_risk_env: false },
+  { id: "N", label: "N（北面）", area_m2: 800, material: "glass", complexity: "light",  road_closure: false, tight_perimeter: false, high_risk_env: false, adjacent_trees: false, tree_area_m2: 0, clean_tree_floors: true },
+  { id: "E", label: "E（東面）", area_m2: 600, material: "glass", complexity: "none",   road_closure: false, tight_perimeter: false, high_risk_env: false, adjacent_trees: false, tree_area_m2: 0, clean_tree_floors: true },
+  { id: "S", label: "S（南面）", area_m2: 800, material: "glass", complexity: "light",  road_closure: true,  tight_perimeter: true,  high_risk_env: false, adjacent_trees: false, tree_area_m2: 0, clean_tree_floors: true },
+  { id: "W", label: "W（西面）", area_m2: 600, material: "glass", complexity: "none",   road_closure: false, tight_perimeter: false, high_risk_env: false, adjacent_trees: false, tree_area_m2: 0, clean_tree_floors: true },
 ]
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
