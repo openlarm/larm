@@ -17,6 +17,8 @@ const INITIAL_FORM: Partial<QuoteFormData> = {
   numBuildings: 1,
   numFacades: 4,
   timeSlot: "day",
+  cleaningAgent: "water",
+  rooftopAccess: "Good",
   urgent: false,
   facadeInputs: buildDefaultFacadeInputs(4, 1),
 }

@@ -44,7 +44,7 @@ const COMPLEXITY_COEFF: Record<Complexity, number> = {
 }
 
 const CONTAMINATION_COEFF: Record<Contamination, number> = {
-  dust: 1.00, scale: 0.85, mold: 0.90, bird: 0.83, grease: 0.80, multi: 0.75,
+  dust: 1.00, scale: 0.85, mold: 0.90, bird: 0.83, exhaust: 0.82, grease: 0.80,
 }
 
 const TIME_WINDOW_COEFF: Record<TimeWindow, number> = {
@@ -79,7 +79,7 @@ export interface TimeEngineInput {
   floors: number
   wind_ms: number
   facades: FacadeData[]
-  contamination: Contamination
+  contamination: Contamination[]   // uses worst (lowest) coefficient among selected types
   timeWindow: TimeWindow
   riskLevel: RiskLevel
   waterSupply: Supply
@@ -105,7 +105,10 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
   const w_entry = WIND_COEFF.find(w => wind_ms <= w.max)!
   const w_coeff = w_entry.coeff ?? 0 // null = halt, treat as 0
   const c_coeff = COMPLEXITY_COEFF[dominant_complexity]
-  const ct_coeff = CONTAMINATION_COEFF[contamination]
+  // Use worst (lowest) contamination coefficient among all selected types
+  const ct_coeff = contamination.length === 0
+    ? 1.00
+    : Math.min(...contamination.map(c => CONTAMINATION_COEFF[c]))
   const tw_coeff = TIME_WINDOW_COEFF[timeWindow]
 
   const adjusted = baseline * h_coeff * w_coeff * c_coeff * ct_coeff * tw_coeff

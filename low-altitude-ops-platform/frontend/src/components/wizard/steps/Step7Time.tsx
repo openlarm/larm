@@ -18,7 +18,7 @@ function fmtDuration(mins: number) {
 export function Step7Time({ mission, update, next, back }: Props) {
   const [result, setResult] = useState<TimeResult | null>(mission.time_estimate ?? null)
   const [loading, setLoading] = useState(!mission.time_estimate)
-  const [contamination, setContamination] = useState<Contamination>("scale")
+  const [contamination, setContamination] = useState<Contamination[]>(["scale"])
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("day")
 
   const run = () => {
@@ -62,9 +62,9 @@ export function Step7Time({ mission, update, next, back }: Props) {
         <div className="space-y-1.5">
           <label className="text-xs text-zinc-400">污染類型</label>
           <div className="flex gap-1.5">
-            {(["dust","scale","mold","grease","multi"] as Contamination[]).map(c => (
-              <button key={c} onClick={() => setContamination(c)}
-                className={`px-2.5 py-1 text-xs rounded border transition-colors ${contamination === c ? "bg-zinc-700 border-zinc-500 text-white" : "border-zinc-700 text-zinc-500 hover:bg-zinc-800"}`}>{c}</button>
+            {(["dust","scale","mold","bird","exhaust","grease"] as Contamination[]).map(c => (
+              <button key={c} onClick={() => setContamination([c])}
+                className={`px-2.5 py-1 text-xs rounded border transition-colors ${contamination[0] === c ? "bg-zinc-700 border-zinc-500 text-white" : "border-zinc-700 text-zinc-500 hover:bg-zinc-800"}`}>{c}</button>
             ))}
           </div>
         </div>

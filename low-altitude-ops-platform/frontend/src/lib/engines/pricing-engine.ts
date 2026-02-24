@@ -1,6 +1,7 @@
 import type {
   BuildingType, Complexity, Contamination, RiskLevel,
   TimeWindow, Supply, FacadeData, PricingResult, PricingLineItem,
+  CleaningAgent, RooftopAccess,
 } from "@/lib/types"
 
 // ─── Base unit prices (NTD/m²) ────────────────────────────────────────────────
@@ -9,21 +10,26 @@ const BASE_PRICE: Record<BuildingType, number> = {
   commercial: 30, luxury: 33, house: 200, factory: 28, solar: 8,
 }
 
-// ─── Per-face surcharges ──────────────────────────────────────────────────────
+// ─── Per-face surcharges (Section B) ─────────────────────────────────────────
 
 const COMPLEXITY_SURCHARGE: Record<Complexity, number> = {
   none: 0, light: 4, medium: 6, heavy: 8,
 }
+// road_closure: +4, tight_perimeter: +6, high_risk_env: +7 applied inline
+// waterSupply SelfSupply: +7, powerSupply SelfSupply: +7, rooftopAccess !Good: +12
 
-// ─── Project-wide surcharges ──────────────────────────────────────────────────
+// ─── Project-wide surcharges (Section C) ─────────────────────────────────────
 
 const CONTAMINATION_SURCHARGE: Record<Contamination, number> = {
-  dust: 0, scale: 7, mold: 5, bird: 8, grease: 12, multi: 15,
+  dust: 0, scale: 7, bird: 4, mold: 5, exhaust: 6, grease: 12,
+}
+const CONTAMINATION_CAP = 15 // max stacked contamination surcharge per m²
+
+const CLEANING_AGENT_SURCHARGE: Record<CleaningAgent, number> = {
+  water: 0, neutral: 3, acid: 10, alkali: 10,
 }
 
-const CONTAMINATION_CAP = 15
-
-// ─── Multipliers ──────────────────────────────────────────────────────────────
+// ─── Multipliers (Section D) ──────────────────────────────────────────────────
 
 const FLOOR_MULTIPLIER = (floors: number) =>
   floors > 30 ? 3.0 : floors > 20 ? 2.0 : floors > 10 ? 1.3 : 1.0
@@ -44,28 +50,45 @@ export interface PricingEngineInput {
   buildingType: BuildingType
   floors: number
   facades: FacadeData[]
-  contamination: Contamination
+  contamination: Contamination[]      // stackable; surcharges summed, capped at 15
+  cleaningAgent: CleaningAgent        // project-wide cleaning agent type
   timeWindow: TimeWindow
   riskLevel: RiskLevel
   waterSupply: Supply
   powerSupply: Supply
+  rooftopAccess: RooftopAccess
   urgent: boolean
 }
 
 export function generateQuote(input: PricingEngineInput): PricingResult {
-  const { buildingType, floors, facades, contamination, timeWindow, riskLevel, urgent } = input
+  const {
+    buildingType, floors, facades, contamination, cleaningAgent,
+    timeWindow, riskLevel, waterSupply, powerSupply, rooftopAccess, urgent,
+  } = input
 
   const basePrice = BASE_PRICE[buildingType]
-  const contaminationSurcharge = Math.min(CONTAMINATION_SURCHARGE[contamination], CONTAMINATION_CAP)
-  const lineItems: PricingLineItem[] = []
 
+  // ── Section C: project-wide unit price adders (same for every face) ──────
+  const contaminationSurcharge = Math.min(
+    contamination.reduce((sum, c) => sum + CONTAMINATION_SURCHARGE[c], 0),
+    CONTAMINATION_CAP,
+  )
+  const cleaningAgentSurcharge = CLEANING_AGENT_SURCHARGE[cleaningAgent]
+  const projectWideSurcharge = contaminationSurcharge + cleaningAgentSurcharge
+
+  // ── Section B: building-level per-face adders (same value for every face) ─
+  const waterSurcharge   = waterSupply   === "SelfSupply" ? 7  : 0
+  const powerSurcharge   = powerSupply   === "SelfSupply" ? 7  : 0
+  const rooftopSurcharge = rooftopAccess !== "Good"       ? 12 : 0
+
+  const lineItems: PricingLineItem[] = []
   let subtotal = 0
 
   for (const facade of facades) {
     const complexitySurcharge = COMPLEXITY_SURCHARGE[facade.complexity]
-    const roadSurcharge = facade.road_closure ? 4 : 0
-    const tightSurcharge = facade.tight_perimeter ? 6 : 0
-    const riskEnvSurcharge = facade.high_risk_env ? 7 : 0
+    const roadSurcharge       = facade.road_closure    ? 4 : 0
+    const tightSurcharge      = facade.tight_perimeter ? 6 : 0
+    const riskEnvSurcharge    = facade.high_risk_env   ? 7 : 0
 
     const unitPrice =
       basePrice +
@@ -73,7 +96,10 @@ export function generateQuote(input: PricingEngineInput): PricingResult {
       roadSurcharge +
       tightSurcharge +
       riskEnvSurcharge +
-      contaminationSurcharge
+      waterSurcharge +
+      powerSurcharge +
+      rooftopSurcharge +
+      projectWideSurcharge
 
     const facetSubtotal = facade.area_m2 * unitPrice
     subtotal += facetSubtotal
@@ -94,10 +120,10 @@ export function generateQuote(input: PricingEngineInput): PricingResult {
     subtotal = MIN_ORDER
   }
 
-  // Multipliers
-  const mFloor = FLOOR_MULTIPLIER(floors)
-  const mTime = TIME_WINDOW_MULTIPLIER[timeWindow]
-  const mRisk = RISK_MULTIPLIER[riskLevel] ?? 1.0
+  // ── Section D: multipliers ────────────────────────────────────────────────
+  const mFloor  = FLOOR_MULTIPLIER(floors)
+  const mTime   = TIME_WINDOW_MULTIPLIER[timeWindow]
+  const mRisk   = RISK_MULTIPLIER[riskLevel] ?? 1.0
   const mUrgent = urgent ? 1.33 : 1.0
 
   const multiplier = mFloor * mTime * mRisk * mUrgent

@@ -2,14 +2,15 @@
 
 import type {
   BuildingType, FacadeData, FacadeMaterial, Complexity,
-  Contamination, RiskLevel, TimeWindow, Supply,
+  Contamination, RiskLevel, TimeWindow, Supply, RooftopAccess, CleaningAgent,
 } from "@/lib/types"
 
 // ─── Business-friendly labels → engine values ────────────────────────────────
 
 export type ServiceType = "cleaning" | "coating" | "inspection"
 export type TimeSlot = "day" | "weekend" | "night"
-export type DirtType = "dust" | "scale" | "mold" | "grease" | "bird"
+export type DirtType = "dust" | "scale" | "mold" | "grease" | "bird" | "exhaust"
+export type { CleaningAgent }
 
 // ─── Taiwan seasonal weather risk matrix ─────────────────────────────────────
 
@@ -77,12 +78,20 @@ export const BUILDING_TYPE_OPTIONS: { value: BuildingType; label: string }[] = [
   { value: "solar", label: "太陽能板" },
 ]
 
-export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string }[] = [
-  { value: "dust",   label: "灰塵",         emoji: "💨" },
-  { value: "scale",  label: "鏽斑 / 水垢",  emoji: "🟤" },
-  { value: "mold",   label: "青苔 / 霉菌",  emoji: "🟢" },
-  { value: "bird",   label: "鳥屎",         emoji: "🐦" },
-  { value: "grease", label: "油汙 / 重附著", emoji: "⚫" },
+export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string; surcharge: number }[] = [
+  { value: "dust",    label: "灰塵",      emoji: "💨", surcharge: 0  },
+  { value: "scale",   label: "水垢",      emoji: "🟤", surcharge: 7  },
+  { value: "mold",    label: "黑黴",      emoji: "🟢", surcharge: 5  },
+  { value: "bird",    label: "鳥屎",      emoji: "🐦", surcharge: 4  },
+  { value: "exhaust", label: "排煙汙垢",  emoji: "🏭", surcharge: 6  },
+  { value: "grease",  label: "機械油汙",  emoji: "⚫", surcharge: 12 },
+]
+
+export const CLEANING_AGENT_OPTIONS: { value: CleaningAgent; label: string; surcharge: number }[] = [
+  { value: "water",   label: "清水",       surcharge: 0  },
+  { value: "neutral", label: "中性清潔劑", surcharge: 3  },
+  { value: "acid",    label: "酸性清潔劑", surcharge: 10 },
+  { value: "alkali",  label: "鹼性清潔劑", surcharge: 10 },
 ]
 
 export const COMPLEXITY_OPTIONS: { value: Complexity; label: string; desc: string }[] = [
@@ -143,6 +152,8 @@ export interface QuoteFormData {
   numBuildings: number          // how many buildings on the same project site
   numFacades: number            // facades per building
   timeSlot: TimeSlot
+  cleaningAgent: CleaningAgent  // project-wide cleaning agent type
+  rooftopAccess: RooftopAccess  // building-level rooftop condition
   facadeInputs: QuoteFacadeInput[]
   expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
 }
@@ -287,23 +298,25 @@ export function buildDefaultFacadeInputs(numFacades: number, numBuildings: numbe
 
 // ─── Contamination: derive from multi-select dirt types ──────────────────────
 
-export function inferContamination(dirtTypes: DirtType[]): Contamination {
-  if (dirtTypes.length === 0) return "dust"
-  if (dirtTypes.length >= 2) return "multi"
-  const map: Record<DirtType, Contamination> = {
-    dust: "dust", scale: "scale", mold: "mold", bird: "bird", grease: "grease",
-  }
-  return map[dirtTypes[0]]
+const DIRT_TO_CONTAMINATION: Record<DirtType, Contamination> = {
+  dust: "dust", scale: "scale", mold: "mold", bird: "bird",
+  exhaust: "exhaust", grease: "grease",
 }
 
-/** Worst contamination across all facades (for engine input) */
-export function worstContamination(facadeInputs: QuoteFacadeInput[]): Contamination {
-  const priority: Contamination[] = ["multi", "grease", "bird", "mold", "scale", "dust"]
-  const all = facadeInputs.map(f => inferContamination(f.dirtTypes))
-  for (const p of priority) {
-    if (all.includes(p)) return p
+/** All unique contamination types across all facades — used for pricing (stackable) */
+export function allContaminationTypes(facadeInputs: QuoteFacadeInput[]): Contamination[] {
+  const set = new Set<Contamination>()
+  for (const f of facadeInputs) {
+    for (const d of f.dirtTypes) set.add(DIRT_TO_CONTAMINATION[d])
   }
-  return "dust"
+  return set.size > 0 ? Array.from(set) : ["dust"]
+}
+
+/** Worst (most time-impacting) contamination — used for time estimation */
+export function worstContamination(facadeInputs: QuoteFacadeInput[]): Contamination {
+  const priority: Contamination[] = ["grease", "exhaust", "bird", "scale", "mold", "dust"]
+  const types = allContaminationTypes(facadeInputs)
+  return priority.find(p => types.includes(p)) ?? "dust"
 }
 
 /** If ANY facade needs self-supply, use SelfSupply (conservative) */

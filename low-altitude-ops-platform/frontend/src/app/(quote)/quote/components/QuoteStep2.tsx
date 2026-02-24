@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import type { QuoteFormData, AreaEstimate, QuoteFacadeInput, BuildingDimensions } from "./quote-defaults"
+import type { RooftopAccess } from "@/lib/types"
+import type { QuoteFormData, AreaEstimate, QuoteFacadeInput, BuildingDimensions, CleaningAgent } from "./quote-defaults"
 import {
-  BUILDING_TYPE_OPTIONS, TIME_SLOT_OPTIONS,
+  BUILDING_TYPE_OPTIONS, TIME_SLOT_OPTIONS, CLEANING_AGENT_OPTIONS,
   estimateFromPerimeter, estimateFromDefaults, estimateFromRect, estimateFromDimensions,
   buildDefaultFacadeInputs,
 } from "./quote-defaults"
@@ -146,6 +147,40 @@ export function QuoteStep2({
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
               {TIME_SLOT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-1">
+              清潔劑種類
+              <span className="text-xs font-normal text-zinc-400 ml-1">（整案）</span>
+            </label>
+            <select
+              value={formData.cleaningAgent ?? "water"}
+              onChange={e => updateForm({ cleaningAgent: e.target.value as CleaningAgent })}
+              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              {CLEANING_AGENT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>
+                  {o.label}{o.surcharge > 0 ? `（+${o.surcharge} NTD/㎡）` : "（無加價）"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-1">
+              屋頂吊掛條件
+              <span className="text-xs font-normal text-zinc-400 ml-1">（影響所有立面）</span>
+            </label>
+            <select
+              value={formData.rooftopAccess ?? "Good"}
+              onChange={e => updateForm({ rooftopAccess: e.target.value as RooftopAccess })}
+              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="Good">良好（女兒牆佳，無加價）</option>
+              <option value="Limited">受限（女兒牆深/寬，+12 NTD/㎡）</option>
+              <option value="NotAvailable">不可使用（+12 NTD/㎡）</option>
             </select>
           </div>
         </div>

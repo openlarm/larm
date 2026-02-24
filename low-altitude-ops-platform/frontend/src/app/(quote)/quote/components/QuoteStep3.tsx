@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useCallback } from "react"
-import type { AirspaceResult, PricingResult, TimeResult } from "@/lib/types"
+import type { AirspaceResult, PricingResult, TimeResult, Contamination } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
 import {
   buildFacadesFromInputs, buildFacades,
-  inferRiskLevel, worstContamination, aggregateSupply,
+  inferRiskLevel, allContaminationTypes, aggregateSupply,
   mapServiceToMissionType, mapTimeSlot,
   getWeatherRisk,
 } from "./quote-defaults"
@@ -80,23 +80,27 @@ export function QuoteStep3({
       : buildFacades(areaEstimate, formData.buildingType)
 
     const contamination = hasPerFacade
-      ? worstContamination(formData.facadeInputs!)
-      : "dust"
+      ? allContaminationTypes(formData.facadeInputs!)
+      : (["dust"] as Contamination[])
 
     const riskLevel = inferRiskLevel(formData.floors)
     const timeWindow = mapTimeSlot(formData.timeSlot)
     const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
     const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
+    const rooftopAccess = formData.rooftopAccess ?? "Good"
+    const cleaningAgent = formData.cleaningAgent ?? "water"
 
     setPricing(generateQuote({
       buildingType: formData.buildingType,
       floors: formData.floors,
       facades,
       contamination,
+      cleaningAgent,
       timeWindow,
       riskLevel,
       waterSupply,
       powerSupply,
+      rooftopAccess,
       urgent: formData.urgent,
     }))
 
@@ -111,7 +115,7 @@ export function QuoteStep3({
       riskLevel,
       waterSupply,
       powerSupply,
-      rooftopAccess: "Good",
+      rooftopAccess,
     }))
   }, [formData, areaEstimate, setPricing, setTimeResult])
 
@@ -208,8 +212,9 @@ export function QuoteStep3({
                   <div className="font-semibold text-zinc-800 mb-1">{f.buildingLabel ? `棟${f.buildingLabel} ${f.label}` : f.label}</div>
                   <div className="text-zinc-500">
                     {f.dirtTypes.map(d =>
-                      d === "dust" ? "灰塵" : d === "scale" ? "鏽斑" :
-                      d === "mold" ? "青苔" : d === "bird" ? "鳥屎" : "油汙"
+                      d === "dust" ? "灰塵" : d === "scale" ? "水垢" :
+                      d === "mold" ? "黑黴" : d === "bird" ? "鳥屎" :
+                      d === "exhaust" ? "排煙汙垢" : "機械油汙"
                     ).join("、")}
                   </div>
                   <div className="text-zinc-500">
