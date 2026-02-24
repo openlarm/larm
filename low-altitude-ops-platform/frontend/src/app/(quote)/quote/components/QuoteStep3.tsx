@@ -48,6 +48,23 @@ export function QuoteStep3({
   pricing, setPricing, timeResult, setTimeResult,
   onBack, onReset,
 }: Props) {
+  // ── ALL hooks must be declared before any early returns ───────────────────
+  const handlePrint = useCallback(() => {
+    const styleEl = document.createElement("style")
+    styleEl.id = "__quote-print-style__"
+    styleEl.textContent = `
+      @media print {
+        body > * { display: none !important; }
+        #quote-print-area { display: block !important; }
+        #quote-print-area * { visibility: visible !important; }
+        .no-print { display: none !important; }
+      }
+    `
+    document.head.appendChild(styleEl)
+    window.print()
+    window.addEventListener("afterprint", () => { styleEl.remove() }, { once: true })
+  }, [])
+
   useEffect(() => {
     const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
     const facades = hasPerFacade
@@ -60,7 +77,6 @@ export function QuoteStep3({
 
     const riskLevel = inferRiskLevel(formData.floors)
     const timeWindow = mapTimeSlot(formData.timeSlot)
-    // Aggregate supply: if any facade needs self-supply, use SelfSupply (conservative)
     const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
     const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
 
@@ -95,32 +111,15 @@ export function QuoteStep3({
     return <div className="text-center py-12 text-zinc-500">計算中...</div>
   }
 
+  const numBuildings = formData.numBuildings ?? 1
+  // areaEstimate reflects one building; multiply by numBuildings for project total
+  const totalArea = areaEstimate.total_area_m2 * numBuildings
+
   const handleCopy = () => {
     navigator.clipboard.writeText(
       buildPlainText(formData, airspace, areaEstimate, pricing, timeResult)
     )
   }
-
-  const handlePrint = useCallback(() => {
-    // Inject print CSS to show only the quote card, then open print dialog
-    const styleEl = document.createElement("style")
-    styleEl.id = "__quote-print-style__"
-    styleEl.textContent = `
-      @media print {
-        body > * { display: none !important; }
-        #quote-print-area { display: block !important; }
-        #quote-print-area * { visibility: visible !important; }
-        .no-print { display: none !important; }
-      }
-    `
-    document.head.appendChild(styleEl)
-    const quoteEl = document.getElementById("quote-print-area")
-    if (quoteEl) quoteEl.style.display = "block"
-    window.print()
-    window.addEventListener("afterprint", () => {
-      styleEl.remove()
-    }, { once: true })
-  }, [])
 
   return (
     <div className="space-y-6">
@@ -162,7 +161,14 @@ export function QuoteStep3({
               }
             />
             <InfoRow label="面積來源" value={SOURCE_LABELS[areaEstimate.source]} />
-            <InfoRow label="施作總面積" value={`${areaEstimate.total_area_m2.toLocaleString()} ㎡`} />
+            <InfoRow
+              label="施作總面積"
+              value={
+                numBuildings > 1
+                  ? `${totalArea.toLocaleString()} ㎡（${areaEstimate.total_area_m2.toLocaleString()} ㎡ × ${numBuildings} 棟）`
+                  : `${totalArea.toLocaleString()} ㎡`
+              }
+            />
             {formData.expectedDate && (
               <InfoRow label="預計施工日期" value={formData.expectedDate} />
             )}
@@ -393,9 +399,9 @@ function buildPlainText(
     ``,
     `客戶：${form.clientName}`,
     `地址：${form.address}`,
-    `建物：${form.floors}F（${(form.floors * 3.5).toFixed(1)}m）`,
+    `建物：${form.floors}F（${(form.floors * 3.5).toFixed(1)}m）${(form.numBuildings ?? 1) > 1 ? `，共 ${form.numBuildings} 棟` : ""}`,
     `空域：${!airspace || airspace.status === "OK" ? "可直接作業" : airspace.status === "NeedPermit" ? "需申請許可" : "禁飛區"}`,
-    `施作面積：${area.total_area_m2.toLocaleString()} ㎡（${SOURCE_LABELS[area.source]}）`,
+    `施作面積：${(area.total_area_m2 * (form.numBuildings ?? 1)).toLocaleString()} ㎡（${SOURCE_LABELS[area.source]}${(form.numBuildings ?? 1) > 1 ? `，${form.numBuildings} 棟合計` : ""}）`,
     ``,
     `--- 費用明細 ---`,
     ...pricing.line_items.map(li => `${li.label}  ${li.subtotal.toLocaleString()} NTD`),
