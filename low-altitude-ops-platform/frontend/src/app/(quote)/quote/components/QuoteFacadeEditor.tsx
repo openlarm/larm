@@ -1,18 +1,27 @@
 "use client"
 
-import { useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { Complexity, Supply } from "@/lib/types"
 import type { QuoteFacadeInput, DirtType, PowerVoltage } from "./quote-defaults"
 import { DIRT_TYPE_OPTIONS, COMPLEXITY_OPTIONS } from "./quote-defaults"
 
+const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
+
 interface Props {
   facades: QuoteFacadeInput[]
   facadeWidths_m?: number[]    // per-facade actual widths from MBR (per building)
-  numBuildings?: number        // for grouping display
+  numBuildings?: number        // for tab-based grouping
   onChange: (facades: QuoteFacadeInput[]) => void
 }
 
 export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, onChange }: Props) {
+  const [activeTab, setActiveTab] = useState(0)
+
+  // Reset tab if numBuildings shrinks below active tab
+  useEffect(() => {
+    if (activeTab >= numBuildings) setActiveTab(0)
+  }, [numBuildings, activeTab])
+
   function update(index: number, patch: Partial<QuoteFacadeInput>) {
     onChange(facades.map((f, i) => i === index ? { ...f, ...patch } : f))
   }
@@ -40,63 +49,76 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
     update(index, { powerSupply: supply, powerVoltage: voltages })
   }
 
-  // Group facades by building when numBuildings > 1
-  const numFacadesPerBuilding = numBuildings > 1 ? Math.ceil(facades.length / numBuildings) : facades.length
+  // Compute how many facades each building gets
+  const numFacadesPerBuilding = numBuildings > 1
+    ? Math.ceil(facades.length / numBuildings)
+    : facades.length
 
-  // Build per-building groups
-  const buildingGroups: { buildingLabel: string; startIndex: number; count: number }[] = []
-  if (numBuildings > 1) {
-    for (let b = 0; b < numBuildings; b++) {
-      const startIndex = b * numFacadesPerBuilding
-      const count = Math.min(numFacadesPerBuilding, facades.length - startIndex)
-      if (count <= 0) break
-      const buildingLabel = facades[startIndex]?.buildingLabel ?? String(b + 1)
-      buildingGroups.push({ buildingLabel, startIndex, count })
-    }
-  } else {
-    buildingGroups.push({ buildingLabel: "", startIndex: 0, count: facades.length })
-  }
+  // Build building labels list (one per building)
+  const buildingTabLabels: string[] = Array.from({ length: numBuildings }, (_, b) => {
+    if (numBuildings === 1) return ""
+    const startIdx = b * numFacadesPerBuilding
+    const labelFromFacade = facades[startIdx]?.buildingLabel
+    // Prefer facade's own buildingLabel if non-empty, else fall back to alphabet
+    return (labelFromFacade && labelFromFacade.trim() !== "")
+      ? labelFromFacade
+      : (BUILDING_LABELS[b] ?? String(b + 1))
+  })
+
+  // Facades for the currently active building
+  const activeBuildingStart = activeTab * numFacadesPerBuilding
+  const activeBuildingFacades = facades.slice(
+    activeBuildingStart,
+    Math.min(activeBuildingStart + numFacadesPerBuilding, facades.length),
+  )
 
   return (
     <div className="space-y-4">
       <h3 className="text-base font-semibold text-zinc-800">各立面詳細資訊</h3>
-      {buildingGroups.map(({ buildingLabel, startIndex, count }) => (
-        <div key={buildingLabel || "single"}>
-          {/* Building header (only when multiple buildings) */}
-          {numBuildings > 1 && (
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-zinc-700 text-white text-sm font-bold flex items-center justify-center">
-                {buildingLabel}
-              </div>
-              <span className="text-sm font-semibold text-zinc-700">棟 {buildingLabel}</span>
-              <div className="flex-1 h-px bg-zinc-200" />
-            </div>
-          )}
-          <div className="space-y-4">
-            {Array.from({ length: count }, (_, j) => {
-              const i = startIndex + j
-              const facade = facades[i]
-              return (
-                <FacadeCard
-                  key={facade.id}
-                  facade={facade}
-                  width_m={facadeWidths_m?.[j]}  // cycle widths per building
-                  onToggleDirt={(type) => toggleDirt(i, type)}
-                  onComplexity={(c) => update(i, { complexity: c })}
-                  onToggleRecesses={() => update(i, { hasRecesses: !facade.hasRecesses })}
-                  onToggleHighRisk={() => update(i, { isHighRisk: !facade.isHighRisk })}
-                  onWaterSupply={(v) => update(i, { waterSupply: v })}
-                  onPowerChange={(supply, voltages) => handlePowerChange(i, supply, voltages)}
-                  onPhotoUpload={(f) => handlePhotos(i, "photos", f)}
-                  onSupplyPhotoUpload={(f) => handlePhotos(i, "supplyPhotos", f)}
-                  onRemovePhoto={(pi) => removePhoto(i, "photos", pi)}
-                  onRemoveSupplyPhoto={(pi) => removePhoto(i, "supplyPhotos", pi)}
-                />
-              )
-            })}
-          </div>
+
+      {/* Building tabs — only show when multiple buildings */}
+      {numBuildings > 1 && (
+        <div className="flex gap-1 border-b border-zinc-200">
+          {buildingTabLabels.map((label, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setActiveTab(idx)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                activeTab === idx
+                  ? "border-blue-600 text-blue-600 bg-blue-50"
+                  : "border-transparent text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
+              }`}
+            >
+              棟 {label}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* Facades for active building */}
+      <div className="space-y-4">
+        {activeBuildingFacades.map((facade, j) => {
+          const globalIndex = activeBuildingStart + j
+          return (
+            <FacadeCard
+              key={facade.id}
+              facade={facade}
+              width_m={facadeWidths_m?.[j]}
+              onToggleDirt={(type) => toggleDirt(globalIndex, type)}
+              onComplexity={(c) => update(globalIndex, { complexity: c })}
+              onToggleRecesses={() => update(globalIndex, { hasRecesses: !facade.hasRecesses })}
+              onToggleHighRisk={() => update(globalIndex, { isHighRisk: !facade.isHighRisk })}
+              onWaterSupply={(v) => update(globalIndex, { waterSupply: v })}
+              onPowerChange={(supply, voltages) => handlePowerChange(globalIndex, supply, voltages)}
+              onPhotoUpload={(f) => handlePhotos(globalIndex, "photos", f)}
+              onSupplyPhotoUpload={(f) => handlePhotos(globalIndex, "supplyPhotos", f)}
+              onRemovePhoto={(pi) => removePhoto(globalIndex, "photos", pi)}
+              onRemoveSupplyPhoto={(pi) => removePhoto(globalIndex, "supplyPhotos", pi)}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -135,9 +157,7 @@ function FacadeCard({
         <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-sm font-bold flex items-center justify-center">
           {facade.label}
         </span>
-        <span className="text-sm font-semibold text-zinc-700">
-          {facade.buildingLabel ? `棟${facade.buildingLabel} — 立面 ${facade.label}` : `立面 ${facade.label}`}
-        </span>
+        <span className="text-sm font-semibold text-zinc-700">立面 {facade.label}</span>
         {width_m != null && (
           <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
             實測 {width_m} m
@@ -217,9 +237,7 @@ function FacadeCard({
 
       {/* Supply access photos */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">
-          水電接口現況照片（選填）
-        </p>
+        <p className="text-xs font-medium text-zinc-500 mb-2">水電接口現況照片（選填）</p>
         <PhotoStrip
           photos={facade.supplyPhotos}
           onAdd={() => supplyPhotoRef.current?.click()}
@@ -279,7 +297,6 @@ function PowerVoltageField({
 }) {
   function toggleVoltage(v: PowerVoltage) {
     if (supply === "SelfSupply") {
-      // Switching from SelfSupply: select this voltage, set Provided
       onChange("Provided", [v])
       return
     }
