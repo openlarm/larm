@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import type { AirspaceResult, PricingResult, TimeResult } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
@@ -101,11 +101,32 @@ export function QuoteStep3({
     )
   }
 
+  const handlePrint = useCallback(() => {
+    // Inject print CSS to show only the quote card, then open print dialog
+    const styleEl = document.createElement("style")
+    styleEl.id = "__quote-print-style__"
+    styleEl.textContent = `
+      @media print {
+        body > * { display: none !important; }
+        #quote-print-area { display: block !important; }
+        #quote-print-area * { visibility: visible !important; }
+        .no-print { display: none !important; }
+      }
+    `
+    document.head.appendChild(styleEl)
+    const quoteEl = document.getElementById("quote-print-area")
+    if (quoteEl) quoteEl.style.display = "block"
+    window.print()
+    window.addEventListener("afterprint", () => {
+      styleEl.remove()
+    }, { once: true })
+  }, [])
+
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-zinc-900">Step 3 — 報價結果</h2>
+      <h2 className="text-xl font-semibold text-zinc-900 no-print">Step 3 — 報價結果</h2>
 
-      <div className="border border-zinc-300 rounded-xl overflow-hidden">
+      <div id="quote-print-area" className="border border-zinc-300 rounded-xl overflow-hidden">
         {/* Header */}
         <div className="bg-zinc-800 text-white px-6 py-4">
           <div className="flex items-center justify-between">
@@ -130,6 +151,9 @@ export function QuoteStep3({
               label="建物"
               value={`${BUILDING_LABELS[formData.buildingType] ?? formData.buildingType} ${formData.floors}F（${(formData.floors * 3.5).toFixed(1)}m）`}
             />
+            {(formData.numBuildings ?? 1) > 1 && (
+              <InfoRow label="棟數" value={`${formData.numBuildings} 棟`} />
+            )}
             <InfoRow
               label="空域"
               value={
@@ -166,7 +190,12 @@ export function QuoteStep3({
                   {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}
                   {f.isHighRisk && <div className="text-red-600">高風險環境</div>}
                   {f.waterSupply === "SelfSupply" && <div className="text-orange-600">自備用水</div>}
-                  {f.powerSupply === "SelfSupply" && <div className="text-orange-600">自備用電</div>}
+                  {f.powerSupply === "SelfSupply"
+                    ? <div className="text-orange-600">自備用電</div>
+                    : f.powerVoltage?.length
+                      ? <div className="text-green-700">⚡ {f.powerVoltage.join(" / ")}</div>
+                      : null
+                  }
                   {f.supplyPhotos.length > 0 && (
                     <div className="text-blue-600">{f.supplyPhotos.length} 張水電照</div>
                   )}
@@ -265,7 +294,7 @@ export function QuoteStep3({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center pt-2">
+      <div className="flex gap-3 justify-center pt-2 no-print">
         <button
           onClick={onBack}
           className="px-5 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
@@ -277,6 +306,12 @@ export function QuoteStep3({
           className="px-5 py-2.5 bg-zinc-800 text-white rounded-lg hover:bg-zinc-700 transition-colors"
         >
           複製報價
+        </button>
+        <button
+          onClick={handlePrint}
+          className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+        >
+          下載 PDF
         </button>
         <button
           onClick={onReset}

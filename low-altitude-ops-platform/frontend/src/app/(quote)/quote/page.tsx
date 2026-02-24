@@ -14,10 +14,11 @@ const INITIAL_FORM: Partial<QuoteFormData> = {
   serviceType: "cleaning",
   buildingType: "commercial",
   floors: 10,
+  numBuildings: 1,
   numFacades: 4,
   timeSlot: "day",
   urgent: false,
-  facadeInputs: buildDefaultFacadeInputs(4),
+  facadeInputs: buildDefaultFacadeInputs(4, 1),
 }
 
 export default function QuotePage() {

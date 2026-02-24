@@ -278,9 +278,39 @@ export function QuoteStep1({
         <input type="date"
           value={formData.expectedDate ?? ""}
           min={new Date().toISOString().split("T")[0]}
-          onChange={e => updateForm({ expectedDate: e.target.value })}
+          onChange={e => {
+            const dateStr = e.target.value
+            if (!dateStr) { updateForm({ expectedDate: "" }); return }
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const selected = new Date(dateStr)
+            const diffDays = Math.ceil((selected.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+            updateForm({ expectedDate: dateStr, urgent: diffDays <= 30 })
+          }}
           className="px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
         />
+        {/* Urgent auto-set notice */}
+        {formData.expectedDate && (() => {
+          const today = new Date(); today.setHours(0, 0, 0, 0)
+          const diff = Math.ceil((new Date(formData.expectedDate).getTime() - today.getTime()) / 86400000)
+          if (diff <= 30 && diff >= 0) return (
+            <p className="text-orange-600 text-xs mt-1">
+              ⚡ 施工日期在 30 日內（{diff} 天後），已自動標記為急件
+            </p>
+          )
+          return null
+        })()}
+        {/* Airspace permit + insufficient lead time warning */}
+        {airspace?.status === "NeedPermit" && formData.expectedDate && (() => {
+          const today = new Date(); today.setHours(0, 0, 0, 0)
+          const diff = Math.ceil((new Date(formData.expectedDate).getTime() - today.getTime()) / 86400000)
+          if (diff < 14) return (
+            <div className="mt-2 p-3 rounded-lg border bg-red-50 border-red-200 text-red-700 text-xs">
+              🚨 空域申請需至少提前 <strong>兩週（14 天）</strong>辦理，目前距施工日僅 <strong>{diff} 天</strong>，請立即向主管機關申請空域許可，否則無法如期開工。
+            </div>
+          )
+          return null
+        })()}
         <WeatherRiskBadge date={formData.expectedDate} />
       </div>
 
@@ -292,7 +322,7 @@ export function QuoteStep1({
           className="w-4 h-4 accent-blue-600"
         />
         <label htmlFor="urgent" className="text-sm text-zinc-700">
-          急件（需 7 日內施作，加價 33%）
+          急件（30 日內施作，加價 33%）
         </label>
       </div>
 

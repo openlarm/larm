@@ -34,17 +34,19 @@ export function QuoteStep2({
 }: Props) {
   const floors = formData.floors ?? 10
   const numFacades = formData.numFacades ?? 4
+  const numBuildings = formData.numBuildings ?? 1
   const buildingType = formData.buildingType ?? "commercial"
   const [overrideWidth, setOverrideWidth] = useState<string>("")
 
-  // Keep facade inputs in sync with numFacades
+  // Keep facade inputs in sync with numFacades × numBuildings
   useEffect(() => {
+    const totalFacades = numFacades * numBuildings
     const existing = formData.facadeInputs ?? []
-    if (existing.length !== numFacades) {
-      const defaults = buildDefaultFacadeInputs(numFacades)
+    if (existing.length !== totalFacades) {
+      const defaults = buildDefaultFacadeInputs(numFacades, numBuildings)
       updateForm({ facadeInputs: defaults.map((d, i) => existing[i] ?? d) })
     }
-  }, [numFacades]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [numFacades, numBuildings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Recalculate area — MBR dimensions take priority over raw perimeter
   useEffect(() => {
@@ -77,6 +79,18 @@ export function QuoteStep2({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left: building fields */}
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-1">棟數</label>
+            <select value={numBuildings}
+              onChange={e => updateForm({ numBuildings: parseInt(e.target.value) })}
+              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              {[1, 2, 3, 4, 5, 6].map(n => (
+                <option key={n} value={n}>{n} 棟</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">建物類型</label>
             <select
@@ -194,6 +208,7 @@ export function QuoteStep2({
           <QuoteFacadeEditor
             facades={formData.facadeInputs}
             facadeWidths_m={areaEstimate?.facadeWidths_m}
+            numBuildings={numBuildings}
             onChange={handleFacadesChange}
           />
         )}

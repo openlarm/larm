@@ -2,16 +2,17 @@
 
 import { useRef } from "react"
 import type { Complexity, Supply } from "@/lib/types"
-import type { QuoteFacadeInput, DirtType } from "./quote-defaults"
+import type { QuoteFacadeInput, DirtType, PowerVoltage } from "./quote-defaults"
 import { DIRT_TYPE_OPTIONS, COMPLEXITY_OPTIONS } from "./quote-defaults"
 
 interface Props {
   facades: QuoteFacadeInput[]
-  facadeWidths_m?: number[]    // per-facade actual widths from MBR
+  facadeWidths_m?: number[]    // per-facade actual widths from MBR (per building)
+  numBuildings?: number        // for grouping display
   onChange: (facades: QuoteFacadeInput[]) => void
 }
 
-export function QuoteFacadeEditor({ facades, facadeWidths_m, onChange }: Props) {
+export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, onChange }: Props) {
   function update(index: number, patch: Partial<QuoteFacadeInput>) {
     onChange(facades.map((f, i) => i === index ? { ...f, ...patch } : f))
   }
@@ -35,25 +36,66 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, onChange }: Props) 
     update(facadeIndex, { [field]: photos })
   }
 
+  function handlePowerChange(index: number, supply: Supply, voltages: PowerVoltage[]) {
+    update(index, { powerSupply: supply, powerVoltage: voltages })
+  }
+
+  // Group facades by building when numBuildings > 1
+  const numFacadesPerBuilding = numBuildings > 1 ? Math.ceil(facades.length / numBuildings) : facades.length
+
+  // Build per-building groups
+  const buildingGroups: { buildingLabel: string; startIndex: number; count: number }[] = []
+  if (numBuildings > 1) {
+    for (let b = 0; b < numBuildings; b++) {
+      const startIndex = b * numFacadesPerBuilding
+      const count = Math.min(numFacadesPerBuilding, facades.length - startIndex)
+      if (count <= 0) break
+      const buildingLabel = facades[startIndex]?.buildingLabel ?? String(b + 1)
+      buildingGroups.push({ buildingLabel, startIndex, count })
+    }
+  } else {
+    buildingGroups.push({ buildingLabel: "", startIndex: 0, count: facades.length })
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-base font-semibold text-zinc-800">各立面詳細資訊</h3>
-      {facades.map((facade, i) => (
-        <FacadeCard
-          key={facade.id}
-          facade={facade}
-          width_m={facadeWidths_m?.[i]}
-          onToggleDirt={(type) => toggleDirt(i, type)}
-          onComplexity={(c) => update(i, { complexity: c })}
-          onToggleRecesses={() => update(i, { hasRecesses: !facade.hasRecesses })}
-          onToggleHighRisk={() => update(i, { isHighRisk: !facade.isHighRisk })}
-          onWaterSupply={(v) => update(i, { waterSupply: v })}
-          onPowerSupply={(v) => update(i, { powerSupply: v })}
-          onPhotoUpload={(f) => handlePhotos(i, "photos", f)}
-          onSupplyPhotoUpload={(f) => handlePhotos(i, "supplyPhotos", f)}
-          onRemovePhoto={(pi) => removePhoto(i, "photos", pi)}
-          onRemoveSupplyPhoto={(pi) => removePhoto(i, "supplyPhotos", pi)}
-        />
+      {buildingGroups.map(({ buildingLabel, startIndex, count }) => (
+        <div key={buildingLabel || "single"}>
+          {/* Building header (only when multiple buildings) */}
+          {numBuildings > 1 && (
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-zinc-700 text-white text-sm font-bold flex items-center justify-center">
+                {buildingLabel}
+              </div>
+              <span className="text-sm font-semibold text-zinc-700">棟 {buildingLabel}</span>
+              <div className="flex-1 h-px bg-zinc-200" />
+            </div>
+          )}
+          <div className="space-y-4">
+            {Array.from({ length: count }, (_, j) => {
+              const i = startIndex + j
+              const facade = facades[i]
+              return (
+                <FacadeCard
+                  key={facade.id}
+                  facade={facade}
+                  width_m={facadeWidths_m?.[j]}  // cycle widths per building
+                  onToggleDirt={(type) => toggleDirt(i, type)}
+                  onComplexity={(c) => update(i, { complexity: c })}
+                  onToggleRecesses={() => update(i, { hasRecesses: !facade.hasRecesses })}
+                  onToggleHighRisk={() => update(i, { isHighRisk: !facade.isHighRisk })}
+                  onWaterSupply={(v) => update(i, { waterSupply: v })}
+                  onPowerChange={(supply, voltages) => handlePowerChange(i, supply, voltages)}
+                  onPhotoUpload={(f) => handlePhotos(i, "photos", f)}
+                  onSupplyPhotoUpload={(f) => handlePhotos(i, "supplyPhotos", f)}
+                  onRemovePhoto={(pi) => removePhoto(i, "photos", pi)}
+                  onRemoveSupplyPhoto={(pi) => removePhoto(i, "supplyPhotos", pi)}
+                />
+              )
+            })}
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -69,7 +111,7 @@ interface CardProps {
   onToggleRecesses: () => void
   onToggleHighRisk: () => void
   onWaterSupply: (v: Supply) => void
-  onPowerSupply: (v: Supply) => void
+  onPowerChange: (supply: Supply, voltages: PowerVoltage[]) => void
   onPhotoUpload: (files: FileList | null) => void
   onSupplyPhotoUpload: (files: FileList | null) => void
   onRemovePhoto: (index: number) => void
@@ -79,7 +121,7 @@ interface CardProps {
 function FacadeCard({
   facade, width_m,
   onToggleDirt, onComplexity, onToggleRecesses, onToggleHighRisk,
-  onWaterSupply, onPowerSupply,
+  onWaterSupply, onPowerChange,
   onPhotoUpload, onSupplyPhotoUpload,
   onRemovePhoto, onRemoveSupplyPhoto,
 }: CardProps) {
@@ -93,7 +135,9 @@ function FacadeCard({
         <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-sm font-bold flex items-center justify-center">
           {facade.label}
         </span>
-        <span className="text-sm font-semibold text-zinc-700">立面 {facade.label}</span>
+        <span className="text-sm font-semibold text-zinc-700">
+          {facade.buildingLabel ? `棟${facade.buildingLabel} — 立面 ${facade.label}` : `立面 ${facade.label}`}
+        </span>
         {width_m != null && (
           <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
             實測 {width_m} m
@@ -164,11 +208,10 @@ function FacadeCard({
           value={facade.waterSupply}
           onChange={onWaterSupply}
         />
-        <SupplyField
-          icon="⚡"
-          label="用電"
-          value={facade.powerSupply}
-          onChange={onPowerSupply}
+        <PowerVoltageField
+          supply={facade.powerSupply}
+          voltages={facade.powerVoltage ?? []}
+          onChange={onPowerChange}
         />
       </div>
 
@@ -201,7 +244,7 @@ function FacadeCard({
   )
 }
 
-// ─── Supply field ─────────────────────────────────────────────────────────────
+// ─── Water supply field ───────────────────────────────────────────────────────
 
 function SupplyField({
   icon, label, value, onChange,
@@ -220,6 +263,74 @@ function SupplyField({
             {opt === "Provided" ? "業主提供" : "自備"}
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Power voltage field (110V / 220V checkboxes) ────────────────────────────
+
+function PowerVoltageField({
+  supply, voltages, onChange,
+}: {
+  supply: Supply
+  voltages: PowerVoltage[]
+  onChange: (supply: Supply, voltages: PowerVoltage[]) => void
+}) {
+  function toggleVoltage(v: PowerVoltage) {
+    if (supply === "SelfSupply") {
+      // Switching from SelfSupply: select this voltage, set Provided
+      onChange("Provided", [v])
+      return
+    }
+    const next = voltages.includes(v) ? voltages.filter(x => x !== v) : [...voltages, v]
+    onChange("Provided", next)
+  }
+
+  function toggleSelfSupply() {
+    if (supply === "SelfSupply") {
+      onChange("Provided", ["110V", "220V"])
+    } else {
+      onChange("SelfSupply", [])
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-zinc-500 mb-1.5">⚡ 用電</p>
+      <div className="space-y-2">
+        {/* Voltage checkboxes */}
+        <div className="flex gap-2">
+          {(["110V", "220V"] as PowerVoltage[]).map(v => {
+            const checked = supply !== "SelfSupply" && voltages.includes(v)
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => toggleVoltage(v)}
+                className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                  checked
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : supply === "SelfSupply"
+                    ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
+                    : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400"
+                }`}
+              >
+                {v}
+              </button>
+            )
+          })}
+        </div>
+        {/* Self-supply toggle */}
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={supply === "SelfSupply"}
+            onChange={toggleSelfSupply}
+            className="w-3.5 h-3.5 accent-orange-500"
+          />
+          <span className="text-xs text-zinc-500">自備電源</span>
+        </label>
       </div>
     </div>
   )

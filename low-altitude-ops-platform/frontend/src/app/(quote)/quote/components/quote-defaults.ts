@@ -99,15 +99,20 @@ export const TIME_SLOT_OPTIONS: { value: TimeSlot; label: string }[] = [
 
 // ─── Per-facade input (what the sales form collects) ─────────────────────────
 
+export type PowerVoltage = "110V" | "220V"
+
 export interface QuoteFacadeInput {
   id: string
-  label: string                // A / B / C / D
+  buildingIndex: number        // 0-based; which building this facade belongs to
+  buildingLabel: string        // "A", "B" … when numBuildings > 1, else ""
+  label: string                // A / B / C / D (within the building)
   dirtTypes: DirtType[]        // multi-select
   complexity: Complexity
   hasRecesses: boolean         // 有內縮 / 露台 / 天井
   isHighRisk: boolean          // 緊鄰特殊風險環境
   waterSupply: Supply          // 用水：業主提供 or 自備
-  powerSupply: Supply          // 用電：業主提供 or 自備
+  powerSupply: Supply          // 用電：業主提供 or 自備 (derived from powerVoltage)
+  powerVoltage: PowerVoltage[] // which voltages are available ([] = 自備)
   supplyPhotos: { name: string; url: string }[]  // water/power access photos
   photos: { name: string; url: string }[]        // general facade photos
 }
@@ -134,7 +139,8 @@ export interface QuoteFormData {
   urgent: boolean
   buildingType: BuildingType
   floors: number
-  numFacades: number
+  numBuildings: number          // how many buildings on the same project site
+  numFacades: number            // facades per building
   timeSlot: TimeSlot
   facadeInputs: QuoteFacadeInput[]
   expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
@@ -251,20 +257,31 @@ export function estimateFromRect(
 // ─── Default facade inputs ───────────────────────────────────────────────────
 
 const FACE_LABELS = ["A", "B", "C", "D"]
+const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
-export function buildDefaultFacadeInputs(numFacades: number): QuoteFacadeInput[] {
-  return Array.from({ length: numFacades }, (_, i) => ({
-    id: String(i + 1),
-    label: FACE_LABELS[i] ?? String(i + 1),
-    dirtTypes: ["dust"] as DirtType[],
-    complexity: "light" as Complexity,
-    hasRecesses: false,
-    isHighRisk: false,
-    waterSupply: "Provided" as Supply,
-    powerSupply: "Provided" as Supply,
-    supplyPhotos: [],
-    photos: [],
-  }))
+export function buildDefaultFacadeInputs(numFacades: number, numBuildings: number = 1): QuoteFacadeInput[] {
+  const result: QuoteFacadeInput[] = []
+  for (let b = 0; b < numBuildings; b++) {
+    const buildingLabel = numBuildings > 1 ? (BUILDING_LABELS[b] ?? String(b + 1)) : ""
+    for (let i = 0; i < numFacades; i++) {
+      result.push({
+        id: `${b}-${i}`,
+        buildingIndex: b,
+        buildingLabel,
+        label: FACE_LABELS[i] ?? String(i + 1),
+        dirtTypes: ["dust"] as DirtType[],
+        complexity: "light" as Complexity,
+        hasRecesses: false,
+        isHighRisk: false,
+        waterSupply: "Provided" as Supply,
+        powerSupply: "Provided" as Supply,
+        powerVoltage: ["110V", "220V"] as PowerVoltage[],
+        supplyPhotos: [],
+        photos: [],
+      })
+    }
+  }
+  return result
 }
 
 // ─── Contamination: derive from multi-select dirt types ──────────────────────
@@ -303,13 +320,17 @@ export function buildFacadesFromInputs(
 ): FacadeData[] {
   const material = DEFAULT_MATERIAL[buildingType]
   const height = estimate.building_height_m
-  return facadeInputs.map((input, i) => {
-    // Use per-facade width from MBR if available, otherwise average
-    const width_m = estimate.facadeWidths_m?.[i] ?? (estimate.facade_area_m2 / height)
+  const facadesPerBuilding = estimate.num_facades
+  return facadeInputs.map((input, globalIndex) => {
+    // Cycle per-facade widths within each building (MBR applies to one building)
+    const facadeIndexInBuilding = globalIndex % facadesPerBuilding
+    const width_m = estimate.facadeWidths_m?.[facadeIndexInBuilding] ?? (estimate.facade_area_m2 / height)
     const area_m2 = Math.round(width_m * height)
+    // Build display label: "棟A-A" when multi-building, else just "A"
+    const displayLabel = input.buildingLabel ? `棟${input.buildingLabel}-${input.label}` : input.label
     return {
       id: input.id,
-      label: input.label,
+      label: displayLabel,
       area_m2,
       material,
       complexity: input.complexity,
