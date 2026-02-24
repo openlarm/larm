@@ -62,7 +62,6 @@ export function QuoteStep1({
   const [searchMode, setSearchMode] = useState<"address" | "name">("address")
   const [coordInput, setCoordInput] = useState("")
   const [coordError, setCoordError] = useState("")
-  const [showCoordInput, setShowCoordInput] = useState(false)
   const [posUpdating, setPosUpdating] = useState(false)
 
   // ── Re-fetch airspace + Overpass for any lat/lng ──────────────────────────
@@ -134,7 +133,7 @@ export function QuoteStep1({
     setCoordError("")
     const parsed = parseCoordinates(coordInput)
     if (!parsed) {
-      setCoordError("格式不正確，請輸入「25.039194, 121.562611」或「25°02'21.1\"N 121°33'45.4\"E」")
+      setCoordError("格式不正確，請輸入「25.039194, 121.562611」或「25°02′21.1″N 121°33′45.4″E」")
       return
     }
     if (parsed.lat < 21 || parsed.lat > 26 || parsed.lng < 118 || parsed.lng > 123) {
@@ -143,7 +142,6 @@ export function QuoteStep1({
     }
     updateForm({ lat: parsed.lat, lng: parsed.lng })
     refetchForPosition(parsed.lat, parsed.lng)
-    setShowCoordInput(false)
     setCoordInput("")
   }, [coordInput, updateForm, refetchForPosition])
 
@@ -222,52 +220,23 @@ export function QuoteStep1({
         )}
       </div>
 
-      {/* Map with draggable marker */}
+      {/* Map with draggable marker + correction panel */}
       {formData.lat && formData.lng && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <QuoteMap
             lat={formData.lat} lng={formData.lng}
             airspace={airspace}
             onPositionChange={handlePositionChange}
           />
 
-          {/* Coordinate correction tools */}
-          <div className="flex items-center gap-3">
-            <p className="text-xs text-zinc-400 flex-1">
-              位置不正確？可直接在地圖上點選或拖動標記至正確位置
-            </p>
-            <button
-              type="button"
-              onClick={() => { setShowCoordInput(v => !v); setCoordError("") }}
-              className="text-xs text-blue-600 hover:underline whitespace-nowrap"
-            >
-              {showCoordInput ? "收起" : "貼上座標"}
-            </button>
-          </div>
-
-          {showCoordInput && (
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 space-y-2">
-              <p className="text-xs text-zinc-500">
-                支援十進制（25.039194, 121.562611）或 DMS（25°02′21.1″N 121°33′45.4″E）
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={coordInput}
-                  onChange={e => setCoordInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleCoordApply()}
-                  placeholder='25.039194, 121.562611'
-                  className="flex-1 px-3 py-1.5 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                />
-                <button onClick={handleCoordApply}
-                  disabled={!coordInput.trim()}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 transition-colors">
-                  套用
-                </button>
-              </div>
-              {coordError && <p className="text-red-500 text-xs">{coordError}</p>}
-            </div>
-          )}
+          {/* Always-visible correction panel */}
+          <PositionCorrectionPanel
+            coordInput={coordInput}
+            coordError={coordError}
+            posUpdating={posUpdating}
+            onInputChange={setCoordInput}
+            onApply={handleCoordApply}
+          />
         </div>
       )}
 
@@ -334,6 +303,67 @@ export function QuoteStep1({
           下一步
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Position correction panel ────────────────────────────────────────────────
+
+function PositionCorrectionPanel({
+  coordInput, coordError, posUpdating, onInputChange, onApply,
+}: {
+  coordInput: string
+  coordError: string
+  posUpdating: boolean
+  onInputChange: (v: string) => void
+  onApply: () => void
+}) {
+  return (
+    <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-amber-600 text-sm font-semibold">📍 位置不正確？</span>
+        {posUpdating && <span className="text-xs text-zinc-400">重新查詢中...</span>}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-amber-800">
+        {/* Method 1: drag */}
+        <div className="bg-white rounded-lg border border-amber-200 p-3 space-y-1">
+          <p className="font-semibold text-amber-700">方法 1 — 在地圖上直接修正</p>
+          <p>在上方地圖上<strong>點選正確位置</strong>，或<strong>拖動藍色標記</strong>至建物正確位置</p>
+        </div>
+
+        {/* Method 2: Google Maps */}
+        <div className="bg-white rounded-lg border border-amber-200 p-3 space-y-1">
+          <p className="font-semibold text-amber-700">方法 2 — 從 Google 地圖複製座標</p>
+          <ol className="space-y-0.5 list-decimal list-inside">
+            <li>開啟 Google 地圖搜尋建物地址</li>
+            <li>在建物位置上<strong>右鍵</strong>點選</li>
+            <li>點選跳出選單最上方的<strong>座標數字</strong>（即可複製）</li>
+            <li>將座標貼入下方欄位後按「套用」</li>
+          </ol>
+        </div>
+      </div>
+
+      {/* Coordinate paste input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={coordInput}
+          onChange={e => onInputChange(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && onApply()}
+          placeholder="25.039194, 121.562611 ｜ 或 DMS：25°02′21.1″N 121°33′45.4″E"
+          className="flex-1 px-3 py-2 text-sm border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-400 outline-none font-mono bg-white"
+        />
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={!coordInput.trim()}
+          className="px-4 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:bg-zinc-300 transition-colors whitespace-nowrap font-medium"
+        >
+          套用座標
+        </button>
+      </div>
+      {coordError && <p className="text-red-600 text-xs">{coordError}</p>}
     </div>
   )
 }

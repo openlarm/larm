@@ -202,6 +202,42 @@ async function tryNominatim(q: string, mode: "address" | "name" = "address") {
   }
 }
 
+// ─── Strategy 3: Photon (photon.komoot.io) ───────────────────────────────────
+// Alternative OSM-based geocoder, different ranking algorithm, no API key.
+// Bounding box uses lon1,lat1,lon2,lat2 order.
+
+async function tryPhoton(q: string) {
+  const url = new URL("https://photon.komoot.io/api/")
+  url.searchParams.set("q", q)
+  url.searchParams.set("limit", "5")
+  url.searchParams.set("lang", "zh")
+  // bbox: lon_min,lat_min,lon_max,lat_max
+  url.searchParams.set("bbox", `${TW_BOUNDS.minLng},${TW_BOUNDS.minLat},${TW_BOUNDS.maxLng},${TW_BOUNDS.maxLat}`)
+
+  const res = await fetch(url.toString(), {
+    headers: { "User-Agent": USER_AGENT },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(6000),
+  })
+  if (!res.ok) return null
+
+  const data = await res.json()
+  const features: {
+    geometry: { coordinates: [number, number] }
+    properties: Record<string, string>
+  }[] = data.features ?? []
+
+  for (const f of features) {
+    const [lng, lat] = f.geometry.coordinates
+    if (!isWithinTaiwan(lat, lng)) continue
+    const p = f.properties
+    const name = p.name ?? p.street ?? ""
+    const city = p.city ?? p.county ?? ""
+    return { lat, lng, district: p.district ?? "", city, displayName: name, source: "photon" }
+  }
+  return null
+}
+
 // ─── Progressive address truncation ──────────────────────────────────────────
 
 function addressVariants(q: string): string[] {
@@ -231,7 +267,7 @@ export async function GET(request: Request) {
 
   const variants = mode === "name" ? [q] : addressVariants(q)
 
-  // NLSC first (most accurate for Taiwan addresses), then Nominatim
+  // 1. NLSC (most accurate for Taiwan; may timeout outside TW network)
   for (const variant of variants) {
     try {
       const result = await tryNLSC(variant)
@@ -239,6 +275,15 @@ export async function GET(request: Request) {
     } catch { /* timeout or unreachable — fall through */ }
   }
 
+  // 2. Photon (alternative OSM geocoder, different ranking than Nominatim)
+  for (const variant of variants) {
+    try {
+      const result = await tryPhoton(variant)
+      if (result) return NextResponse.json({ ...result, raw: q, status: "success" })
+    } catch { /* fall through */ }
+  }
+
+  // 3. Nominatim
   for (const variant of variants) {
     try {
       const result = await tryNominatim(variant, mode)
