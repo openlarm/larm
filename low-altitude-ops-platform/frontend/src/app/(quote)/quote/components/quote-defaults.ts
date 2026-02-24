@@ -256,7 +256,7 @@ export function estimateFromRect(
 
 // ─── Default facade inputs ───────────────────────────────────────────────────
 
-const FACE_LABELS = ["A", "B", "C", "D"]
+const FACE_LABELS = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 export function buildDefaultFacadeInputs(numFacades: number, numBuildings: number = 1): QuoteFacadeInput[] {

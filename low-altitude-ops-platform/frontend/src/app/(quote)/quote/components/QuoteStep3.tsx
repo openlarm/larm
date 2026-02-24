@@ -52,12 +52,20 @@ export function QuoteStep3({
   const handlePrint = useCallback(() => {
     const styleEl = document.createElement("style")
     styleEl.id = "__quote-print-style__"
+    // Use visibility (not display:none) so that descendants can override
     styleEl.textContent = `
       @media print {
-        body > * { display: none !important; }
-        #quote-print-area { display: block !important; }
+        body * { visibility: hidden !important; }
+        #quote-print-area,
         #quote-print-area * { visibility: visible !important; }
-        .no-print { display: none !important; }
+        #quote-print-area {
+          position: fixed !important;
+          inset: 0 !important;
+          overflow: auto !important;
+          padding: 16px !important;
+          background: white !important;
+          z-index: 9999 !important;
+        }
       }
     `
     document.head.appendChild(styleEl)
@@ -115,10 +123,25 @@ export function QuoteStep3({
   // areaEstimate reflects one building; multiply by numBuildings for project total
   const totalArea = areaEstimate.total_area_m2 * numBuildings
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(
-      buildPlainText(formData, airspace, areaEstimate, pricing, timeResult)
-    )
+  // Group line items by building for display
+  type BldgGroup = { name: string; area: number; subtotal: number; facades: number }
+  const bldgGroups: BldgGroup[] = []
+  const extraItems: typeof pricing.line_items = []
+  for (const item of pricing.line_items) {
+    if (item.code.startsWith("FACE-")) {
+      // code format: "FACE-{buildingIdx}-{facadeIdx}"
+      const bIdx = parseInt(item.code.slice(5).split("-")[0])
+      while (bldgGroups.length <= bIdx) bldgGroups.push({ name: "", area: 0, subtotal: 0, facades: 0 })
+      const grp = bldgGroups[bIdx]
+      grp.name = numBuildings > 1
+        ? `棟 ${["A","B","C","D","E","F"][bIdx] ?? bIdx + 1}`
+        : "施作費用"
+      grp.area += item.area_m2 ?? 0
+      grp.subtotal += item.subtotal
+      grp.facades++
+    } else {
+      extraItems.push(item)
+    }
   }
 
   return (
@@ -182,7 +205,7 @@ export function QuoteStep3({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {formData.facadeInputs.map(f => (
                 <div key={f.id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-zinc-800 mb-1">立面 {f.label}</div>
+                  <div className="font-semibold text-zinc-800 mb-1">{f.buildingLabel ? `棟${f.buildingLabel} ${f.label}` : f.label}</div>
                   <div className="text-zinc-500">
                     {f.dirtTypes.map(d =>
                       d === "dust" ? "灰塵" : d === "scale" ? "鏽斑" :
@@ -217,28 +240,36 @@ export function QuoteStep3({
         {/* Weather risk advisory */}
         <WeatherAdvisory date={formData.expectedDate} suggestedDays={timeResult.suggested_days} />
 
-        {/* Line items */}
+        {/* Line items — grouped by building */}
         <div className="px-6 py-4">
           <h4 className="text-sm font-semibold text-zinc-600 mb-3">費用明細</h4>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-zinc-500 border-b">
                 <th className="text-left py-2 font-medium">項目</th>
-                <th className="text-right py-2 font-medium">單價</th>
-                <th className="text-right py-2 font-medium">面積</th>
+                <th className="text-right py-2 font-medium">施作面積</th>
                 <th className="text-right py-2 font-medium">小計</th>
               </tr>
             </thead>
             <tbody>
-              {pricing.line_items.map(item => (
+              {bldgGroups.filter(Boolean).map((grp, idx) => (
+                <tr key={`bldg-${idx}`} className="border-b border-zinc-100">
+                  <td className="py-2">
+                    {grp.name}
+                    <span className="text-xs text-zinc-400 ml-1">（{grp.facades} 面）</span>
+                  </td>
+                  <td className="text-right py-2 text-zinc-600">
+                    {grp.area.toLocaleString()} ㎡
+                  </td>
+                  <td className="text-right py-2 font-medium">
+                    {grp.subtotal.toLocaleString()} NTD
+                  </td>
+                </tr>
+              ))}
+              {extraItems.map(item => (
                 <tr key={item.code} className="border-b border-zinc-100">
                   <td className="py-2">{item.label}</td>
-                  <td className="text-right py-2 text-zinc-600">
-                    {item.unit_price ? `${item.unit_price} NTD/㎡` : "—"}
-                  </td>
-                  <td className="text-right py-2 text-zinc-600">
-                    {item.area_m2 ? `${item.area_m2.toLocaleString()} ㎡` : "—"}
-                  </td>
+                  <td className="text-right py-2 text-zinc-600">—</td>
                   <td className="text-right py-2 font-medium">
                     {item.subtotal.toLocaleString()} NTD
                   </td>
@@ -247,7 +278,7 @@ export function QuoteStep3({
             </tbody>
             <tfoot>
               <tr className="border-t border-zinc-200">
-                <td colSpan={3} className="py-2 text-right text-zinc-500">小計</td>
+                <td colSpan={2} className="py-2 text-right text-zinc-500">小計</td>
                 <td className="text-right py-2 font-medium">{pricing.subtotal.toLocaleString()} NTD</td>
               </tr>
             </tfoot>
@@ -306,12 +337,6 @@ export function QuoteStep3({
           className="px-5 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
         >
           上一步
-        </button>
-        <button
-          onClick={handleCopy}
-          className="px-5 py-2.5 bg-zinc-800 text-white rounded-lg hover:bg-zinc-700 transition-colors"
-        >
-          複製報價
         </button>
         <button
           onClick={handlePrint}

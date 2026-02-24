@@ -157,7 +157,7 @@ function FacadeCard({
         <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-sm font-bold flex items-center justify-center">
           {facade.label}
         </span>
-        <span className="text-sm font-semibold text-zinc-700">立面 {facade.label}</span>
+        <span className="text-sm font-semibold text-zinc-700">{facade.label}</span>
         {width_m != null && (
           <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
             實測 {width_m} m

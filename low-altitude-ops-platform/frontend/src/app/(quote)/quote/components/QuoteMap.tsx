@@ -8,6 +8,10 @@ interface Props {
   lng: number
   airspace: AirspaceResult | null
   polygon?: { lat: number; lon: number }[] | null
+  /** Draw mode active — any drag draws a rectangle */
+  drawMode?: boolean
+  /** Called after a rectangle is successfully drawn (so parent can exit draw mode) */
+  onDrawModeEnd?: () => void
   onRectDraw?: (width_m: number, depth_m: number) => void
   /** When provided the marker becomes draggable and map clicks also reposition it */
   onPositionChange?: (lat: number, lng: number) => void
@@ -16,19 +20,25 @@ interface Props {
 const SATELLITE_TILE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 const SATELLITE_ATTR = "Tiles &copy; Esri"
 
-export function QuoteMap({ lat, lng, airspace, polygon, onRectDraw, onPositionChange }: Props) {
-  const mapRef = useRef<HTMLDivElement>(null)
+export function QuoteMap({
+  lat, lng, airspace, polygon,
+  drawMode, onDrawModeEnd, onRectDraw, onPositionChange,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<unknown>(null)
+  const drawModeRef = useRef(drawMode ?? false)
 
+  // ── Main effect: initialise / re-initialise the Leaflet map ─────────────────
+  // drawMode intentionally NOT in deps — handled by secondary effect below
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!containerRef.current) return
     let cancelled = false
 
     async function init() {
       const L = await import("leaflet")
       // @ts-expect-error — no type declarations
       await import("leaflet/dist/leaflet.css")
-      if (cancelled || !mapRef.current) return
+      if (cancelled || !containerRef.current) return
 
       if (mapInstance.current) {
         (mapInstance.current as L.Map).remove()
@@ -43,12 +53,7 @@ export function QuoteMap({ lat, lng, airspace, polygon, onRectDraw, onPositionCh
         iconAnchor: [12, 41] as [number, number],
       })
 
-      const map = L.map(mapRef.current, {
-        center: [lat, lng] as [number, number],
-        zoom: 18,
-        zoomControl: true,
-      })
-
+      const map = L.map(containerRef.current, { center: [lat, lng] as [number, number], zoom: 18 })
       L.tileLayer(SATELLITE_TILE, { attribution: SATELLITE_ATTR, maxZoom: 19 }).addTo(map)
 
       // ── Marker ──────────────────────────────────────────────────────────────
@@ -58,81 +63,79 @@ export function QuoteMap({ lat, lng, airspace, polygon, onRectDraw, onPositionCh
       }).addTo(map)
 
       if (onPositionChange) {
-        // Drag end: emit new position
         marker.on("dragend", () => {
           const { lat: newLat, lng: newLng } = marker.getLatLng()
           onPositionChange(newLat, newLng)
         })
-
-        // Click anywhere on map (without shift) to teleport marker
         map.on("click", (e: L.LeafletMouseEvent) => {
-          if (e.originalEvent.shiftKey) return
+          if (drawModeRef.current) return   // ignore clicks in draw mode
           marker.setLatLng(e.latlng)
           onPositionChange(e.latlng.lat, e.latlng.lng)
         })
 
-        // Instruction control
         const PinHelp = L.Control.extend({
           onAdd() {
             const div = L.DomUtil.create("div", "")
-            div.innerHTML = `<div style="background:white;padding:5px 9px;border-radius:6px;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-              拖動標記或點選地圖修正位置
-            </div>`
+            div.innerHTML = `<div style="background:white;padding:5px 9px;border-radius:6px;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,.2)">拖動標記或點選地圖修正位置</div>`
             return div
           },
         })
         new PinHelp({ position: "bottomright" }).addTo(map)
       }
 
-      // ── Building polygon ────────────────────────────────────────────────────
+      // ── Building polygon ─────────────────────────────────────────────────────
       if (polygon && polygon.length > 2) {
         const coords: [number, number][] = polygon.map(p => [p.lat, p.lon])
-        L.polygon(coords, {
-          color: "#3b82f6", weight: 2,
-          fillColor: "#3b82f6", fillOpacity: 0.2,
-        }).addTo(map)
+        L.polygon(coords, { color: "#3b82f6", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2 }).addTo(map)
       }
 
-      // ── Airspace circle ─────────────────────────────────────────────────────
+      // ── Airspace circle ──────────────────────────────────────────────────────
       if (airspace) {
         const color =
           airspace.status === "NoFly" ? "#ef4444" :
           airspace.status === "NeedPermit" ? "#f59e0b" : "#22c55e"
         L.circle([lat, lng] as [number, number], {
-          radius: 100, color, weight: 1,
-          fillColor: color, fillOpacity: 0.1,
+          radius: 100, color, weight: 1, fillColor: color, fillOpacity: 0.1,
         }).addTo(map)
       }
 
-      // ── Rectangle draw (Step 2 only) ────────────────────────────────────────
+      // ── Rectangle draw (Step 2) ──────────────────────────────────────────────
       if (onRectDraw) {
         let drawing = false
         let startLatLng: L.LatLng | null = null
         let rectLayer: L.Rectangle | null = null
 
-        const RectHelp = L.Control.extend({
-          onAdd() {
-            const div = L.DomUtil.create("div", "")
-            div.innerHTML = `<div style="background:white;padding:5px 9px;border-radius:6px;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-              Shift + 拖拉 框選建物範圍
-            </div>`
-            return div
-          },
+        // Live dimension overlay
+        const dimDiv = L.DomUtil.create("div", "")
+        dimDiv.style.cssText =
+          "display:none;background:rgba(30,30,30,.85);color:#fff;padding:4px 10px;border-radius:6px;" +
+          "font-size:12px;font-weight:600;pointer-events:none;white-space:nowrap"
+        const DimControl = L.Control.extend({
+          onAdd() { return dimDiv },
         })
-        new RectHelp({ position: "bottomleft" }).addTo(map)
+        new DimControl({ position: "topleft" }).addTo(map)
 
         map.on("mousedown", (e: L.LeafletMouseEvent) => {
-          if (!e.originalEvent.shiftKey) return
+          if (!drawModeRef.current) return
           drawing = true
           startLatLng = e.latlng
           map.dragging.disable()
+          L.DomEvent.stop(e)
         })
         map.on("mousemove", (e: L.LeafletMouseEvent) => {
           if (!drawing || !startLatLng) return
           if (rectLayer) map.removeLayer(rectLayer)
           rectLayer = L.rectangle(L.latLngBounds(startLatLng, e.latlng), {
-            color: "#3b82f6", weight: 2, fillOpacity: 0.15,
+            color: "#2563eb", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2,
+            dashArray: "6 4",
           }).addTo(map)
+          // Live dimensions
+          const ne = L.latLngBounds(startLatLng, e.latlng).getNorthEast()
+          const sw = L.latLngBounds(startLatLng, e.latlng).getSouthWest()
+          const w = Math.round(ne.distanceTo(L.latLng(ne.lat, sw.lng)))
+          const d = Math.round(ne.distanceTo(L.latLng(sw.lat, ne.lng)))
+          dimDiv.textContent = `📐 ${w} × ${d} m`
+          dimDiv.style.display = "block"
         })
         map.on("mouseup", (e: L.LeafletMouseEvent) => {
           if (!drawing || !startLatLng) return
@@ -140,10 +143,14 @@ export function QuoteMap({ lat, lng, airspace, polygon, onRectDraw, onPositionCh
           map.dragging.enable()
           const bounds = L.latLngBounds(startLatLng, e.latlng)
           const ne = bounds.getNorthEast(), sw = bounds.getSouthWest()
-          const width = ne.distanceTo(L.latLng(ne.lat, sw.lng))
-          const depth = ne.distanceTo(L.latLng(sw.lat, ne.lng))
-          if (width > 2 && depth > 2) onRectDraw(Math.round(width), Math.round(depth))
+          const w = Math.round(ne.distanceTo(L.latLng(ne.lat, sw.lng)))
+          const d = Math.round(ne.distanceTo(L.latLng(sw.lat, ne.lng)))
+          dimDiv.style.display = "none"
           startLatLng = null
+          if (w > 2 && d > 2) {
+            onRectDraw(w, d)
+            onDrawModeEnd?.()
+          }
         })
       }
 
@@ -158,9 +165,23 @@ export function QuoteMap({ lat, lng, airspace, polygon, onRectDraw, onPositionCh
         mapInstance.current = null
       }
     }
-  }, [lat, lng, airspace, polygon, onRectDraw, onPositionChange])
+  }, [lat, lng, airspace, polygon, onRectDraw, onPositionChange, onDrawModeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Secondary effect: update draw mode without re-creating the map ────────────
+  useEffect(() => {
+    drawModeRef.current = drawMode ?? false
+    const map = mapInstance.current as (L.Map & { dragging: L.Handler }) | null
+    if (!map) return
+    if (drawMode) {
+      map.dragging.disable()
+      ;(map.getContainer() as HTMLElement).style.cursor = "crosshair"
+    } else {
+      map.dragging.enable()
+      ;(map.getContainer() as HTMLElement).style.cursor = ""
+    }
+  }, [drawMode])
 
   return (
-    <div ref={mapRef} className="w-full h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />
+    <div ref={containerRef} className="w-full h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />
   )
 }
