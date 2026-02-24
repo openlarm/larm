@@ -20,6 +20,37 @@ interface Props {
   onNext: () => void
 }
 
+// ─── DMS / decimal coordinate parser ─────────────────────────────────────────
+// Accepts:
+//   DMS:     25°02'21.1"N 121°33'45.4"E
+//   Decimal: 25.039194, 121.562611
+
+function parseCoordinates(raw: string): { lat: number; lng: number } | null {
+  const s = raw.trim()
+
+  // DMS: 25°02'21.1"N 121°33'45.4"E  (° ' " optional variants)
+  const dms = s.match(
+    /(\d+)[°º]\s*(\d+)[''′]\s*([\d.]+)[""″]?\s*([NS])\s+(\d+)[°º]\s*(\d+)[''′]\s*([\d.]+)[""″]?\s*([EW])/i
+  )
+  if (dms) {
+    const lat = (parseInt(dms[1]) + parseInt(dms[2]) / 60 + parseFloat(dms[3]) / 3600)
+      * (dms[4].toUpperCase() === "S" ? -1 : 1)
+    const lng = (parseInt(dms[5]) + parseInt(dms[6]) / 60 + parseFloat(dms[7]) / 3600)
+      * (dms[8].toUpperCase() === "W" ? -1 : 1)
+    if (isFinite(lat) && isFinite(lng)) return { lat, lng }
+  }
+
+  // Decimal: "25.039194, 121.562611" or "25.039194 121.562611"
+  const dec = s.match(/^([-\d.]+)[,\s]+([-\d.]+)$/)
+  if (dec) {
+    const a = parseFloat(dec[1]), b = parseFloat(dec[2])
+    if (isFinite(a) && isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) {
+      return { lat: a, lng: b }
+    }
+  }
+  return null
+}
+
 export function QuoteStep1({
   formData, updateForm, airspace, setAirspace,
   setBuildingPerimeter, setBuildingPolygon, setBuildingDimensions,
@@ -29,7 +60,44 @@ export function QuoteStep1({
   const [geocodeError, setGeocodeError] = useState("")
   const [searchInput, setSearchInput] = useState(formData.address ?? "")
   const [searchMode, setSearchMode] = useState<"address" | "name">("address")
+  const [coordInput, setCoordInput] = useState("")
+  const [coordError, setCoordError] = useState("")
+  const [showCoordInput, setShowCoordInput] = useState(false)
+  const [posUpdating, setPosUpdating] = useState(false)
 
+  // ── Re-fetch airspace + Overpass for any lat/lng ──────────────────────────
+  const refetchForPosition = useCallback(async (lat: number, lng: number) => {
+    setPosUpdating(true)
+    try {
+      const [airRes, ovRes] = await Promise.all([
+        fetch(`/api/airspace/query?lat=${lat}&lng=${lng}`),
+        fetch(`/api/overpass?lat=${lat}&lng=${lng}`),
+      ])
+      setAirspace(await airRes.json())
+
+      const ov = await ovRes.json()
+      if (ov.status === "found" && ov.geometry) {
+        setBuildingPerimeter(calcPolygonPerimeter(ov.geometry))
+        setBuildingPolygon(ov.geometry)
+        if (ov.dimensions) setBuildingDimensions(ov.dimensions)
+        if (ov.name) setBuildingName(ov.name)
+      } else {
+        // Cleared — no building polygon found at new position
+        setBuildingPerimeter(null)
+        setBuildingPolygon(null)
+        setBuildingDimensions(null)
+      }
+    } catch { /* non-critical */ }
+    finally { setPosUpdating(false) }
+  }, [setAirspace, setBuildingPerimeter, setBuildingPolygon, setBuildingDimensions, setBuildingName])
+
+  // ── Called by draggable marker or map click ───────────────────────────────
+  const handlePositionChange = useCallback((lat: number, lng: number) => {
+    updateForm({ lat, lng })
+    refetchForPosition(lat, lng)
+  }, [updateForm, refetchForPosition])
+
+  // ── Address / name geocode ────────────────────────────────────────────────
   const handleGeocode = useCallback(async () => {
     if (!searchInput.trim() || searchInput.trim().length < 2) return
     setGeocoding(true)
@@ -41,7 +109,6 @@ export function QuoteStep1({
     setBuildingName(null)
 
     try {
-      // 1. Geocode (address or name mode)
       const geoRes = await fetch(
         `/api/geocode?q=${encodeURIComponent(searchInput)}&mode=${searchMode}`
       )
@@ -54,31 +121,31 @@ export function QuoteStep1({
 
       updateForm({ address: searchInput, lat: geo.lat, lng: geo.lng })
       if (geo.displayName) setBuildingName(geo.displayName)
-
-      // 2. Airspace check
-      const airRes = await fetch(`/api/airspace/query?lat=${geo.lat}&lng=${geo.lng}`)
-      setAirspace(await airRes.json())
-
-      // 3. Overpass building footprint + dimensions + name
-      try {
-        const ovRes = await fetch(`/api/overpass?lat=${geo.lat}&lng=${geo.lng}`)
-        const ovData = await ovRes.json()
-        if (ovData.status === "found" && ovData.geometry) {
-          setBuildingPerimeter(calcPolygonPerimeter(ovData.geometry))
-          setBuildingPolygon(ovData.geometry)
-          if (ovData.dimensions) setBuildingDimensions(ovData.dimensions)
-          // OSM name overrides geocoder display name when available
-          if (ovData.name) setBuildingName(ovData.name)
-        }
-      } catch {
-        // Non-critical — falls back to perimeter estimate
-      }
+      await refetchForPosition(geo.lat, geo.lng)
     } catch {
       setGeocodeError("網路錯誤，請稍後再試")
     } finally {
       setGeocoding(false)
     }
-  }, [searchInput, searchMode, updateForm, setAirspace, setBuildingPerimeter, setBuildingPolygon, setBuildingDimensions, setBuildingName])
+  }, [searchInput, searchMode, updateForm, setBuildingName, refetchForPosition, setAirspace, setBuildingPerimeter, setBuildingPolygon, setBuildingDimensions])
+
+  // ── Manual coordinate input ───────────────────────────────────────────────
+  const handleCoordApply = useCallback(() => {
+    setCoordError("")
+    const parsed = parseCoordinates(coordInput)
+    if (!parsed) {
+      setCoordError("格式不正確，請輸入「25.039194, 121.562611」或「25°02'21.1\"N 121°33'45.4\"E」")
+      return
+    }
+    if (parsed.lat < 21 || parsed.lat > 26 || parsed.lng < 118 || parsed.lng > 123) {
+      setCoordError("座標不在台灣範圍內")
+      return
+    }
+    updateForm({ lat: parsed.lat, lng: parsed.lng })
+    refetchForPosition(parsed.lat, parsed.lng)
+    setShowCoordInput(false)
+    setCoordInput("")
+  }, [coordInput, updateForm, refetchForPosition])
 
   const isNoFly = airspace?.status === "NoFly"
   const canProceed = formData.lat && formData.lng && formData.clientName && !isNoFly
@@ -99,21 +166,15 @@ export function QuoteStep1({
         />
       </div>
 
-      {/* Search mode toggle + input */}
+      {/* Search mode + input */}
       <div>
-        {/* Mode tabs */}
         <div className="flex gap-1 mb-2">
           {(["address", "name"] as const).map(mode => (
-            <button
-              key={mode}
-              type="button"
+            <button key={mode} type="button"
               onClick={() => { setSearchMode(mode); setSearchInput("") }}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                searchMode === mode
-                  ? "bg-blue-600 text-white"
-                  : "text-zinc-500 hover:text-zinc-800"
-              }`}
-            >
+                searchMode === mode ? "bg-blue-600 text-white" : "text-zinc-500 hover:text-zinc-800"
+              }`}>
               {mode === "address" ? "地址搜尋" : "建案名稱"}
             </button>
           ))}
@@ -135,34 +196,79 @@ export function QuoteStep1({
             }
             className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
-          <button
-            onClick={handleGeocode}
+          <button onClick={handleGeocode}
             disabled={geocoding || searchInput.trim().length < 2}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors whitespace-nowrap"
-          >
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 transition-colors whitespace-nowrap">
             {geocoding ? "定位中..." : "定位"}
           </button>
         </div>
-
         {geocodeError && <p className="text-red-500 text-sm mt-1">{geocodeError}</p>}
 
+        {/* Position confirmed */}
         {formData.lat && formData.lng && (
           <div className="mt-1 space-y-0.5">
-            <p className="text-green-600 text-sm">
-              已定位：{formData.lat.toFixed(5)}, {formData.lng.toFixed(5)}
-            </p>
-            {buildingName && (
-              <p className="text-blue-700 text-sm font-medium">
-                識別建物：{buildingName}
+            <div className="flex items-center gap-2">
+              <p className="text-green-600 text-sm">
+                已定位：{formData.lat.toFixed(5)}, {formData.lng.toFixed(5)}
               </p>
+              {posUpdating && (
+                <span className="text-xs text-zinc-400">重新查詢中...</span>
+              )}
+            </div>
+            {buildingName && (
+              <p className="text-blue-700 text-sm font-medium">識別建物：{buildingName}</p>
             )}
           </div>
         )}
       </div>
 
-      {/* Map */}
+      {/* Map with draggable marker */}
       {formData.lat && formData.lng && (
-        <QuoteMap lat={formData.lat} lng={formData.lng} airspace={airspace} />
+        <div className="space-y-2">
+          <QuoteMap
+            lat={formData.lat} lng={formData.lng}
+            airspace={airspace}
+            onPositionChange={handlePositionChange}
+          />
+
+          {/* Coordinate correction tools */}
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-zinc-400 flex-1">
+              位置不正確？可直接在地圖上點選或拖動標記至正確位置
+            </p>
+            <button
+              type="button"
+              onClick={() => { setShowCoordInput(v => !v); setCoordError("") }}
+              className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+            >
+              {showCoordInput ? "收起" : "貼上座標"}
+            </button>
+          </div>
+
+          {showCoordInput && (
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 space-y-2">
+              <p className="text-xs text-zinc-500">
+                支援十進制（25.039194, 121.562611）或 DMS（25°02′21.1″N 121°33′45.4″E）
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={coordInput}
+                  onChange={e => setCoordInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleCoordApply()}
+                  placeholder='25.039194, 121.562611'
+                  className="flex-1 px-3 py-1.5 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                />
+                <button onClick={handleCoordApply}
+                  disabled={!coordInput.trim()}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 transition-colors">
+                  套用
+                </button>
+              </div>
+              {coordError && <p className="text-red-500 text-xs">{coordError}</p>}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Airspace status */}
@@ -179,7 +285,7 @@ export function QuoteStep1({
             <span className="font-medium">
               {isNoFly ? "禁飛區 — 無法作業" :
                airspace.status === "NeedPermit"
-                 ? "需申請空域許可（額外 " + airspace.admin_days_added + " 天行政流程）"
+                 ? `需申請空域許可（額外 ${airspace.admin_days_added} 天行政流程）`
                  : "空域狀態正常，可直接作業"}
             </span>
           </div>
@@ -190,22 +296,17 @@ export function QuoteStep1({
       {/* Service type */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">服務項目</label>
-        <select
-          value={formData.serviceType ?? "cleaning"}
+        <select value={formData.serviceType ?? "cleaning"}
           onChange={e => updateForm({ serviceType: e.target.value as QuoteFormData["serviceType"] })}
-          className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-        >
-          {SERVICE_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          {SERVICE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
 
       {/* Expected date + weather risk */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">預計施工日期</label>
-        <input
-          type="date"
+        <input type="date"
           value={formData.expectedDate ?? ""}
           min={new Date().toISOString().split("T")[0]}
           onChange={e => updateForm({ expectedDate: e.target.value })}
@@ -216,9 +317,7 @@ export function QuoteStep1({
 
       {/* Urgent */}
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="urgent"
+        <input type="checkbox" id="urgent"
           checked={formData.urgent ?? false}
           onChange={e => updateForm({ urgent: e.target.checked })}
           className="w-4 h-4 accent-blue-600"
@@ -228,13 +327,10 @@ export function QuoteStep1({
         </label>
       </div>
 
-      {/* Next button */}
+      {/* Next */}
       <div className="flex justify-end pt-4">
-        <button
-          onClick={onNext}
-          disabled={!canProceed}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium"
-        >
+        <button onClick={onNext} disabled={!canProceed}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
           下一步
         </button>
       </div>
@@ -245,14 +341,11 @@ export function QuoteStep1({
 // ─── Weather risk badge ───────────────────────────────────────────────────────
 
 const RISK_STYLES: Record<string, { bg: string; border: string; text: string; badge: string }> = {
-  low:    { bg: "bg-green-50",  border: "border-green-200",  text: "text-green-800",  badge: "bg-green-100 text-green-700" },
-  medium: { bg: "bg-amber-50",  border: "border-amber-200",  text: "text-amber-800",  badge: "bg-amber-100 text-amber-700" },
-  high:   { bg: "bg-red-50",    border: "border-red-200",    text: "text-red-800",    badge: "bg-red-100   text-red-700"   },
+  low:    { bg: "bg-green-50", border: "border-green-200", text: "text-green-800", badge: "bg-green-100 text-green-700" },
+  medium: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800", badge: "bg-amber-100 text-amber-700" },
+  high:   { bg: "bg-red-50",   border: "border-red-200",   text: "text-red-800",   badge: "bg-red-100   text-red-700"   },
 }
-
-const RISK_LABELS: Record<string, string> = {
-  low: "低風險", medium: "中度風險", high: "高風險",
-}
+const RISK_LABELS: Record<string, string> = { low: "低風險", medium: "中度風險", high: "高風險" }
 
 function WeatherRiskBadge({ date }: { date?: string }) {
   const risk = getWeatherRisk(date)
@@ -260,7 +353,7 @@ function WeatherRiskBadge({ date }: { date?: string }) {
   return (
     <div className={`mt-2 p-3 rounded-lg border ${s.bg} ${s.border}`}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-base">{risk.icon}</span>
+        <span>{risk.icon}</span>
         <span className={`text-sm font-semibold ${s.text}`}>{risk.season}</span>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.badge}`}>
           {RISK_LABELS[risk.level]}
