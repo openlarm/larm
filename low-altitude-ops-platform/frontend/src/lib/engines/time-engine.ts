@@ -44,7 +44,7 @@ const COMPLEXITY_COEFF: Record<Complexity, number> = {
 }
 
 const CONTAMINATION_COEFF: Record<Contamination, number> = {
-  dust: 1.00, scale: 0.85, mold: 0.90, grease: 0.80, multi: 0.75,
+  dust: 1.00, scale: 0.85, mold: 0.90, bird: 0.83, grease: 0.80, multi: 0.75,
 }
 
 const TIME_WINDOW_COEFF: Record<TimeWindow, number> = {

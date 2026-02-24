@@ -9,7 +9,7 @@ import type {
 
 export type ServiceType = "cleaning" | "coating" | "inspection"
 export type TimeSlot = "day" | "weekend" | "night"
-export type DirtType = "dust" | "scale" | "mold" | "grease"
+export type DirtType = "dust" | "scale" | "mold" | "grease" | "bird"
 
 // ─── Taiwan seasonal weather risk matrix ─────────────────────────────────────
 
@@ -78,9 +78,10 @@ export const BUILDING_TYPE_OPTIONS: { value: BuildingType; label: string }[] = [
 ]
 
 export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string }[] = [
-  { value: "dust",   label: "灰塵 / 水漬", emoji: "💨" },
-  { value: "scale",  label: "鏽斑 / 水垢", emoji: "🟤" },
-  { value: "mold",   label: "青苔 / 霉菌", emoji: "🟢" },
+  { value: "dust",   label: "灰塵",         emoji: "💨" },
+  { value: "scale",  label: "鏽斑 / 水垢",  emoji: "🟤" },
+  { value: "mold",   label: "青苔 / 霉菌",  emoji: "🟢" },
+  { value: "bird",   label: "鳥屎",         emoji: "🐦" },
   { value: "grease", label: "油汙 / 重附著", emoji: "⚫" },
 ]
 
@@ -290,14 +291,14 @@ export function inferContamination(dirtTypes: DirtType[]): Contamination {
   if (dirtTypes.length === 0) return "dust"
   if (dirtTypes.length >= 2) return "multi"
   const map: Record<DirtType, Contamination> = {
-    dust: "dust", scale: "scale", mold: "mold", grease: "grease",
+    dust: "dust", scale: "scale", mold: "mold", bird: "bird", grease: "grease",
   }
   return map[dirtTypes[0]]
 }
 
 /** Worst contamination across all facades (for engine input) */
 export function worstContamination(facadeInputs: QuoteFacadeInput[]): Contamination {
-  const priority: Contamination[] = ["multi", "grease", "mold", "scale", "dust"]
+  const priority: Contamination[] = ["multi", "grease", "bird", "mold", "scale", "dust"]
   const all = facadeInputs.map(f => inferContamination(f.dirtTypes))
   for (const p of priority) {
     if (all.includes(p)) return p

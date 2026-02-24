@@ -18,7 +18,7 @@ const COMPLEXITY_SURCHARGE: Record<Complexity, number> = {
 // ─── Project-wide surcharges ──────────────────────────────────────────────────
 
 const CONTAMINATION_SURCHARGE: Record<Contamination, number> = {
-  dust: 0, scale: 7, mold: 5, grease: 12, multi: 15,
+  dust: 0, scale: 7, mold: 5, bird: 8, grease: 12, multi: 15,
 }
 
 const CONTAMINATION_CAP = 15

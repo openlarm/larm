@@ -209,7 +209,7 @@ export function QuoteStep3({
                   <div className="text-zinc-500">
                     {f.dirtTypes.map(d =>
                       d === "dust" ? "灰塵" : d === "scale" ? "鏽斑" :
-                      d === "mold" ? "青苔" : "油汙"
+                      d === "mold" ? "青苔" : d === "bird" ? "鳥屎" : "油汙"
                     ).join("、")}
                   </div>
                   <div className="text-zinc-500">
