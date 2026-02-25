@@ -16,6 +16,81 @@ export type Supply = "Provided" | "SelfSupply"
 export type QualCheckResult = "pass" | "fail" | "warn"
 export type HealthStatus = "ok" | "warn" | "block"
 
+// ─── LARM v1.0 Input Types ────────────────────────────────────────────────────
+
+export type RegionExposure = "windward" | "leeward" | "coastal" | "rooftop_open"
+export type CrowdDensity = "low" | "medium" | "high"
+export type OperatorExperience = "junior" | "mid" | "senior"
+
+/** Rolling 30-day weather statistics (regime context) */
+export interface Weather30dInput {
+  wind_mean_kmh: number
+  wind_p90_kmh: number
+  gust_p90_kmh: number | null
+  rain_days_30: number           // days with ≥1 mm
+  heavy_rain_days_30: number     // days with ≥20 mm
+  instability_index: number      // 0..1
+  predictability_score: number   // 0..1 (higher = more stable / predictable)
+}
+
+/** Today's forecast / real-time weather */
+export interface WeatherTodayInput {
+  wind_now_kmh: number
+  gust_now_kmh: number | null
+  rain_prob_today_pct: number    // 0..100
+  rain_mmph_forecast: number     // 1-hr rain rate (mm/h)
+  thunder_risk: 0 | 1 | null
+}
+
+/** Building and site characteristics */
+export interface BuildingSiteInput {
+  site_altitude_m: number
+  building_floors: number | null
+  building_height_m: number | null
+  facade_complexity: Complexity
+  clearance_m: number | null           // available working clearance from wall (m)
+  near_hv_power: 0 | 1
+  near_base_station: 0 | 1
+  wind_channel_effect: 0 | 1
+  rooftop_condition: "good" | "limited" | "not_available" | null
+  crowd_density: CrowdDensity | null
+  region_exposure: RegionExposure | null
+}
+
+/** Operational context factors */
+export interface OperationalContextInput {
+  time_window: "day" | "night"
+  weekend: 0 | 1
+  urgent_days: number | null          // days until deadline (null = not urgent)
+  road_closure_needed: 0 | 1
+  multi_day_split: 0 | 1 | null
+  operator_experience_level: OperatorExperience | null
+}
+
+/** Full LARM engine input */
+export interface LARMInput {
+  weather_30d: Weather30dInput
+  weather_today: WeatherTodayInput
+  building: BuildingSiteInput
+  operational?: OperationalContextInput
+  w_override?: WeatherType             // manual regime override (UI/mock)
+}
+
+// ─── LARM v1.0 Output Types ───────────────────────────────────────────────────
+
+export interface RiskExplanation {
+  factor: string
+  value: string | number
+  score: number
+  note: string
+}
+
+export interface LARMVersions {
+  larm_version: string
+  weather_regime_params_version: string
+  thresholds_version: string
+}
+
 // ─── Address ─────────────────────────────────────────────────────────────────
 
 export interface AddressResult {
@@ -70,17 +145,19 @@ export interface FacadeData {
 
 export interface WeatherDay {
   date: string // ISO
-  weather_type: WeatherType
-  risk_level: RiskLevel
-  wind_ms: number
-  rain_prob: number // 0-100
-  completion_prob: number // 0-100
+  weather_type: WeatherType    // LARM-computed W code (for display)
+  risk_level: RiskLevel        // LARM-computed R level (for display / filtering)
+  wind_ms: number              // display: wind_now_kmh / 3.6
+  rain_prob: number            // 0-100; display: rain_prob_today_pct
+  completion_prob: number      // 0-100; derived from LARM decision + buffer
+  weather_today: WeatherTodayInput   // full LARM per-day input
 }
 
 // ─── Risk ─────────────────────────────────────────────────────────────────────
 
 export interface RiskResult {
-  weather_type: WeatherType
+  // ── Backward-compatible fields (same keys as before) ──────────────────────
+  weather_type: WeatherType       // = w_code
   risk_level: RiskLevel
   internal_grade: "A" | "B" | "C" | "D"
   decision: Decision
@@ -88,6 +165,17 @@ export interface RiskResult {
   controls: string[]
   ruleset_version: string
   evaluated_at: string
+
+  // ── LARM v1.0 computed fields ─────────────────────────────────────────────
+  w_code: WeatherType
+  base_w: number                  // Base(W) score from regime
+  weather_now: number             // WeatherNow component (0..50)
+  b_score: number                 // Building/Site score (0..25)
+  o_score: number                 // Operational score (0..15)
+  risk_score: number              // Final R_score (0..100)
+  buffer_ratio: number            // Time buffer ratio (0.05..0.40)
+  explanations: RiskExplanation[] // Per-factor breakdown
+  versions: LARMVersions
 }
 
 // ─── Time Estimation ─────────────────────────────────────────────────────────
@@ -190,6 +278,7 @@ export interface Mission {
   selected_date?: string
   selected_dates?: string[]
   weather?: WeatherDay
+  weather_30d?: Weather30dInput    // scenario 30d context; stored by Step 5 for Step 6
   risk?: RiskResult
   time_estimate?: TimeResult
   pricing?: PricingResult

@@ -4,7 +4,7 @@ import { StepShell } from "../StepShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle, CalendarX, CheckSquare, Info } from "lucide-react"
-import { MOCK_WEATHER_SCENARIOS, MOCK_CONFLICTS } from "@/lib/mock-data"
+import { MOCK_WEATHER_SCENARIOS, MOCK_WEATHER_30D, MOCK_CONFLICTS } from "@/lib/mock-data"
 import type { Mission, WeatherDay, RiskLevel, WeatherType } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -13,20 +13,20 @@ interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => vo
 // ── Legend data ────────────────────────────────────────────────────────────────
 
 const W_LEVELS: { type: WeatherType; label: string; cond: string; color: string; bg: string }[] = [
-  { type: "W0", label: "最佳天候",  cond: "晴天，風速 <3 m/s",              color: "text-emerald-400", bg: "bg-emerald-500/10" },
-  { type: "W1", label: "輕微限制",  cond: "少雲/微風，3–5 m/s",             color: "text-sky-400",     bg: "bg-sky-500/10" },
-  { type: "W2", label: "中度限制",  cond: "多雲/間歇雨，5–7 m/s",           color: "text-yellow-400",  bg: "bg-yellow-500/10" },
-  { type: "W3", label: "低能見度",  cond: "霧/薄霧，能見度 <500m",           color: "text-orange-400",  bg: "bg-orange-500/10" },
-  { type: "W4", label: "對流天氣",  cond: "雷陣雨可能，需即時雷達",           color: "text-orange-500",  bg: "bg-orange-500/15" },
-  { type: "W5", label: "惡劣天候",  cond: "強風 >7 m/s / 豪雨，原則不排",   color: "text-red-400",     bg: "bg-red-500/10" },
+  { type: "W0", label: "穩定高壓晴朗型",   cond: "最穩定背景，低雨低風",                    color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  { type: "W1", label: "東北季風型",       cond: "偏強風 P90≥33 km/h，迎風面/沿海保守",    color: "text-sky-400",     bg: "bg-sky-500/10" },
+  { type: "W2", label: "鋒面掃過型",       cond: "降雨系統移動，變動性較高",                color: "text-yellow-400",  bg: "bg-yellow-500/10" },
+  { type: "W3", label: "梅雨滯留型",       cond: "連續多日降雨（≥15天），窗口小",           color: "text-orange-400",  bg: "bg-orange-500/10" },
+  { type: "W4", label: "午後熱對流型",     cond: "局部雷陣雨、突變快，不穩定高",            color: "text-orange-500",  bg: "bg-orange-500/15" },
+  { type: "W5", label: "颱風外圍環流型",   cond: "強風 P90≥39 km/h / 強雨，需保守",       color: "text-red-400",     bg: "bg-red-500/10" },
 ]
 
 const R_LEVELS: { level: RiskLevel; label: string; desc: string; color: string; bg: string }[] = [
-  { level: "R0", label: "無場域風險",   desc: "無額外環境危險因子",           color: "text-emerald-400", bg: "bg-emerald-500/10" },
-  { level: "R1", label: "輕微場域限制", desc: "輕封路、周邊人流",             color: "text-sky-400",     bg: "bg-sky-500/10" },
-  { level: "R2", label: "中度作業限制", desc: "封路+高人流、高空電纜",        color: "text-amber-400",   bg: "bg-amber-500/10" },
-  { level: "R3", label: "重度限制",     desc: "鄰近醫院/學校，需例外審核",    color: "text-orange-400",  bg: "bg-orange-500/10" },
-  { level: "R4", label: "禁止作業",     desc: "明確禁飛或絕對安全疑慮",       color: "text-red-400",     bg: "bg-red-500/10" },
+  { level: "R0", label: "無風險",   desc: "R_score 0–20，正常排程",            color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  { level: "R1", label: "輕微",     desc: "R_score 21–40，GO 持續監控",        color: "text-sky-400",     bg: "bg-sky-500/10" },
+  { level: "R2", label: "中度",     desc: "R_score 41–65，視條件 GO/COND",     color: "text-amber-400",   bg: "bg-amber-500/10" },
+  { level: "R3", label: "重度",     desc: "R_score 66–85，需主管審核",          color: "text-orange-400",  bg: "bg-orange-500/10" },
+  { level: "R4", label: "禁止",     desc: "R_score 86–100，NO-GO",             color: "text-red-400",     bg: "bg-red-500/10" },
 ]
 
 // W×R decision matrix
@@ -119,6 +119,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
       selected_dates: selected,
       selected_date: selected[0],
       weather: worst,
+      weather_30d: MOCK_WEATHER_30D[scenarioKey],  // store 30d context for LARM (Step 6)
     })
     next()
   }

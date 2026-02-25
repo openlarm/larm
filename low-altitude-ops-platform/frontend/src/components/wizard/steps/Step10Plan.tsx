@@ -73,7 +73,7 @@ export function Step10Plan({ mission, back, onFinish }: Props) {
             <div className="flex items-center justify-between pb-2 border-b border-zinc-700">
               <span className="font-semibold text-white">任務規劃書</span>
               <div className="flex gap-1.5">
-                {[["Ruleset", SYSTEM_VERSIONS.ruleset], ["Pricing", SYSTEM_VERSIONS.pricing], ["Time", SYSTEM_VERSIONS.time_model]].map(([k, v]) => (
+                {[["LARM", mission.risk?.versions?.larm_version ?? SYSTEM_VERSIONS.ruleset], ["Pricing", SYSTEM_VERSIONS.pricing], ["Time", SYSTEM_VERSIONS.time_model]].map(([k, v]) => (
                   <span key={k} className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-zinc-700 text-emerald-400">{k}: {v}</span>
                 ))}
               </div>
@@ -96,13 +96,23 @@ export function Step10Plan({ mission, back, onFinish }: Props) {
 
               <div className="text-zinc-500">風險等級</div>
               <div className="font-mono font-bold text-zinc-100">
-                {mission.weather?.weather_type}–{mission.risk?.risk_level}
+                {mission.risk?.w_code ?? mission.weather?.weather_type}–{mission.risk?.risk_level}
+                {mission.risk?.risk_score != null && (
+                  <span className="ml-2 text-sm text-zinc-400 font-normal">R_score {mission.risk.risk_score}</span>
+                )}
               </div>
 
               <div className="text-zinc-500">作業決策</div>
               <div className={mission.risk?.decision === "GO" ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
                 {mission.risk?.decision}
               </div>
+
+              {mission.risk?.buffer_ratio != null && (
+                <>
+                  <div className="text-zinc-500">時間緩衝比例</div>
+                  <div className="font-mono text-sky-400">{(mission.risk.buffer_ratio * 100).toFixed(1)}%</div>
+                </>
+              )}
 
               <div className="text-zinc-500">作業時間</div>
               <div className="text-zinc-200">

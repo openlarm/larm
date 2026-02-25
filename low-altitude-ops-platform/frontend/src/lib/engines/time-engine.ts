@@ -85,6 +85,7 @@ export interface TimeEngineInput {
   waterSupply: Supply
   powerSupply: Supply
   rooftopAccess: RooftopAccess
+  bufferRatioOverride?: number     // LARM v1.0: overrides BUFFER_RATIO lookup when provided
 }
 
 export function estimateTime(input: TimeEngineInput): TimeResult {
@@ -92,6 +93,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
     missionType, buildingType, floors, wind_ms,
     facades, contamination, timeWindow, riskLevel,
     waterSupply, powerSupply, rooftopAccess,
+    bufferRatioOverride,
   } = input
 
   const dominant_complexity: Complexity =
@@ -121,7 +123,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
   const pure_op_hours = adjusted > 0 ? total_area / adjusted : 0
   const rest_min = Math.floor(pure_op_hours / 2) * 30
 
-  const buffer_ratio = BUFFER_RATIO[riskLevel] ?? 0
+  const buffer_ratio = bufferRatioOverride ?? BUFFER_RATIO[riskLevel] ?? 0
   const buffer_min = Math.round(
     (pure_op_hours * 60 + setup_min + teardown_min) * buffer_ratio
   )

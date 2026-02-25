@@ -175,12 +175,37 @@ const BUILDING_DIMENSIONS: Record<BuildingType, { width_m: number; depth_m: numb
   solar:      { width_m: 10, depth_m: 5  },
 }
 
-// ─── Risk level from floors ──────────────────────────────────────────────────
+// ─── Risk level from building characteristics (LARM B-score partial) ─────────
+// Uses available Quote data (floors, complexity, altitude) to compute a partial
+// B-score and map to R_level. No weather or operational context → R_level capped
+// at R2 (full LARM evaluation is done in the LARP mission wizard Step 6).
 
-export function inferRiskLevel(floors: number): RiskLevel {
-  if (floors <= 10) return "R0"
-  if (floors <= 20) return "R1"
-  return "R2"
+export function inferRiskLevel(
+  floors: number,
+  options?: {
+    altitude_m?: number
+    complexity?: import("@/lib/types").Complexity
+    near_hv_power?: boolean
+    wind_channel?: boolean
+  }
+): RiskLevel {
+  const alt     = options?.altitude_m ?? 10
+  const cmplx   = options?.complexity ?? "light"
+  const hvPower = options?.near_hv_power ? 4 : 0
+  const wCh     = options?.wind_channel  ? 2 : 0
+
+  // Partial B-score (altitude + height + complexity + known hazards)
+  const altScore  = alt > 800 ? 6 : alt > 300 ? 4 : alt > 100 ? 2 : 0
+  const heightScore = floors > 30 ? 10 : floors > 20 ? 7 : floors > 10 ? 4 : 0
+  const cxScore   = ({ none: 0, light: 2, medium: 5, heavy: 8 } as const)[cmplx] ?? 2
+  const envScore  = Math.min(8, hvPower + wCh)
+
+  const b_partial = Math.min(25, altScore + heightScore + cxScore + envScore)
+
+  // Map partial B-score to R_level (conservative: cap at R2 without weather data)
+  if (b_partial >= 20) return "R2"
+  if (b_partial >= 10) return "R1"
+  return "R0"
 }
 
 // ─── Area estimation ─────────────────────────────────────────────────────────

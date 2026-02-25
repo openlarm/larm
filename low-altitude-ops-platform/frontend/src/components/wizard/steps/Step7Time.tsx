@@ -33,6 +33,7 @@ export function Step7Time({ mission, update, next, back }: Props) {
         contamination,
         timeWindow,
         riskLevel: mission.risk?.risk_level ?? "R1",
+        bufferRatioOverride: mission.risk?.buffer_ratio,
         waterSupply: mission.building?.water_supply ?? "Provided",
         powerSupply: mission.building?.power_supply ?? "Provided",
         rooftopAccess: mission.building?.rooftop_access ?? "Good",
