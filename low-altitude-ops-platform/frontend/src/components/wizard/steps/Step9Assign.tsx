@@ -36,8 +36,16 @@ const RESULT_ICON = {
 export function Step9Assign({ mission, update, next, back }: Props) {
   const [useQualifiedTeam, setUseQualifiedTeam] = useState(true)
   const [useHealthyEquip, setUseHealthyEquip] = useState(true)
+  const [crewIndex, setCrewIndex] = useState(0) // 0 = Crew A (first 4), 1 = Crew B (next 4)
 
-  const team = useQualifiedTeam ? MOCK_TEAMS.qualified : MOCK_TEAMS.unqualified
+  // Standard crew = 4 people: 1 RPIC + 2 Ground/Observer + 1 Safety/PM
+  const CREW_SIZE = 4
+  const qualifiedPool = MOCK_TEAMS.qualified
+  const crewA = qualifiedPool.slice(0, CREW_SIZE)
+  const crewB = qualifiedPool.slice(CREW_SIZE, CREW_SIZE * 2)
+  const crews = [crewA, crewB].filter(c => c.length > 0)
+
+  const team = useQualifiedTeam ? (crews[crewIndex] ?? crewA) : MOCK_TEAMS.unqualified
   const equipment = useHealthyEquip ? MOCK_EQUIPMENT.healthy : [...MOCK_EQUIPMENT.healthy, ...MOCK_EQUIPMENT.blocked]
 
   const isNight = false
@@ -86,17 +94,35 @@ export function Step9Assign({ mission, update, next, back }: Props) {
     <StepShell title="Step 9 — Assign Team & Equipment" subtitle="指派團隊與設備" onBack={back} onNext={handleNext} nextDisabled={!canNext}>
 
       {/* Scenario toggles */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <button onClick={() => setUseQualifiedTeam(q => !q)}
           className={cn("px-3 py-1.5 text-xs rounded border transition-colors",
             useQualifiedTeam ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border-red-500/30 text-red-300")}>
           團隊：{useQualifiedTeam ? "資格完整 ✓" : "缺少證照 ✗"}（點擊切換）
         </button>
+        {useQualifiedTeam && crews.length > 1 && (
+          <div className="flex items-center gap-1">
+            {crews.map((_, i) => (
+              <button key={i} onClick={() => setCrewIndex(i)}
+                className={cn("px-3 py-1.5 text-xs rounded border transition-colors",
+                  crewIndex === i
+                    ? "bg-sky-500/10 border-sky-500/30 text-sky-300"
+                    : "border-zinc-700 text-zinc-500 hover:bg-zinc-800")}>
+                {i === 0 ? "Crew A" : "Crew B"}
+              </button>
+            ))}
+          </div>
+        )}
         <button onClick={() => setUseHealthyEquip(h => !h)}
           className={cn("px-3 py-1.5 text-xs rounded border transition-colors",
             useHealthyEquip ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-amber-500/10 border-amber-500/30 text-amber-300")}>
           設備：{useHealthyEquip ? "全部健康 ✓" : "含 Block 設備 ⚠"} （點擊切換）
         </button>
+      </div>
+
+      {/* Team composition info */}
+      <div className="flex items-center gap-2 text-[10px] text-zinc-500 px-1">
+        <span>標準組：4 人 = 1 RPIC（飛手）+ 2 Observer（地勤）+ 1 Safety（工安/PM）</span>
       </div>
 
       {/* Team */}

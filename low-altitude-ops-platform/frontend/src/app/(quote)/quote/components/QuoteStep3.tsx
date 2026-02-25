@@ -123,7 +123,12 @@ export function QuoteStep3({
       ? allContaminationTypes(formData.facadeInputs!)
       : (["dust"] as Contamination[])
 
-    const riskLevel = inferRiskLevel(formData.floors)
+    const riskLevel = inferRiskLevel(formData.floors, {
+      wind_channel: formData.windChannelEffect,
+      region_exposure: formData.regionExposure,
+      crowd_density: formData.crowdDensity,
+      near_base_station: formData.nearBaseStation,
+    })
     const timeWindow = mapTimeSlot(formData.timeSlot)
     const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
     const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
@@ -232,6 +237,8 @@ export function QuoteStep3({
                 airspace.status === "NeedPermit" ? "⚠️ 需申請許可" : "🚫 禁飛區"
               }
             />
+            {formData.regionExposure && <InfoRow label="環境曝露" value={formData.regionExposure === "windward" ? "迎風面" : formData.regionExposure === "leeward" ? "背風面" : formData.regionExposure === "coastal" ? "沿海" : "開闊屋頂"} />}
+            {formData.crowdDensity && <InfoRow label="人流密度" value={formData.crowdDensity === "low" ? "低" : formData.crowdDensity === "medium" ? "中" : "高"} />}
             <InfoRow label="面積來源" value={SOURCE_LABELS[areaEstimate.source]} />
             <InfoRow
               label="施作總面積"

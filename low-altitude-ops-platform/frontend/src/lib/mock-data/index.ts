@@ -2,6 +2,8 @@ import type {
   AddressResult,
   AirspaceResult,
   WeatherDay,
+  WeatherType,
+  RiskLevel,
   Weather30dInput,
   WeatherTodayInput,
   TeamMember,
@@ -111,48 +113,108 @@ const dateStr = (offset: number) => {
   return d.toISOString().split("T")[0]
 }
 
-// ─── Weather scenarios (14-day calendar) ─────────────────────────────────────
+// ─── Weather scenarios (365-day calendar) ────────────────────────────────────
+// Generates 365 days based on Taiwan's monthly climate profiles.
 // weather_type and risk_level are pre-computed from LARM for display purposes.
 // Step 6 re-runs LARM with full building+operational context.
 
+type WDist = [number, WeatherType][]  // cumulative weight → W-code
+type MonthProfile = { wDist: WDist; riskBase: RiskLevel }
+
+// Taiwan monthly climate distributions (W-code probability + base risk)
+const MONTH_PROFILES: MonthProfile[] = [
+  /* Jan */ { wDist: [[0.50, "W0"], [0.85, "W1"], [1.00, "W2"]], riskBase: "R0" },
+  /* Feb */ { wDist: [[0.45, "W0"], [0.80, "W1"], [1.00, "W2"]], riskBase: "R0" },
+  /* Mar */ { wDist: [[0.40, "W0"], [0.65, "W1"], [0.90, "W2"], [1.00, "W3"]], riskBase: "R1" },
+  /* Apr */ { wDist: [[0.35, "W0"], [0.55, "W1"], [0.80, "W2"], [0.95, "W3"], [1.00, "W4"]], riskBase: "R1" },
+  /* May */ { wDist: [[0.20, "W0"], [0.35, "W1"], [0.55, "W2"], [0.85, "W3"], [1.00, "W4"]], riskBase: "R2" },
+  /* Jun */ { wDist: [[0.15, "W0"], [0.25, "W1"], [0.45, "W2"], [0.75, "W3"], [0.95, "W4"], [1.00, "W5"]], riskBase: "R2" },
+  /* Jul */ { wDist: [[0.15, "W0"], [0.25, "W1"], [0.40, "W2"], [0.55, "W3"], [0.80, "W4"], [1.00, "W5"]], riskBase: "R3" },
+  /* Aug */ { wDist: [[0.12, "W0"], [0.22, "W1"], [0.38, "W2"], [0.52, "W3"], [0.78, "W4"], [1.00, "W5"]], riskBase: "R3" },
+  /* Sep */ { wDist: [[0.20, "W0"], [0.35, "W1"], [0.55, "W2"], [0.70, "W3"], [0.88, "W4"], [1.00, "W5"]], riskBase: "R2" },
+  /* Oct */ { wDist: [[0.40, "W0"], [0.65, "W1"], [0.85, "W2"], [0.95, "W3"], [1.00, "W4"]], riskBase: "R1" },
+  /* Nov */ { wDist: [[0.50, "W0"], [0.80, "W1"], [0.95, "W2"], [1.00, "W3"]], riskBase: "R0" },
+  /* Dec */ { wDist: [[0.55, "W0"], [0.88, "W1"], [1.00, "W2"]], riskBase: "R0" },
+]
+
+// Deterministic hash for consistent pseudo-random values
+function hash(seed: number): number {
+  let h = (seed * 2654435761) >>> 0
+  h = ((h >>> 16) ^ h) * 0x45d9f3b >>> 0
+  h = ((h >>> 16) ^ h) >>> 0
+  return (h & 0x7fffffff) / 0x7fffffff // 0..1
+}
+
+function pickFromDist(dist: WDist, rand: number): WeatherType {
+  for (const [threshold, w] of dist) {
+    if (rand <= threshold) return w
+  }
+  return dist[dist.length - 1][1]
+}
+
+// Map W-code + month base risk → daily risk level
+function riskForW(w: WeatherType, baseRisk: RiskLevel, rand: number): RiskLevel {
+  const wIdx = parseInt(w[1])
+  const rBase = parseInt(baseRisk[1])
+  // Add some variance: +/-1 risk level with probability
+  let r = Math.min(4, Math.max(0, rBase + Math.floor(wIdx / 2) - 1))
+  if (rand > 0.85) r = Math.min(4, r + 1) // 15% chance worse
+  if (rand < 0.15) r = Math.max(0, r - 1) // 15% chance better
+  return `R${r}` as RiskLevel
+}
+
+function completionForRisk(rl: RiskLevel, w: WeatherType): number {
+  const rIdx = parseInt(rl[1])
+  const wIdx = parseInt(w[1])
+  const base = [97, 82, 60, 35, 10][rIdx]
+  return Math.max(5, Math.min(99, base - wIdx * 3))
+}
+
+// Generate weather for a given day using scenario seed + day offset
+function genDay(scenarioSeed: number, dayOffset: number): WeatherDay {
+  const d = new Date(today)
+  d.setDate(d.getDate() + dayOffset)
+  const month = d.getMonth() // 0-based
+  const profile = MONTH_PROFILES[month]
+
+  const seed = scenarioSeed * 1000 + dayOffset
+  const r1 = hash(seed)
+  const r2 = hash(seed + 7919)
+  const r3 = hash(seed + 104729)
+
+  const w = pickFromDist(profile.wDist, r1)
+  const rl = riskForW(w, profile.riskBase, r2)
+
+  // Generate weather_today based on W-code
+  const wIdx = parseInt(w[1])
+  let weather_today: WeatherTodayInput
+  if (wIdx <= 1) {
+    weather_today = stableDay(seed)
+  } else if (wIdx <= 3) {
+    weather_today = monsoonDay(seed)
+  } else {
+    weather_today = typhoonDay(seed)
+  }
+
+  return {
+    date: d.toISOString().split("T")[0],
+    weather_type: w,
+    risk_level: rl,
+    wind_ms: Math.round(weather_today.wind_now_kmh / 3.6 * 10) / 10,
+    rain_prob: weather_today.rain_prob_today_pct,
+    completion_prob: completionForRisk(rl, w),
+    weather_today,
+  }
+}
+
+function generate365(scenarioSeed: number): WeatherDay[] {
+  return Array.from({ length: 365 }, (_, i) => genDay(scenarioSeed, i))
+}
+
 export const MOCK_WEATHER_SCENARIOS: Record<string, WeatherDay[]> = {
-  "W0-R0": Array.from({ length: 14 }, (_, i) => {
-    const t = stableDay(i)
-    return {
-      date: dateStr(i),
-      weather_type: "W0",
-      risk_level:   i % 7 === 6 ? "R1" : "R0",
-      wind_ms:      Math.round(t.wind_now_kmh / 3.6 * 10) / 10,
-      rain_prob:    t.rain_prob_today_pct,
-      completion_prob: i % 7 === 6 ? 85 : 97,
-      weather_today: t,
-    }
-  }),
-  "W1-R2": Array.from({ length: 14 }, (_, i) => {
-    const t = monsoonDay(i)
-    const rl = i % 5 === 0 ? "R3" : i % 3 === 0 ? "R2" : "R1"
-    return {
-      date: dateStr(i),
-      weather_type: i % 3 === 0 ? "W2" : "W1",
-      risk_level:   rl,
-      wind_ms:      Math.round(t.wind_now_kmh / 3.6 * 10) / 10,
-      rain_prob:    t.rain_prob_today_pct,
-      completion_prob: rl === "R3" ? 30 : rl === "R2" ? 55 : 75,
-      weather_today: t,
-    }
-  }),
-  "W5-R3": Array.from({ length: 14 }, (_, i) => {
-    const t = typhoonDay(i)
-    return {
-      date: dateStr(i),
-      weather_type: i < 3 ? "W4" : "W5",
-      risk_level:   i < 3 ? "R2" : "R3",
-      wind_ms:      Math.round(t.wind_now_kmh / 3.6 * 10) / 10,
-      rain_prob:    t.rain_prob_today_pct,
-      completion_prob: i < 3 ? 40 : 15,
-      weather_today: t,
-    }
-  }),
+  "W0-R0": generate365(1),  // Stable baseline
+  "W1-R2": generate365(2),  // NE monsoon influenced
+  "W5-R3": generate365(3),  // Typhoon influenced
 }
 
 // ─── Building templates ───────────────────────────────────────────────────────
@@ -186,27 +248,27 @@ export const MOCK_FACADES: FacadeData[] = [
 ]
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
+// Standard crew: 4 people = 1 RPIC (飛手) + 2 Ground Crew (地勤/觀察員) + 1 Safety/PM
 
 export const MOCK_TEAMS: { qualified: TeamMember[]; unqualified: TeamMember[] } = {
   qualified: [
+    // ── Crew A (default) ──
     { id: "P001", name: "林志傑", role: "RPIC",     cert_number: "TW-RPIC-2021-4821", cert_expires: "2027-06-30", night_qualified: true,  highrise_qualified: true  },
     { id: "P002", name: "陳雅萍", role: "Observer", cert_number: "TW-OBS-2022-1130",  cert_expires: "2027-03-15", night_qualified: true,  highrise_qualified: true  },
-    { id: "P003", name: "黃建宏", role: "Safety",   cert_number: "TW-SAFE-2023-0044", cert_expires: "2026-12-31", night_qualified: false, highrise_qualified: true  },
-    { id: "P004", name: "王美玲", role: "PM",       cert_number: "PM-2024-0012",       cert_expires: "2028-01-01", night_qualified: false, highrise_qualified: false },
+    { id: "P003", name: "黃建宏", role: "Observer", cert_number: "TW-OBS-2023-0044",  cert_expires: "2027-12-31", night_qualified: true,  highrise_qualified: true  },
+    { id: "P004", name: "王美玲", role: "Safety",   cert_number: "TW-SAFE-2022-0012", cert_expires: "2028-01-01", night_qualified: false, highrise_qualified: true  },
+    // ── Crew B (alternate) ──
     { id: "P007", name: "蔡宗翰", role: "RPIC",     cert_number: "TW-RPIC-2022-5530", cert_expires: "2028-05-15", night_qualified: true,  highrise_qualified: true  },
-    { id: "P008", name: "劉怡君", role: "Observer", cert_number: "TW-OBS-2023-2201",  cert_expires: "2027-11-20", night_qualified: true,  highrise_qualified: false },
-    { id: "P009", name: "許志遠", role: "Safety",   cert_number: "TW-SAFE-2022-0118", cert_expires: "2027-08-31", night_qualified: true,  highrise_qualified: true  },
-    { id: "P010", name: "謝宜庭", role: "PM",       cert_number: "PM-2023-0034",       cert_expires: "2029-03-01", night_qualified: false, highrise_qualified: false },
-    { id: "P011", name: "鄭宇霆", role: "RPIC",     cert_number: "TW-RPIC-2023-6612", cert_expires: "2026-09-30", night_qualified: false, highrise_qualified: true  },
-    { id: "P012", name: "曾佳慧", role: "Observer", cert_number: "TW-OBS-2022-0993",  cert_expires: "2027-02-28", night_qualified: false, highrise_qualified: true  },
-    { id: "P013", name: "賴建銘", role: "Safety",   cert_number: "TW-SAFE-2024-0071", cert_expires: "2027-12-31", night_qualified: false, highrise_qualified: false },
-    { id: "P014", name: "周雅文", role: "PM",       cert_number: "PM-2024-0058",       cert_expires: "2028-07-01", night_qualified: false, highrise_qualified: false },
+    { id: "P008", name: "劉怡君", role: "Observer", cert_number: "TW-OBS-2023-2201",  cert_expires: "2027-11-20", night_qualified: true,  highrise_qualified: true  },
+    { id: "P009", name: "許志遠", role: "Observer", cert_number: "TW-OBS-2022-0118",  cert_expires: "2027-08-31", night_qualified: true,  highrise_qualified: true  },
+    { id: "P010", name: "謝宜庭", role: "Safety",   cert_number: "TW-SAFE-2023-0034", cert_expires: "2029-03-01", night_qualified: false, highrise_qualified: true  },
   ],
   unqualified: [
+    // Demo scenario: one expired cert, one missing highrise for tall buildings
     { id: "P005", name: "張威霖", role: "RPIC",     cert_number: "TW-RPIC-2020-1103", cert_expires: "2025-12-31", night_qualified: false, highrise_qualified: false },
     { id: "P006", name: "吳詩涵", role: "Observer", cert_number: "TW-OBS-2021-0887",  cert_expires: "2026-08-20", night_qualified: false, highrise_qualified: false },
-    { id: "P015", name: "江明哲", role: "RPIC",     cert_number: "TW-RPIC-2021-2207", cert_expires: "2025-09-15", night_qualified: false, highrise_qualified: false },
-    { id: "P016", name: "羅佩瑄", role: "Observer", cert_number: "TW-OBS-2022-1445",  cert_expires: "2026-04-10", night_qualified: false, highrise_qualified: false },
+    { id: "P015", name: "江明哲", role: "Observer", cert_number: "TW-OBS-2021-2207",  cert_expires: "2025-09-15", night_qualified: false, highrise_qualified: false },
+    { id: "P016", name: "羅佩瑄", role: "Safety",   cert_number: "TW-SAFE-2022-1445", cert_expires: "2026-04-10", night_qualified: false, highrise_qualified: false },
   ],
 }
 

@@ -1,9 +1,9 @@
 "use client"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { StepShell } from "../StepShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, CalendarX, CheckSquare, Info } from "lucide-react"
+import { AlertTriangle, CalendarX, CheckSquare, Info, ChevronLeft, ChevronRight } from "lucide-react"
 import { MOCK_WEATHER_SCENARIOS, MOCK_WEATHER_30D, MOCK_CONFLICTS } from "@/lib/mock-data"
 import type { Mission, WeatherDay, RiskLevel, WeatherType } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -28,6 +28,8 @@ const R_LEVELS: { level: RiskLevel; label: string; desc: string; color: string; 
   { level: "R3", label: "重度",     desc: "R_score 66–85，需主管審核",          color: "text-orange-400",  bg: "bg-orange-500/10" },
   { level: "R4", label: "禁止",     desc: "R_score 86–100，NO-GO",             color: "text-red-400",     bg: "bg-red-500/10" },
 ]
+
+const MONTH_NAMES = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
 
 // W×R decision matrix
 const WR_MATRIX: Record<WeatherType, Record<RiskLevel, "go" | "cond" | "nogo">> = {
@@ -82,22 +84,60 @@ function quickEstimateDays(facades: { area_m2: number }[], buildingType?: string
 
 export function Step5Weather({ mission, update, next, back }: Props) {
   const scenarioKey = mission.airspace?.status === "NeedPermit" ? "W1-R2" : "W0-R0"
-  const days = MOCK_WEATHER_SCENARIOS[scenarioKey]
+  const allDays = MOCK_WEATHER_SCENARIOS[scenarioKey]
 
   const initSelected =
     mission.selected_dates ??
     (mission.selected_date ? [mission.selected_date] : [])
   const [selected, setSelected] = useState<string[]>(initSelected)
   const [hideHighRisk, setHideHighRisk] = useState(false)
+  const [monthOffset, setMonthOffset] = useState(0) // 0 = current month
+
+  // Group days by month for navigation
+  const monthGroups = useMemo(() => {
+    const groups: { year: number; month: number; label: string; days: WeatherDay[] }[] = []
+    const seen = new Map<string, number>()
+    for (const day of allDays) {
+      const d = new Date(day.date)
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      if (!seen.has(key)) {
+        seen.set(key, groups.length)
+        groups.push({
+          year: d.getFullYear(),
+          month: d.getMonth(),
+          label: `${d.getFullYear()} ${MONTH_NAMES[d.getMonth()]}`,
+          days: [],
+        })
+      }
+      groups[seen.get(key)!].days.push(day)
+    }
+    return groups
+  }, [allDays])
+
+  const currentGroup = monthGroups[Math.min(monthOffset, monthGroups.length - 1)]
+  const days = currentGroup?.days ?? []
 
   const filtered = hideHighRisk
     ? days.filter(d => d.risk_level !== "R3" && d.risk_level !== "R4")
     : days
 
-  const top3 = [...days]
-    .sort((a, b) => b.completion_prob - a.completion_prob)
-    .slice(0, 3)
-    .map(d => d.date)
+  // Top 3 across entire dataset for recommendations
+  const top3 = useMemo(() =>
+    [...allDays]
+      .sort((a, b) => b.completion_prob - a.completion_prob)
+      .slice(0, 5)
+      .map(d => d.date),
+    [allDays]
+  )
+
+  // Top 3 in current month view for quick selection
+  const monthTop3 = useMemo(() =>
+    [...days]
+      .sort((a, b) => b.completion_prob - a.completion_prob)
+      .slice(0, 3)
+      .map(d => d.date),
+    [days]
+  )
 
   const estimatedDays = quickEstimateDays(
     mission.facades ?? [],
@@ -105,8 +145,8 @@ export function Step5Weather({ mission, update, next, back }: Props) {
   )
 
   const conflictCount = selected.filter(d => MOCK_CONFLICTS[d]?.length > 0).length
-  const hasR4Selected = selected.some(d => days.find(day => day.date === d)?.risk_level === "R4")
-  const worst = worstWeather(days, selected)
+  const hasR4Selected = selected.some(d => allDays.find(day => day.date === d)?.risk_level === "R4")
+  const worst = worstWeather(allDays, selected)
 
   const toggleDate = (date: string) =>
     setSelected(prev =>
@@ -119,17 +159,28 @@ export function Step5Weather({ mission, update, next, back }: Props) {
       selected_dates: selected,
       selected_date: selected[0],
       weather: worst,
-      weather_30d: MOCK_WEATHER_30D[scenarioKey],  // store 30d context for LARM (Step 6)
+      weather_30d: MOCK_WEATHER_30D[scenarioKey],
     })
     next()
   }
 
   const enough = selected.length >= estimatedDays
 
+  // Month summary stats
+  const monthStats = useMemo(() => {
+    const goCount = days.filter(d => d.risk_level === "R0" || d.risk_level === "R1").length
+    const condCount = days.filter(d => d.risk_level === "R2").length
+    const nogoCount = days.filter(d => d.risk_level === "R3" || d.risk_level === "R4").length
+    const avgCompletion = days.length > 0
+      ? Math.round(days.reduce((s, d) => s + d.completion_prob, 0) / days.length)
+      : 0
+    return { goCount, condCount, nogoCount, avgCompletion }
+  }, [days])
+
   return (
     <StepShell
       title="Step 5 — Weather Window"
-      subtitle="可作業日期 / 天候窗口（多選）"
+      subtitle="可作業日期 / 天候窗口（多選，近一年度）"
       onBack={back}
       onNext={handleNext}
       nextDisabled={selected.length === 0}
@@ -139,10 +190,58 @@ export function Step5Weather({ mission, update, next, back }: Props) {
         {/* ── Left: table ─────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 space-y-3">
 
+          {/* Month navigation */}
+          <div className="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
+            <button
+              onClick={() => setMonthOffset(m => Math.max(0, m - 1))}
+              disabled={monthOffset === 0}
+              className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4 text-zinc-300" />
+            </button>
+            <div className="flex-1 flex items-center justify-center gap-3">
+              <span className="text-sm font-semibold text-white">{currentGroup?.label}</span>
+              <span className="text-[10px] text-zinc-500">
+                {days.length} 天 · GO {monthStats.goCount} · COND {monthStats.condCount} · NO-GO {monthStats.nogoCount} · 平均完成率 {monthStats.avgCompletion}%
+              </span>
+            </div>
+            <button
+              onClick={() => setMonthOffset(m => Math.min(monthGroups.length - 1, m + 1))}
+              disabled={monthOffset >= monthGroups.length - 1}
+              className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight className="h-4 w-4 text-zinc-300" />
+            </button>
+          </div>
+
+          {/* Month quick-jump tabs */}
+          <div className="flex flex-wrap gap-1">
+            {monthGroups.map((g, i) => {
+              const selInMonth = selected.filter(d => g.days.some(gd => gd.date === d)).length
+              return (
+                <button
+                  key={i}
+                  onClick={() => setMonthOffset(i)}
+                  className={cn(
+                    "px-2 py-1 text-[10px] rounded border transition-colors",
+                    i === monthOffset
+                      ? "bg-zinc-600 border-zinc-500 text-white"
+                      : "border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  )}
+                >
+                  {MONTH_NAMES[g.month].slice(0, 2)}
+                  {selInMonth > 0 && (
+                    <span className="ml-1 text-emerald-400">{selInMonth}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Controls row */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-500">建議日期：</span>
-            {top3.map(d => (
+            <span className="text-xs text-zinc-500">本月推薦：</span>
+            {monthTop3.map(d => (
               <button
                 key={d}
                 onClick={() => toggleDate(d)}
@@ -157,16 +256,16 @@ export function Step5Weather({ mission, update, next, back }: Props) {
               </button>
             ))}
             <button
-              onClick={() => setSelected(top3)}
+              onClick={() => setSelected(prev => [...new Set([...prev, ...monthTop3])])}
               className="px-2.5 py-1 text-xs rounded border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors"
             >
-              全選 Top 3
+              全選本月 Top 3
             </button>
             <button
               onClick={() => setSelected([])}
               className="px-2.5 py-1 text-xs rounded border border-zinc-800 text-zinc-600 hover:bg-zinc-800 transition-colors"
             >
-              清除
+              清除全部
             </button>
             <button
               onClick={() => setHideHighRisk(h => !h)}
@@ -182,9 +281,9 @@ export function Step5Weather({ mission, update, next, back }: Props) {
           </div>
 
           {/* Weather table */}
-          <div className="border border-zinc-700 rounded-lg overflow-hidden">
+          <div className="border border-zinc-700 rounded-lg overflow-hidden max-h-[480px] overflow-y-auto">
             <table className="w-full text-xs">
-              <thead className="bg-zinc-800/80 text-zinc-400">
+              <thead className="bg-zinc-800/80 text-zinc-400 sticky top-0 z-10">
                 <tr>
                   <th className="px-2 py-2 w-8" />
                   <th className="px-3 py-2 text-left">日期</th>

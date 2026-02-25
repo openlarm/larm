@@ -3,6 +3,7 @@
 import type {
   BuildingType, FacadeData, FacadeMaterial, Complexity,
   Contamination, RiskLevel, TimeWindow, Supply, RooftopAccess, CleaningAgent,
+  RegionExposure, CrowdDensity,
 } from "@/lib/types"
 
 // ─── Business-friendly labels → engine values ────────────────────────────────
@@ -157,6 +158,12 @@ export interface QuoteFormData {
   rooftopAccess: RooftopAccess  // building-level rooftop condition
   facadeInputs: QuoteFacadeInput[]
   expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
+  // ── LARM site fields (synced with LAOP Step3Building) ────────────────────
+  regionExposure?: RegionExposure  // 環境曝露類型
+  crowdDensity?: CrowdDensity      // 周圍人流密度
+  nearBaseStation?: boolean        // 附近基地台
+  windChannelEffect?: boolean      // 風道效應
+  clearanceM?: number              // 工作間距（公尺）
   // ── Customer contact info (required before PDF download) ──────────────────
   contactPerson?: string        // 聯絡人
   phone?: string                // 電話號碼
@@ -191,6 +198,9 @@ export function inferRiskLevel(
     complexity?: import("@/lib/types").Complexity
     near_hv_power?: boolean
     wind_channel?: boolean
+    region_exposure?: RegionExposure
+    crowd_density?: CrowdDensity
+    near_base_station?: boolean
   }
 ): RiskLevel {
   const alt     = options?.altitude_m ?? 10
@@ -204,7 +214,17 @@ export function inferRiskLevel(
   const cxScore   = ({ none: 0, light: 2, medium: 5, heavy: 8 } as const)[cmplx] ?? 2
   const envScore  = Math.min(8, hvPower + wCh)
 
-  const b_partial = Math.min(25, altScore + heightScore + cxScore + envScore)
+  // LARM site factors
+  const exposureScore =
+    options?.region_exposure === "coastal" ? 3 :
+    options?.region_exposure === "rooftop_open" ? 2 :
+    options?.region_exposure === "windward" ? 1 : 0
+  const crowdScore =
+    options?.crowd_density === "high" ? 3 :
+    options?.crowd_density === "medium" ? 1 : 0
+  const bsScore = options?.near_base_station ? 2 : 0
+
+  const b_partial = Math.min(25, altScore + heightScore + cxScore + envScore + exposureScore + crowdScore + bsScore)
 
   // Map partial B-score to R_level (conservative: cap at R2 without weather data)
   if (b_partial >= 20) return "R2"

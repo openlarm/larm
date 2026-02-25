@@ -210,6 +210,71 @@ export function QuoteStep2({
               <option value="NotAvailable">不可使用（+12 NTD/㎡）</option>
             </select>
           </div>
+
+          {/* LARM site inputs — synced with LAOP Step3Building */}
+          <div className="pt-3 border-t border-zinc-200">
+            <p className="text-xs font-semibold text-zinc-500 mb-3 uppercase tracking-wider">場址環境（LARM 風險評估）</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-zinc-600 mb-1">環境曝露類型</label>
+                <select
+                  value={formData.regionExposure ?? ""}
+                  onChange={e => updateForm({ regionExposure: (e.target.value || undefined) as QuoteFormData["regionExposure"] })}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  <option value="">未指定</option>
+                  <option value="windward">迎風面</option>
+                  <option value="leeward">背風面</option>
+                  <option value="coastal">沿海</option>
+                  <option value="rooftop_open">開闊屋頂</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-zinc-600 mb-1">周圍人流密度</label>
+                <div className="flex gap-2">
+                  {(["low", "medium", "high"] as const).map(v => (
+                    <button key={v} type="button"
+                      onClick={() => updateForm({ crowdDensity: v })}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        formData.crowdDensity === v
+                          ? "bg-blue-50 border-blue-400 text-blue-700 font-medium"
+                          : "border-zinc-300 text-zinc-600 hover:border-blue-300"
+                      }`}
+                    >
+                      {v === "low" ? "低" : v === "medium" ? "中" : "高"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm text-zinc-600 cursor-pointer">
+                  <input type="checkbox" checked={formData.nearBaseStation ?? false}
+                    onChange={e => updateForm({ nearBaseStation: e.target.checked })}
+                    className="rounded border-zinc-300" />
+                  附近有基地台
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-600 cursor-pointer">
+                  <input type="checkbox" checked={formData.windChannelEffect ?? false}
+                    onChange={e => updateForm({ windChannelEffect: e.target.checked })}
+                    className="rounded border-zinc-300" />
+                  風道效應
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm text-zinc-600 mb-1">工作間距（公尺）</label>
+                <input type="number" value={formData.clearanceM ?? ""}
+                  onChange={e => updateForm({ clearanceM: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="例：3"
+                  min={0} step={0.5}
+                  className="w-28 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right: map + area estimation */}
