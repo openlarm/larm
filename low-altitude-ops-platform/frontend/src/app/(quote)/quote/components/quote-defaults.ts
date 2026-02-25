@@ -157,6 +157,10 @@ export interface QuoteFormData {
   rooftopAccess: RooftopAccess  // building-level rooftop condition
   facadeInputs: QuoteFacadeInput[]
   expectedDate?: string         // YYYY-MM-DD; drives weather risk advisory
+  // ── Customer contact info (required before PDF download) ──────────────────
+  contactPerson?: string        // 聯絡人
+  phone?: string                // 電話號碼
+  email?: string                // 信箱
 }
 
 // ─── Mapping tables ─────────────────────────────────────────────────────────

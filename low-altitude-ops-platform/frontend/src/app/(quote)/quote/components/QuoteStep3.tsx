@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import type { AirspaceResult, PricingResult, TimeResult, Contamination } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
@@ -57,9 +57,9 @@ export function QuoteStep3({
       const totalArea = areaEstimate.project_total_m2 ?? (areaEstimate.total_area_m2 * numBuildings)
       saveQuote({
         quote_code:      pricing.quote_code,
-        client_name:     formData.clientName,
-        address:         formData.address,
-        building_name:   buildingName ?? undefined,
+        client_name:     localInfo.clientName  || formData.clientName,
+        address:         localInfo.address     || formData.address,
+        building_name:   localInfo.buildingName || buildingName || undefined,
         floors:          formData.floors,
         total_area_m2:   totalArea,
         total_ntd:       pricing.total,
@@ -89,6 +89,29 @@ export function QuoteStep3({
     window.print()
     window.addEventListener("afterprint", () => { styleEl.remove() }, { once: true })
   }, [pricing, timeResult, formData, areaEstimate, buildingName])
+
+  // ── Customer info state ────────────────────────────────────────────────────
+  const [localInfo, setLocalInfo] = useState({
+    clientName:    formData.clientName    ?? "",
+    buildingName:  buildingName           ?? "",
+    address:       formData.address       ?? "",
+    contactPerson: formData.contactPerson ?? "",
+    phone:         formData.phone         ?? "",
+    email:         formData.email         ?? "",
+  })
+  const [infoConfirmed, setInfoConfirmed] = useState(false)
+  const [infoErrors, setInfoErrors] = useState<Record<string, string>>({})
+
+  const handleConfirmInfo = useCallback(() => {
+    const errors: Record<string, string> = {}
+    if (!localInfo.clientName.trim())    errors.clientName    = "必填"
+    if (!localInfo.address.trim())       errors.address       = "必填"
+    if (!localInfo.contactPerson.trim()) errors.contactPerson = "必填"
+    if (!localInfo.phone.trim())         errors.phone         = "必填"
+    if (!localInfo.email.trim())         errors.email         = "必填"
+    if (Object.keys(errors).length > 0) { setInfoErrors(errors); return }
+    setInfoConfirmed(true)
+  }, [localInfo])
 
   useEffect(() => {
     const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
@@ -187,9 +210,14 @@ export function QuoteStep3({
         {/* Info grid */}
         <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-200">
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            <InfoRow label="客戶" value={formData.clientName} />
-            <InfoRow label="地址" value={formData.address} />
-            {buildingName && <InfoRow label="建物名稱" value={buildingName} />}
+            <InfoRow label="客戶" value={infoConfirmed ? localInfo.clientName : formData.clientName} />
+            <InfoRow label="地址" value={infoConfirmed ? localInfo.address : formData.address} />
+            {(infoConfirmed ? localInfo.buildingName : buildingName) && (
+              <InfoRow label="建物名稱" value={(infoConfirmed ? localInfo.buildingName : buildingName)!} />
+            )}
+            {infoConfirmed && localInfo.contactPerson && <InfoRow label="聯絡人"  value={localInfo.contactPerson} />}
+            {infoConfirmed && localInfo.phone         && <InfoRow label="電話"    value={localInfo.phone} />}
+            {infoConfirmed && localInfo.email         && <InfoRow label="信箱"    value={localInfo.email} />}
             <InfoRow
               label="建物"
               value={`${BUILDING_LABELS[formData.buildingType] ?? formData.buildingType} ${formData.floors}F（${(formData.floors * 3.5).toFixed(1)}m）`}
@@ -365,6 +393,72 @@ export function QuoteStep3({
         </div>
       </div>
 
+      {/* Customer info confirmation — required before PDF download */}
+      <div className={`no-print border rounded-xl overflow-hidden transition-colors ${infoConfirmed ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
+        {infoConfirmed ? (
+          <div className="px-6 py-4 flex items-center gap-3">
+            <span className="text-emerald-600 text-lg">✅</span>
+            <div className="flex-1 text-sm text-emerald-800">
+              <p className="font-semibold">客戶資料已確認</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                {localInfo.contactPerson}・{localInfo.phone}・{localInfo.email}
+              </p>
+            </div>
+            <button
+              onClick={() => setInfoConfirmed(false)}
+              className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+            >
+              修改
+            </button>
+          </div>
+        ) : (
+          <div className="px-6 py-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-600">📋</span>
+              <p className="text-sm font-semibold text-amber-800">請填寫客戶資料後方可下載 PDF</p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+              {[
+                { key: "clientName",    label: "客戶名稱", placeholder: "例：遠雄建設",         type: "text"  },
+                { key: "buildingName",  label: "建物名稱", placeholder: "例：信義之星",          type: "text"  },
+                { key: "address",       label: "建物地址", placeholder: "台北市信義區…",         type: "text"  },
+                { key: "contactPerson", label: "聯絡人",   placeholder: "例：王大明",             type: "text"  },
+                { key: "phone",         label: "電話號碼", placeholder: "例：0912-345-678",       type: "tel"   },
+                { key: "email",         label: "信箱",     placeholder: "example@company.com.tw", type: "email" },
+              ].map(({ key, label, placeholder, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-amber-800 mb-1">
+                    {label}
+                    {key !== "buildingName" && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type={type}
+                    value={localInfo[key as keyof typeof localInfo]}
+                    onChange={e => {
+                      setLocalInfo(prev => ({ ...prev, [key]: e.target.value }))
+                      if (infoErrors[key]) setInfoErrors(prev => { const n = { ...prev }; delete n[key]; return n })
+                    }}
+                    placeholder={placeholder}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-amber-400 bg-white ${
+                      infoErrors[key] ? "border-red-400" : "border-amber-200"
+                    }`}
+                  />
+                  {infoErrors[key] && <p className="text-red-500 text-xs mt-0.5">{infoErrors[key]}</p>}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleConfirmInfo}
+                className="px-5 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 font-medium transition-colors"
+              >
+                確認客戶資料
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Actions */}
       <div className="flex gap-3 justify-center pt-2 no-print">
         <button
@@ -375,7 +469,13 @@ export function QuoteStep3({
         </button>
         <button
           onClick={handlePrint}
-          className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+          disabled={!infoConfirmed}
+          title={!infoConfirmed ? "請先填寫並確認客戶資料" : ""}
+          className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+            infoConfirmed
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+          }`}
         >
           下載 PDF
         </button>
