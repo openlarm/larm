@@ -45,7 +45,7 @@ export interface WeatherRegimeParams {
   }
 }
 
-export const WEATHER_REGIME_PARAMS: WeatherRegimeParams = {
+const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
   version: "v1.0",
   units: { wind: "km/h", rain_daily_heavy_threshold_mm: 20 },
   regimes: {
@@ -91,3 +91,18 @@ export const WEATHER_REGIME_PARAMS: WeatherRegimeParams = {
     ],
   },
 }
+
+// ─── Params Registry (versioned) ──────────────────────────────────────────────
+
+export const PARAM_REGISTRY: Record<string, WeatherRegimeParams> = {
+  "v1.0": WEATHER_REGIME_PARAMS_V1,
+}
+
+export const ACTIVE_PARAMS_VERSION = "v1.0"
+
+export function getParams(version: string = ACTIVE_PARAMS_VERSION): WeatherRegimeParams {
+  return PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
+}
+
+// Keep the named export for backward compatibility
+export const WEATHER_REGIME_PARAMS = WEATHER_REGIME_PARAMS_V1

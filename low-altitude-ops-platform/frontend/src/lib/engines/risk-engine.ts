@@ -1,42 +1,59 @@
-// LARM v1.0 — Low Altitude Risk Model
-// R_score = Base(W) + WeatherNow + B + O  →  R_level + gating + buffer_ratio
+// LARM v1.1 — Low Altitude Risk Model
+// R_score = Base(W) + WeatherNow + B + O + E  →  R_level + gating + buffer_ratio
 
 import type {
   WeatherType, RiskLevel, Decision, Complexity, Mission,
   Weather30dInput, WeatherTodayInput, BuildingSiteInput, OperationalContextInput,
   LARMInput, RiskResult, RiskExplanation, LARMVersions,
-  RegionExposure,
+  RegionExposure, WeatherRegimeResult, Equipment,
 } from "@/lib/types"
-import { WEATHER_REGIME_PARAMS as P } from "./weather-regime-params"
+import { getParams, ACTIVE_PARAMS_VERSION } from "./weather-regime-params"
 
-// ─── Step A: Climate Regime Classification ────────────────────────────────────
+// ─── Step A: Climate Regime Classification (with confidence) ──────────────────
 
 function classifyWeatherRegime(
   w30: Weather30dInput,
   today: WeatherTodayInput,
   override?: WeatherType,
-): WeatherType {
-  if (override) return override
+  paramsVersion?: string,
+): WeatherRegimeResult {
+  if (override) return { w_code: override, confidence: 1.0, secondary_w: null }
+
   const { wind_p90_kmh, gust_p90_kmh, rain_days_30, heavy_rain_days_30, instability_index, predictability_score } = w30
 
-  if (wind_p90_kmh >= 39 || (gust_p90_kmh != null && gust_p90_kmh >= 50)) return "W5"
-  if (rain_days_30 >= 15 && heavy_rain_days_30 >= 3) return "W3"
-  if (instability_index >= 0.70 && today.rain_prob_today_pct >= 40) return "W4"
-  if (wind_p90_kmh >= 33 && predictability_score >= 0.60) return "W1"
-  if (rain_days_30 >= 8 && rain_days_30 <= 14 && predictability_score < 0.55) return "W2"
-  return "W0"
+  // Track all matching rules to compute confidence
+  const matches: WeatherType[] = []
+
+  if (wind_p90_kmh >= 39 || (gust_p90_kmh != null && gust_p90_kmh >= 50)) matches.push("W5")
+  if (rain_days_30 >= 15 && heavy_rain_days_30 >= 3) matches.push("W3")
+  // [2-A] W4 fix: use 30d heavy_rain_days instead of today rain_prob
+  if (instability_index >= 0.70 && heavy_rain_days_30 >= 2) matches.push("W4")
+  if (wind_p90_kmh >= 33 && predictability_score >= 0.60) matches.push("W1")
+  if (rain_days_30 >= 8 && rain_days_30 <= 14 && predictability_score < 0.55) matches.push("W2")
+
+  // Primary = first match (priority order); secondary = next
+  const primary: WeatherType = matches[0] ?? "W0"
+  const secondary: WeatherType | null = matches[1] ?? null
+
+  // [2-B] Confidence degrades when multiple rules fire
+  const confidence = matches.length <= 1 ? 1.0 :
+    matches.length === 2 ? 0.78 :
+    matches.length === 3 ? 0.62 : 0.50
+
+  void paramsVersion // reserved for future param-versioned classification
+  return { w_code: primary, confidence, secondary_w: secondary }
 }
 
 // ─── Step B.1: WeatherNow Component (0..50) ───────────────────────────────────
 
-function getWindScore(kmh: number): number {
+function getWindScore(kmh: number, P: ReturnType<typeof getParams>): number {
   for (const row of P.thresholds.wind_score_table) {
     if (kmh >= row.min_kmh && kmh <= row.max_kmh) return row.score
   }
   return 80
 }
 
-function getRainScore(prob: number, mmph: number): number {
+function getRainScore(prob: number, mmph: number, P: ReturnType<typeof getParams>): number {
   const r = P.thresholds.rain_score_rules
   if (prob < r.rule_0.rain_prob_lt_pct && mmph < r.rule_0.rain_mmph_lt) return 0
   if (prob > r.rule_3.rain_prob_gt_pct || mmph > r.rule_3.or_mmph_gt)   return r.rule_3.score
@@ -57,10 +74,11 @@ function computeWeatherNow(
   w_code: WeatherType,
   region_exposure: RegionExposure | null | undefined,
   expl: RiskExplanation[],
+  P: ReturnType<typeof getParams>,
 ): number {
-  const windScore  = getWindScore(today.wind_now_kmh)
+  const windScore  = getWindScore(today.wind_now_kmh, P)
   const windComp   = Math.min(50, windScore * P.thresholds.wind_weight_scale)
-  const rainScore  = getRainScore(today.rain_prob_today_pct, today.rain_mmph_forecast)
+  const rainScore  = getRainScore(today.rain_prob_today_pct, today.rain_mmph_forecast, P)
   const instComp   = w30.instability_index * 15
   const predDisc   = -(w30.predictability_score * 10)
   const thunder    = today.thunder_risk === 1 ? 5 : 0
@@ -86,7 +104,7 @@ function computeWeatherNow(
   return Math.round(wn * 10) / 10
 }
 
-// ─── Step B.2: Building / Site Score (0..25) ──────────────────────────────────
+// ─── Step B.2: Building / Site Score (0..25) with interaction terms ───────────
 
 function computeBuildingScore(b: BuildingSiteInput, expl: RiskExplanation[]): number {
   const altScore =
@@ -107,7 +125,14 @@ function computeBuildingScore(b: BuildingSiteInput, expl: RiskExplanation[]): nu
   if (b.clearance_m != null && b.clearance_m < 5) envRaw += 2
   const envScore = Math.min(8, envRaw)
 
-  const total = Math.min(25, altScore + heightScore + complexityScore + envScore)
+  // [3-B] Non-linear interaction terms
+  let interaction = 0
+  if (floors > 20 && b.wind_channel_effect === 1) interaction += 3        // high-rise + wind channel
+  if (b.near_hv_power === 1 && b.rooftop_condition === "not_available") interaction += 2  // no emergency landing
+  if ((b.site_altitude_m ?? 0) > 300 && b.clearance_m != null && b.clearance_m < 5) interaction += 3  // mountain + tight clearance
+  const interactionCapped = Math.min(6, interaction)
+
+  const total = Math.min(25, altScore + heightScore + complexityScore + envScore + interactionCapped)
 
   expl.push({ factor: "建物樓層",   value: `${floors}F`,            score: heightScore,    note: "≤10:0 / ≤20:+4 / ≤30:+7 / >30:+10" })
   expl.push({ factor: "場址海拔",   value: `${b.site_altitude_m}m`, score: altScore,       note: "≤100:0 / ≤300:+2 / ≤800:+4 / >800:+6" })
@@ -120,11 +145,18 @@ function computeBuildingScore(b: BuildingSiteInput, expl: RiskExplanation[]): nu
     if (b.clearance_m != null && b.clearance_m < 5) parts.push(`狹窄${b.clearance_m}m+2`)
     expl.push({ factor: "環境危害", value: envRaw, score: envScore, note: parts.join(", ") + "（上限8）" })
   }
+  if (interactionCapped > 0) {
+    const parts: string[] = []
+    if (floors > 20 && b.wind_channel_effect === 1) parts.push("高樓×風道+3")
+    if (b.near_hv_power === 1 && b.rooftop_condition === "not_available") parts.push("高壓×無屋頂+2")
+    if ((b.site_altitude_m ?? 0) > 300 && b.clearance_m != null && b.clearance_m < 5) parts.push("山區×狹窄+3")
+    expl.push({ factor: "交互風險加成", value: interaction, score: interactionCapped, note: parts.join(", ") + "（上限6）" })
+  }
 
   return total
 }
 
-// ─── Step B.3: Operational Score (0..15) ──────────────────────────────────────
+// ─── Step B.3: Operational Score (0..15) with fatigue ─────────────────────────
 
 function computeOperationalScore(
   ops: OperationalContextInput,
@@ -145,21 +177,52 @@ function computeOperationalScore(
   else if (crowd_density === "medium")            { score += 2; parts.push("中人流+2") }
   if (ops.operator_experience_level === "junior") { score += 2; parts.push("初級操作員+2") }
 
+  // [3-A] Personnel fatigue from multi-day mission
+  if (ops.mission_days != null) {
+    const fatigue = ops.mission_days >= 7 ? 4 : ops.mission_days >= 4 ? 2 : 0
+    if (fatigue > 0) { score += fatigue; parts.push(`長工期疲勞(${ops.mission_days}天)+${fatigue}`) }
+  }
+
   const total = Math.min(15, score)
   if (parts.length > 0) expl.push({ factor: "作業情境", value: parts.join(" / "), score: total, note: "上限 15" })
   return total
 }
 
+// ─── Step E: Equipment Reliability Score (0..10) ─────────────────────────────
+
+function computeEquipmentScore(equipment: Equipment[], expl: RiskExplanation[]): number {
+  if (equipment.length === 0) return 0
+
+  let score = 0
+  const parts: string[] = []
+
+  for (const eq of equipment) {
+    if (eq.health_status === "block") {
+      score += 4
+      parts.push(`${eq.name}:Block+4`)
+    } else if (eq.health_status === "warn") {
+      score += 2
+      parts.push(`${eq.name}:Warn+2`)
+    }
+  }
+
+  const capped = Math.min(10, score)
+  if (capped > 0) {
+    expl.push({ factor: "設備可靠度(E)", value: `${equipment.length} 件`, score: capped, note: parts.join(", ") + "（上限10）" })
+  }
+  return capped
+}
+
 // ─── Score → R_level ──────────────────────────────────────────────────────────
 
-function mapToRLevel(score: number): RiskLevel {
+function mapToRLevel(score: number, P: ReturnType<typeof getParams>): RiskLevel {
   for (const row of P.thresholds.mapping_r_level) {
     if (score >= row.min && score <= row.max) return row.r_level as RiskLevel
   }
   return "R4"
 }
 
-// ─── Hard Stops + Gating ──────────────────────────────────────────────────────
+// ─── Hard Stops + Gating with CONDITIONAL tiers ───────────────────────────────
 
 function computeGating(
   risk_level: RiskLevel,
@@ -167,20 +230,26 @@ function computeGating(
   building: BuildingSiteInput,
   ops: OperationalContextInput,
   w_code: WeatherType,
-): { decision: Decision; requires_approval: boolean; controls: string[] } {
+  e_score: number,
+  P: ReturnType<typeof getParams>,
+): { decision: Decision; requires_approval: boolean; controls: string[]; conditional_tier: "A" | "B" | "C" | null } {
   const hs = P.thresholds.hard_stop
 
   if (today.wind_now_kmh >= hs.wind_kmh) {
-    return { decision: "NO_GO", requires_approval: false, controls: [`當前風速 ${today.wind_now_kmh} km/h ≥ 上限 ${hs.wind_kmh} km/h，禁止起飛`] }
+    return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: [`當前風速 ${today.wind_now_kmh} km/h ≥ 上限 ${hs.wind_kmh} km/h，禁止起飛`] }
   }
   if (today.rain_mmph_forecast > hs.rain_mmph && today.rain_prob_today_pct > hs.rain_prob_pct) {
-    return { decision: "NO_GO", requires_approval: false, controls: [`大雨 ${today.rain_mmph_forecast} mm/h 且降雨概率 ${today.rain_prob_today_pct}%，超過安全門檻`] }
+    return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: [`大雨 ${today.rain_mmph_forecast} mm/h 且降雨概率 ${today.rain_prob_today_pct}%，超過安全門檻`] }
   }
   if (risk_level === "R4") {
-    return { decision: "NO_GO", requires_approval: false, controls: ["綜合風險 R4（≥86分），任務不可排程"] }
+    return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: ["綜合風險 R4（≥86分），任務不可排程"] }
   }
   if (risk_level === "R3") {
-    return { decision: "CONDITIONAL", requires_approval: true, controls: ["重度風險（R3），需主管審核後方可排程", "作業時段縮短至 4 hr 以下", "加派安全觀察員並強化即時監控"] }
+    // [3-C] R3 always CONDITIONAL-B (manager approval required)
+    return {
+      decision: "CONDITIONAL", requires_approval: true, conditional_tier: "B",
+      controls: ["重度風險（R3）— Tier B：需主管審核後方可排程", "作業時段縮短至 4 hr 以下", "加派安全觀察員並強化即時監控"],
+    }
   }
   if (risk_level === "R2") {
     const conds: string[] = []
@@ -191,18 +260,32 @@ function computeGating(
     if (exp && (exp === "windward" || exp === "coastal") && (w_code === "W1" || w_code === "W5")) {
       conds.push(`${exp === "windward" ? "迎風面" : "沿海"}建物在 ${w_code} 天候下需保守評估`)
     }
-    if (conds.length > 0) return { decision: "CONDITIONAL", requires_approval: true, controls: conds }
-    return { decision: "GO", requires_approval: false, controls: ["中度風險（R2），建議加強環境監控", "確認安全觀察員在場"] }
+    if (conds.length > 0) {
+      // [3-C] R2 + high E-Score or night/hv/wind → CONDITIONAL-B, otherwise CONDITIONAL-A
+      const tier: "A" | "B" = (e_score >= 6 || ops.time_window === "night") ? "B" : "A"
+      const tierLabel = tier === "B" ? "Tier B：需主管事前審批" : "Tier A：可執行，需即時監控"
+      return { decision: "CONDITIONAL", requires_approval: tier === "B", conditional_tier: tier, controls: [tierLabel, ...conds] }
+    }
+    return { decision: "GO", requires_approval: false, conditional_tier: null, controls: ["中度風險（R2），建議加強環境監控", "確認安全觀察員在場"] }
   }
-  return { decision: "GO", requires_approval: false, controls: risk_level === "R0" ? ["正常流程"] : ["持續監控風速", "確認場地安全"] }
+  // E-score hard block: block-status equipment triggers CONDITIONAL-C
+  if (e_score >= 8) {
+    return {
+      decision: "CONDITIONAL", requires_approval: true, conditional_tier: "C",
+      controls: ["設備狀態異常（E-Score高）— Tier C：需主管 + 客戶雙方書面確認", "建議更換 Block 狀態設備後重新評估"],
+    }
+  }
+  return { decision: "GO", requires_approval: false, conditional_tier: null, controls: risk_level === "R0" ? ["正常流程"] : ["持續監控風速", "確認場地安全"] }
 }
 
 // ─── Buffer Ratio ─────────────────────────────────────────────────────────────
 
-function computeBufferRatio(risk_score: number, w_code: WeatherType): number {
+function computeBufferRatio(risk_score: number, w_code: WeatherType, confidence: number, P: ReturnType<typeof getParams>): number {
   const base = 0.05 + risk_score / 250
   const vol  = (P.volatility_buffer_add as Record<string, number>)[w_code] ?? 0
-  return Math.round(Math.max(0.05, Math.min(0.40, base + vol)) * 1000) / 1000
+  // [2-B] Confidence penalty: lower confidence → higher buffer
+  const confPenalty = (1 - confidence) * 0.04
+  return Math.round(Math.max(0.05, Math.min(0.40, base + vol + confPenalty)) * 1000) / 1000
 }
 
 function getInternalGrade(r: RiskLevel): "A" | "B" | "C" | "D" {
@@ -211,8 +294,9 @@ function getInternalGrade(r: RiskLevel): "A" | "B" | "C" | "D" {
 
 // ─── Main: evaluateRisk ───────────────────────────────────────────────────────
 
-export function evaluateRisk(input: LARMInput): RiskResult {
-  const { weather_30d, weather_today, building, operational, w_override } = input
+export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResult {
+  const P = getParams(paramsVersion)
+  const { weather_30d, weather_today, building, operational, w_override, equipment = [] } = input
   const ops: OperationalContextInput = operational ?? {
     time_window: "day", weekend: 0, urgent_days: null,
     road_closure_needed: 0, multi_day_split: null, operator_experience_level: null,
@@ -220,13 +304,19 @@ export function evaluateRisk(input: LARMInput): RiskResult {
 
   const expl: RiskExplanation[] = []
 
-  // A
-  const w_code = classifyWeatherRegime(weather_30d, weather_today, w_override)
+  // A — regime classification with confidence
+  const regimeResult = classifyWeatherRegime(weather_30d, weather_today, w_override, paramsVersion)
+  const { w_code, confidence, secondary_w } = regimeResult
   const base_w = P.regimes[w_code].base_score
-  expl.push({ factor: "天候背景（W Regime）", value: `${w_code} — ${P.regimes[w_code].name}`, score: base_w, note: P.regimes[w_code].notes })
+  expl.push({
+    factor: "天候背景（W Regime）",
+    value: `${w_code} — ${P.regimes[w_code].name}`,
+    score: base_w,
+    note: confidence < 1 ? `${P.regimes[w_code].notes} 置信度=${(confidence * 100).toFixed(0)}%` : P.regimes[w_code].notes,
+  })
 
   // B.1
-  const weather_now = computeWeatherNow(weather_today, weather_30d, w_code, building.region_exposure, expl)
+  const weather_now = computeWeatherNow(weather_today, weather_30d, w_code, building.region_exposure, expl, P)
 
   // B.2
   const b_score = computeBuildingScore(building, expl)
@@ -234,29 +324,38 @@ export function evaluateRisk(input: LARMInput): RiskResult {
   // B.3
   const o_score = computeOperationalScore(ops, building.crowd_density, expl)
 
+  // E — equipment score
+  const e_score = computeEquipmentScore(equipment, expl)
+
   // C
-  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + b_score + o_score)))
-  const risk_level = mapToRLevel(risk_score)
+  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + b_score + o_score + e_score)))
+  const risk_level = mapToRLevel(risk_score, P)
 
   // D
-  const { decision, requires_approval, controls } = computeGating(risk_level, weather_today, building, ops, w_code)
+  const { decision, requires_approval, controls, conditional_tier } = computeGating(risk_level, weather_today, building, ops, w_code, e_score, P)
 
-  const buffer_ratio = computeBufferRatio(risk_score, w_code)
+  const buffer_ratio = computeBufferRatio(risk_score, w_code, confidence, P)
 
+  const usedVersion = paramsVersion ?? ACTIVE_PARAMS_VERSION
   const versions: LARMVersions = {
-    larm_version: "v1.0",
-    weather_regime_params_version: P.version,
-    thresholds_version: "v1.0",
+    larm_version: "v1.1",
+    weather_regime_params_version: P.version ?? usedVersion,
+    thresholds_version: "v1.1",
   }
 
   return {
     weather_type: w_code, risk_level,
     internal_grade: getInternalGrade(risk_level),
     decision, requires_approval, controls,
-    ruleset_version: "larm_v1.0",
+    ruleset_version: "larm_v1.1",
     evaluated_at: new Date().toISOString(),
     w_code, base_w, weather_now, b_score, o_score, risk_score, buffer_ratio,
     explanations: expl, versions,
+    // v1.1 extensions
+    regime_confidence: confidence,
+    secondary_w,
+    e_score,
+    conditional_tier,
   }
 }
 
@@ -266,7 +365,7 @@ export function buildingSiteFromMission(mission: Partial<Mission>): BuildingSite
   const bld = mission.building
   const facades = mission.facades ?? []
 
-  const dominant: Complexity =
+  const dominant: import("@/lib/types").Complexity =
     facades.some(f => f.complexity === "heavy")  ? "heavy"  :
     facades.some(f => f.complexity === "medium") ? "medium" :
     facades.some(f => f.complexity === "light")  ? "light"  : "none"
@@ -277,17 +376,19 @@ export function buildingSiteFromMission(mission: Partial<Mission>): BuildingSite
     bld?.rooftop_access === "NotAvailable" ? "not_available" : null
 
   return {
+    // [1-A] Use real altitude from address geocoding
     site_altitude_m:     mission.address?.altitude_m ?? 10,
     building_floors:     bld?.height_floors ?? null,
     building_height_m:   bld?.height_m ?? null,
     facade_complexity:   dominant,
-    clearance_m:         null,
+    // [1-A] Populate from BuildingData (captured in Step 3)
+    clearance_m:         bld?.clearance_m ?? null,
     near_hv_power:       facades.some(f => f.high_risk_env) ? 1 : 0,
-    near_base_station:   0,
-    wind_channel_effect: facades.some(f => f.road_closure) ? 1 : 0,
+    near_base_station:   bld?.near_base_station ?? 0,
+    wind_channel_effect: bld?.wind_channel_effect ?? (facades.some(f => f.road_closure) ? 1 : 0),
     rooftop_condition,
-    crowd_density:       null,
-    region_exposure:     null,
+    crowd_density:       bld?.crowd_density ?? null,
+    region_exposure:     bld?.region_exposure ?? null,
   }
 }
 
@@ -302,5 +403,6 @@ export function operationalContextFromMission(
     road_closure_needed:        mission.facades?.some(f => f.road_closure) ? 1 : 0,
     multi_day_split:            null,
     operator_experience_level:  null,
+    mission_days:               mission.selected_dates?.length ?? 1,
   }
 }

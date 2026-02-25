@@ -90,7 +90,9 @@ export function Step6Risk({ mission, update, next, back }: Props) {
       const building = buildingSiteFromMission(mission)
       const operational = operationalContextFromMission(mission, "day")
 
-      const r = evaluateRisk({ weather_30d: w30, weather_today: weather.weather_today, building, operational })
+      // [3-A] Pass equipment for E-Score computation
+      const equipment = mission.assignment?.equipment ?? []
+      const r = evaluateRisk({ weather_30d: w30, weather_today: weather.weather_today, building, operational, equipment })
       setResult(r)
       setLoading(false)
     }, 1200)
@@ -109,7 +111,7 @@ export function Step6Risk({ mission, update, next, back }: Props) {
       <div className="max-w-3xl space-y-4">
         <div className="h-6 w-64 bg-zinc-800 rounded animate-pulse" />
         <div className="h-52 bg-zinc-800 rounded animate-pulse" />
-        <p className="text-xs text-zinc-500">LARM v1.0 評估中…</p>
+        <p className="text-xs text-zinc-500">LARM v1.1 評估中…</p>
       </div>
     )
   }
@@ -121,7 +123,7 @@ export function Step6Risk({ mission, update, next, back }: Props) {
   return (
     <StepShell
       title="Step 6 — Risk Evaluation"
-      subtitle="LARM v1.0 風險評估"
+      subtitle="LARM v1.1 風險評估"
       onBack={back}
       onNext={result.decision !== "NO_GO" ? handleNext : undefined}
       nextDisabled={result.decision === "NO_GO"}
@@ -143,12 +145,33 @@ export function Step6Risk({ mission, update, next, back }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-x-3 text-xs text-zinc-400">
                 <span>天候背景</span>
-                <span className="font-mono font-bold text-zinc-200">{result.w_code} · W 分 {result.base_w}</span>
+                <span className="font-mono font-bold text-zinc-200">
+                  {result.w_code} · W 分 {result.base_w}
+                  {result.secondary_w && <span className="text-zinc-500 ml-1">(次要 {result.secondary_w})</span>}
+                </span>
+                <span>Regime 置信度</span>
+                <span className={cn("font-mono font-bold", result.regime_confidence >= 0.85 ? "text-emerald-400" : result.regime_confidence >= 0.70 ? "text-amber-400" : "text-red-400")}>
+                  {(result.regime_confidence * 100).toFixed(0)}%
+                </span>
                 <span>現況天氣</span>
                 <span className="font-mono text-zinc-200">{result.weather_now.toFixed(1)} / 50</span>
                 <span>Internal Grade</span>
                 <span className={cn("font-bold", GRADE_COLOR[result.internal_grade])}>{result.internal_grade}</span>
               </div>
+              {/* [3-C] Conditional tier badge */}
+              {result.conditional_tier && (
+                <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold border w-fit",
+                  result.conditional_tier === "A" ? "bg-amber-500/10 border-amber-500/30 text-amber-300" :
+                  result.conditional_tier === "B" ? "bg-orange-500/10 border-orange-500/30 text-orange-300" :
+                  "bg-red-500/10 border-red-500/30 text-red-300"
+                )}>
+                  <AlertTriangle className="h-3 w-3" />
+                  CONDITIONAL — Tier {result.conditional_tier}
+                  {result.conditional_tier === "A" && <span className="font-normal text-zinc-400 ml-1">（即時監控）</span>}
+                  {result.conditional_tier === "B" && <span className="font-normal text-zinc-400 ml-1">（主管審批）</span>}
+                  {result.conditional_tier === "C" && <span className="font-normal text-zinc-400 ml-1">（雙方書面）</span>}
+                </div>
+              )}
             </div>
           </div>
 
@@ -184,6 +207,16 @@ export function Step6Risk({ mission, update, next, back }: Props) {
                 </div>
                 <ScoreBar value={result.o_score} max={15} color="bg-purple-500" />
               </div>
+              {/* [3-A] E-score */}
+              {result.e_score > 0 && (
+                <div className="col-span-2 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-amber-400">E · 設備可靠度</span>
+                    <span className="font-mono text-amber-300">{result.e_score} / 10</span>
+                  </div>
+                  <ScoreBar value={result.e_score} max={10} color="bg-amber-500" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -191,7 +224,7 @@ export function Step6Risk({ mission, update, next, back }: Props) {
           <div className="flex items-center gap-3 pt-1 border-t border-zinc-700/60 text-xs">
             <span className="text-zinc-500">時間緩衝比例（buffer_ratio）</span>
             <span className="font-mono font-bold text-sky-400">{(result.buffer_ratio * 100).toFixed(1)}%</span>
-            <span className="text-zinc-600 text-[10px]">= 0.05 + R_score/250 + W_volatility</span>
+            <span className="text-zinc-600 text-[10px]">= 0.05 + R_score/250 + W_volatility + conf_penalty</span>
           </div>
         </CardContent>
       </Card>

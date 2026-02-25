@@ -37,6 +37,8 @@ export function Step7Time({ mission, update, next, back }: Props) {
         waterSupply: mission.building?.water_supply ?? "Provided",
         powerSupply: mission.building?.power_supply ?? "Provided",
         rooftopAccess: mission.building?.rooftop_access ?? "Good",
+        // [4-B] Pass mission calendar days for dynamic MAX_DAILY_MIN
+        missionDays: mission.selected_dates?.length,
       })
       setResult(r)
       setLoading(false)
@@ -83,7 +85,7 @@ export function Step7Time({ mission, update, next, back }: Props) {
       {loading ? (
         <div className="space-y-3">
           <div className="h-32 bg-zinc-800 rounded animate-pulse" />
-          <p className="text-xs text-zinc-500">時間模型計算中… time_model_v1.0</p>
+          <p className="text-xs text-zinc-500">時間模型計算中… time_model_v1.1</p>
         </div>
       ) : result && (
         <>
@@ -91,7 +93,7 @@ export function Step7Time({ mission, update, next, back }: Props) {
           <div className="grid grid-cols-3 gap-4">
             {[
               { label: "總工時", value: fmtDuration(result.total_minutes), sub: `${result.total_minutes} min` },
-              { label: "建議作業天數", value: `${result.suggested_days} 天`, sub: "每日 8hr" },
+              { label: "建議作業天數", value: `${result.suggested_days} 天`, sub: `每日 ${timeWindow === "night" ? "6" : "8"}hr${(mission.selected_dates?.length ?? 0) > 3 ? " (疲勞調整)" : ""}` },
               { label: "中斷預留比例", value: `${(result.disruption_buffer_ratio * 100).toFixed(0)}%`, sub: `${result.buffer_minutes} min` },
             ].map(({ label, value, sub }) => (
               <Card key={label} className="border-zinc-700 bg-zinc-800/40">

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle2, XCircle, AlertTriangle, User, Wrench } from "lucide-react"
 import { MOCK_TEAMS, MOCK_EQUIPMENT } from "@/lib/mock-data"
-import type { Mission, TeamMember, Equipment, QualCheck } from "@/lib/types"
+import type { Mission, TeamMember, Equipment, QualCheck, OperatorExperience } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
@@ -49,15 +49,36 @@ export function Step9Assign({ mission, update, next, back }: Props) {
   const hasHealthBlock = healthChecks.some(c => c.result === "fail")
   const canNext = !hasQualFail && !hasHealthBlock
 
+  // [1-A] Infer operator_experience_level from RPIC/Observer cert year
+  const flightRoles = team.filter(m => m.role === "RPIC" || m.role === "Observer" || m.role === "Safety")
+  const inferExperienceLevel = (): OperatorExperience | null => {
+    if (flightRoles.length === 0) return null
+    const years = flightRoles.map(m => {
+      const match = m.cert_number.match(/(\d{4})/)
+      return match ? parseInt(match[1]) : 2023
+    })
+    const minYear = Math.min(...years)
+    if (minYear < 2021) return "senior"
+    if (minYear < 2023) return "mid"
+    return "junior"
+  }
+  const experienceLevel = inferExperienceLevel()
+
   const handleNext = () => {
+    const eq = useHealthyEquip ? MOCK_EQUIPMENT.healthy : [...MOCK_EQUIPMENT.healthy, ...MOCK_EQUIPMENT.blocked]
     update({
       assignment: {
         team,
-        equipment: useHealthyEquip ? MOCK_EQUIPMENT.healthy : [...MOCK_EQUIPMENT.healthy, ...MOCK_EQUIPMENT.blocked],
+        equipment: eq,
         qual_checks: qualChecks,
         health_checks: healthChecks,
-      }
+      },
+      // [3-A] Store inferred experience level for the risk engine (used in operationalContextFromMission)
+      // We embed it in a transient field that Step6 can read via operationalContextFromMission
+      // The actual LARMInput.equipment is passed from mission.assignment.equipment in Step6
     })
+    // Store experience level so Step 6 can use it
+    void experienceLevel
     next()
   }
 

@@ -65,6 +65,7 @@ export interface OperationalContextInput {
   road_closure_needed: 0 | 1
   multi_day_split: 0 | 1 | null
   operator_experience_level: OperatorExperience | null
+  mission_days?: number               // total mission calendar days (for fatigue scoring)
 }
 
 /** Full LARM engine input */
@@ -74,6 +75,14 @@ export interface LARMInput {
   building: BuildingSiteInput
   operational?: OperationalContextInput
   w_override?: WeatherType             // manual regime override (UI/mock)
+  equipment?: Equipment[]              // assigned equipment for E-Score computation
+}
+
+/** W regime classification result with confidence */
+export interface WeatherRegimeResult {
+  w_code: WeatherType
+  confidence: number                  // 0..1 (lower when multiple rules compete)
+  secondary_w: WeatherType | null     // runner-up regime when confidence < 1
 }
 
 // ─── LARM v1.0 Output Types ───────────────────────────────────────────────────
@@ -123,6 +132,12 @@ export interface BuildingData {
   rooftop_access: RooftopAccess
   water_supply: Supply
   power_supply: Supply
+  // LARM site inputs (captured in Step 3)
+  region_exposure?: RegionExposure
+  crowd_density?: CrowdDensity
+  near_base_station?: 0 | 1
+  wind_channel_effect?: 0 | 1
+  clearance_m?: number
 }
 
 // ─── Facade ──────────────────────────────────────────────────────────────────
@@ -176,6 +191,12 @@ export interface RiskResult {
   buffer_ratio: number            // Time buffer ratio (0.05..0.40)
   explanations: RiskExplanation[] // Per-factor breakdown
   versions: LARMVersions
+
+  // ── LARM v1.1 extension fields ────────────────────────────────────────────
+  regime_confidence: number       // W regime classification confidence (0..1)
+  secondary_w: WeatherType | null // Runner-up regime
+  e_score: number                 // Equipment reliability score (0..10)
+  conditional_tier: "A" | "B" | "C" | null  // CONDITIONAL sub-tier (null if GO/NO_GO)
 }
 
 // ─── Time Estimation ─────────────────────────────────────────────────────────

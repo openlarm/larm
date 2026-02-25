@@ -31,13 +31,40 @@ const HEIGHT_COEFF: { max: number; coeff: number }[] = [
   { max: 999, coeff: 0.75 },
 ]
 
-const WIND_COEFF: { max: number; coeff: number | null }[] = [
+// [4-A] Per-mission-type wind coefficient tables (wind_ms thresholds)
+const WIND_COEFF_CLEANING: { max: number; coeff: number | null }[] = [
+  { max: 5,   coeff: 1.00 },
+  { max: 8,   coeff: 0.75 },
+  { max: 10,  coeff: 0.50 },
+  { max: 999, coeff: null }, // halt >10 m/s
+]
+
+const WIND_COEFF_COATING: { max: number; coeff: number | null }[] = [
+  { max: 4,   coeff: 1.00 },
+  { max: 6,   coeff: 0.80 },
+  { max: 999, coeff: null }, // halt >6 m/s (coating sensitive to wind)
+]
+
+const WIND_COEFF_INSPECTION: { max: number; coeff: number | null }[] = [
+  { max: 8,   coeff: 1.00 },
+  { max: 12,  coeff: 0.60 },
+  { max: 999, coeff: null }, // halt >12 m/s
+]
+
+const WIND_COEFF_DEFAULT: { max: number; coeff: number | null }[] = [
   { max: 3,   coeff: 1.00 },
   { max: 5,   coeff: 1.00 },
   { max: 7,   coeff: 1.00 },
   { max: 9,   coeff: 0.95 },
-  { max: 999, coeff: null }, // halt
+  { max: 999, coeff: null },
 ]
+
+function getWindCoeffTable(missionType: MissionType): { max: number; coeff: number | null }[] {
+  if (missionType === "Cleaning")                          return WIND_COEFF_CLEANING
+  if (missionType === "Coating")                           return WIND_COEFF_COATING
+  if (missionType === "Inspection" || missionType === "Solar") return WIND_COEFF_INSPECTION
+  return WIND_COEFF_DEFAULT
+}
 
 const COMPLEXITY_COEFF: Record<Complexity, number> = {
   none: 1.00, light: 0.98, medium: 0.9, heavy: 0.70,
@@ -85,7 +112,8 @@ export interface TimeEngineInput {
   waterSupply: Supply
   powerSupply: Supply
   rooftopAccess: RooftopAccess
-  bufferRatioOverride?: number     // LARM v1.0: overrides BUFFER_RATIO lookup when provided
+  bufferRatioOverride?: number     // LARM v1.1: overrides BUFFER_RATIO lookup when provided
+  missionDays?: number             // [4-B] calendar days for dynamic MAX_DAILY_MIN
 }
 
 export function estimateTime(input: TimeEngineInput): TimeResult {
@@ -93,7 +121,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
     missionType, buildingType, floors, wind_ms,
     facades, contamination, timeWindow, riskLevel,
     waterSupply, powerSupply, rooftopAccess,
-    bufferRatioOverride,
+    bufferRatioOverride, missionDays,
   } = input
 
   const dominant_complexity: Complexity =
@@ -104,7 +132,9 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
   const baseline = getBaseline(missionType, buildingType)
 
   const h_coeff = HEIGHT_COEFF.find(h => floors <= h.max)!.coeff
-  const w_entry = WIND_COEFF.find(w => wind_ms <= w.max)!
+  // [4-A] Use mission-type-specific wind table
+  const windTable = getWindCoeffTable(missionType)
+  const w_entry = windTable.find(w => wind_ms <= w.max)!
   const w_coeff = w_entry.coeff ?? 0 // null = halt, treat as 0
   const c_coeff = COMPLEXITY_COEFF[dominant_complexity]
   // Use worst (lowest) contamination coefficient among all selected types
@@ -132,7 +162,12 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
     pure_op_hours * 60 + setup_min + teardown_min + rest_min + buffer_min
   )
 
-  const MAX_DAILY_MIN = 8 * 60
+  // [4-B] Dynamic MAX_DAILY_MIN based on time window and fatigue
+  const BASE_DAILY = 8 * 60
+  const nightFactor   = timeWindow === "night" ? 0.75 : 1.0
+  const fatigueFactor = (missionDays != null && missionDays > 3) ? 0.92 : 1.0
+  const MAX_DAILY_MIN = Math.round(BASE_DAILY * nightFactor * fatigueFactor)
+
   const suggested_days = Math.ceil(total_min / MAX_DAILY_MIN)
 
   return {
@@ -146,7 +181,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
     total_minutes: total_min,
     suggested_days,
     disruption_buffer_ratio: buffer_ratio,
-    time_model_version: "v1.0",
+    time_model_version: "v1.1",
     coefficient_snapshot: {
       height: h_coeff,
       wind: w_coeff,
