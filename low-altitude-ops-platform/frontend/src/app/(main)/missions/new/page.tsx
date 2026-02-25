@@ -14,6 +14,7 @@ import { Step8Pricing } from "@/components/wizard/steps/Step8Pricing"
 import { Step9Assign } from "@/components/wizard/steps/Step9Assign"
 import { Step10Plan } from "@/components/wizard/steps/Step10Plan"
 import type { Mission } from "@/lib/types"
+import { saveMission } from "@/lib/stores/mission-store"
 
 const STEPS = [
   "Address", "Airspace", "Building", "Façade",
@@ -60,7 +61,10 @@ export default function NewMissionPage() {
         {step === 6 && <Step7Time {...stepProps} />}
         {step === 7 && <Step8Pricing {...stepProps} />}
         {step === 8 && <Step9Assign {...stepProps} />}
-        {step === 9 && <Step10Plan {...stepProps} onFinish={() => router.push("/missions")} />}
+        {step === 9 && <Step10Plan {...stepProps} onFinish={() => {
+          saveMission(mission)
+          router.push("/missions")
+        }} />}
       </div>
     </div>
   )

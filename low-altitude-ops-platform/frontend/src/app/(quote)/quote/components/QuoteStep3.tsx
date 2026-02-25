@@ -11,6 +11,7 @@ import {
   mapServiceToMissionType, mapTimeSlot,
   getWeatherRisk,
 } from "./quote-defaults"
+import { saveQuote } from "@/lib/stores/quote-store"
 
 interface Props {
   formData: QuoteFormData
@@ -50,6 +51,22 @@ export function QuoteStep3({
 }: Props) {
   // ── ALL hooks must be declared before any early returns ───────────────────
   const handlePrint = useCallback(() => {
+    // Save quote record to store
+    if (pricing && timeResult) {
+      const numBuildings = formData.numBuildings ?? 1
+      const totalArea = areaEstimate.project_total_m2 ?? (areaEstimate.total_area_m2 * numBuildings)
+      saveQuote({
+        quote_code:      pricing.quote_code,
+        client_name:     formData.clientName,
+        address:         formData.address,
+        building_name:   buildingName ?? undefined,
+        floors:          formData.floors,
+        total_area_m2:   totalArea,
+        total_ntd:       pricing.total,
+        suggested_days:  timeResult.suggested_days,
+      })
+    }
+
     const styleEl = document.createElement("style")
     styleEl.id = "__quote-print-style__"
     // Use visibility (not display:none) so that descendants can override
@@ -71,7 +88,7 @@ export function QuoteStep3({
     document.head.appendChild(styleEl)
     window.print()
     window.addEventListener("afterprint", () => { styleEl.remove() }, { once: true })
-  }, [])
+  }, [pricing, timeResult, formData, areaEstimate, buildingName])
 
   useEffect(() => {
     const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
