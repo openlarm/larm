@@ -9,8 +9,8 @@ const VERSIONS = [
 
 export default function RulesPage() {
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div><h1 className="text-2xl font-semibold">Rules & Versions</h1><p className="text-sm text-zinc-400 mt-0.5">規則 / 參數版本管理</p></div>
         <VersionBar />
       </div>

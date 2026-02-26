@@ -23,16 +23,17 @@ export function WizardStepper({ steps, current }: Props) {
             )}>
               {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
             </div>
-            {/* Label */}
+            {/* Label — on mobile only active step label is visible */}
             <div className={cn(
               "ml-1.5 text-xs whitespace-nowrap",
-              active ? "text-white font-medium" : done ? "text-emerald-400" : "text-zinc-500"
+              active ? "text-white font-medium" : done ? "text-emerald-400" : "text-zinc-500",
+              !active && "hidden sm:block",
             )}>
               {label}
             </div>
             {/* Connector */}
             {i < steps.length - 1 && (
-              <div className={cn("mx-2 h-px w-8 shrink-0", i < current ? "bg-emerald-500" : "bg-zinc-700")} />
+              <div className={cn("mx-1 sm:mx-2 h-px w-4 sm:w-8 shrink-0", i < current ? "bg-emerald-500" : "bg-zinc-700")} />
             )}
           </div>
         )

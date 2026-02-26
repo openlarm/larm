@@ -45,14 +45,14 @@ export default function MissionsPage() {
   }, [])
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Missions</h1>
           <p className="text-sm text-zinc-400 mt-0.5">任務列表</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <VersionBar />
           <Link href="/missions/new">
             <Button size="sm" className="gap-2">
@@ -66,7 +66,8 @@ export default function MissionsPage() {
       {/* Table */}
       {loaded && missions.length > 0 ? (
         <div className="border border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-zinc-800/50 text-zinc-400">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Mission ID</th>
@@ -104,12 +105,13 @@ export default function MissionsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : loaded ? (
-        <div className="border border-zinc-800 rounded-lg py-20 flex flex-col items-center gap-4 text-zinc-500">
+        <div className="border border-zinc-800 rounded-lg py-16 sm:py-20 flex flex-col items-center gap-4 text-zinc-500">
           <Inbox className="h-10 w-10 text-zinc-700" />
           <p className="text-sm">尚無任務記錄</p>
-          <p className="text-xs text-zinc-600">完成任務精靈後，任務將自動保存於此</p>
+          <p className="text-xs text-zinc-600 text-center px-4">完成任務精靈後，任務將自動保存於此</p>
           <Link href="/missions/new">
             <Button variant="outline" size="sm" className="gap-2 border-zinc-700 text-zinc-300 hover:bg-zinc-800 mt-2">
               <Plus className="h-4 w-4" />

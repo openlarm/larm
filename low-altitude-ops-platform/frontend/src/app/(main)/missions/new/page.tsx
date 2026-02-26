@@ -36,8 +36,8 @@ export default function NewMissionPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-8 py-3 bg-zinc-900/90 backdrop-blur border-b border-zinc-800">
+      {/* Top bar — offset by mobile header height on small screens */}
+      <div className="sticky top-14 lg:top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-2 sm:py-3 bg-zinc-900/90 backdrop-blur border-b border-zinc-800">
         <div>
           <span className="text-sm font-semibold text-white">New Mission Wizard</span>
           <span className="text-xs text-zinc-500 ml-2">新任務精靈</span>
@@ -46,12 +46,12 @@ export default function NewMissionPage() {
       </div>
 
       {/* Stepper */}
-      <div className="px-8 pt-6">
+      <div className="px-4 sm:px-8 pt-4 sm:pt-6">
         <WizardStepper steps={STEPS} current={step} />
       </div>
 
       {/* Step content */}
-      <div className="flex-1 px-8 py-6">
+      <div className="flex-1 px-4 sm:px-8 py-4 sm:py-6">
         {step === 0 && <Step1Address {...stepProps} />}
         {step === 1 && <Step2Airspace {...stepProps} />}
         {step === 2 && <Step3Building {...stepProps} />}

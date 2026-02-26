@@ -8,7 +8,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="dark min-h-screen bg-zinc-900 text-zinc-100">
+    <div className="dark min-h-screen bg-zinc-900 text-zinc-100 overflow-x-hidden">
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div

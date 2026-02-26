@@ -11,13 +11,14 @@ const HEALTH_ICON = {
 export default function EquipmentPage() {
   const all = [...MOCK_EQUIPMENT.healthy, ...MOCK_EQUIPMENT.blocked]
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div><h1 className="text-2xl font-semibold">Equipment</h1><p className="text-sm text-zinc-400 mt-0.5">設備履歷</p></div>
         <VersionBar />
       </div>
       <div className="border border-zinc-800 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-zinc-800/50 text-zinc-400">
             <tr>
               <th className="px-4 py-3 text-left font-medium">設備名稱</th>
@@ -43,6 +44,7 @@ export default function EquipmentPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )
