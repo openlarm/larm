@@ -324,6 +324,7 @@ export function QuoteMap({
       persistedLayersRef.current = []
       if (!persistedShapes?.length) return
       for (const shape of persistedShapes) {
+        if (!shape.vertices?.length) continue
         const layer = L.polygon(shape.vertices, {
           color: "#16a34a", weight: 2, fillColor: "#22c55e", fillOpacity: 0.2,
         }).bindTooltip(shape.label, { permanent: true, direction: "center" }).addTo(m)
