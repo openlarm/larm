@@ -3,9 +3,8 @@
 import { useEffect, useRef } from "react"
 import type { AirspaceResult } from "@/lib/types"
 
-export interface PersistedRect {
-  sw: [number, number]
-  ne: [number, number]
+export interface PersistedShape {
+  vertices: [number, number][]   // [lat, lng] polygon vertices
   label: string
 }
 
@@ -13,17 +12,16 @@ interface Props {
   lat: number
   lng: number
   airspace: AirspaceResult | null
-  polygon?: { lat: number; lon: number }[] | null
-  /** Draw mode active — any drag draws a rectangle */
+  /** Draw mode active — clicks add polygon vertices */
   drawMode?: boolean
   /** Label shown in dim overlay while drawing (e.g. "棟A") */
   drawLabel?: string
-  /** Saved rects to display persistently on the map */
-  persistedRects?: PersistedRect[]
-  /** Called after a rectangle is successfully drawn (so parent can exit draw mode) */
+  /** Saved polygon shapes to display persistently on the map */
+  persistedShapes?: PersistedShape[]
+  /** Called when polygon is closed (≥3 vertices) */
+  onPolygonDraw?: (vertices: [number, number][], area_m2: number, perimeter_m: number) => void
+  /** Called after polygon is successfully closed (so parent can exit draw mode) */
   onDrawModeEnd?: () => void
-  /** width_m, depth_m, sw lat/lng, ne lat/lng */
-  onRectDraw?: (width_m: number, depth_m: number, sw: [number, number], ne: [number, number]) => void
   /** When provided the marker becomes draggable and map clicks also reposition it */
   onPositionChange?: (lat: number, lng: number) => void
 }
@@ -31,18 +29,60 @@ interface Props {
 const SATELLITE_TILE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 const SATELLITE_ATTR = "Tiles &copy; Esri"
 
+// ── Polygon geometry helpers ──────────────────────────────────────────────────
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLon = (lon2 - lon1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function polygonPerimeter(verts: [number, number][]): number {
+  let total = 0
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i], b = verts[(i + 1) % verts.length]
+    total += haversineM(a[0], a[1], b[0], b[1])
+  }
+  return total
+}
+
+function polygonArea(verts: [number, number][]): number {
+  if (verts.length < 3) return 0
+  const refLat = verts[0][0], refLng = verts[0][1]
+  const mLat = 111320, mLng = 111320 * Math.cos(refLat * Math.PI / 180)
+  const pts = verts.map(([lat, lng]) => [(lng - refLng) * mLng, (lat - refLat) * mLat])
+  let area = 0
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length
+    area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
+  }
+  return Math.abs(area) / 2
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function QuoteMap({
-  lat, lng, airspace, polygon,
-  drawMode, drawLabel, persistedRects,
-  onDrawModeEnd, onRectDraw, onPositionChange,
+  lat, lng, airspace,
+  drawMode, drawLabel, persistedShapes,
+  onPolygonDraw, onDrawModeEnd, onPositionChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<unknown>(null)
-  const drawModeRef = useRef(drawMode ?? false)
+  const drawModeRef  = useRef(drawMode ?? false)
   const drawLabelRef = useRef(drawLabel ?? "")
   const persistedLayersRef = useRef<unknown[]>([])
 
-  // ── Main effect: initialise / re-initialise the Leaflet map ─────────────────
+  // Refs for communicating with secondary effects
+  const startNewDrawRef = useRef<() => void>(() => {})
+  const cancelDrawRef   = useRef<() => void>(() => {})
+  const isCompleteRef   = useRef(false)
+
+  // ── Main effect: initialise the Leaflet map ──────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
     let cancelled = false
@@ -69,10 +109,9 @@ export function QuoteMap({
       const map = L.map(containerRef.current, { center: [lat, lng] as [number, number], zoom: 18 })
       L.tileLayer(SATELLITE_TILE, { attribution: SATELLITE_ATTR, maxZoom: 19 }).addTo(map)
 
-      // ── Marker ──────────────────────────────────────────────────────────────
+      // ── Marker ────────────────────────────────────────────────────────────────
       const marker = L.marker([lat, lng] as [number, number], {
-        icon,
-        draggable: !!onPositionChange,
+        icon, draggable: !!onPositionChange,
       }).addTo(map)
 
       if (onPositionChange) {
@@ -85,7 +124,6 @@ export function QuoteMap({
           marker.setLatLng(e.latlng)
           onPositionChange(e.latlng.lat, e.latlng.lng)
         })
-
         const PinHelp = L.Control.extend({
           onAdd() {
             const div = L.DomUtil.create("div", "")
@@ -96,13 +134,7 @@ export function QuoteMap({
         new PinHelp({ position: "bottomright" }).addTo(map)
       }
 
-      // ── Building polygon ─────────────────────────────────────────────────────
-      if (polygon && polygon.length > 2) {
-        const coords: [number, number][] = polygon.map(p => [p.lat, p.lon])
-        L.polygon(coords, { color: "#3b82f6", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2 }).addTo(map)
-      }
-
-      // ── Airspace circle ──────────────────────────────────────────────────────
+      // ── Airspace circle ────────────────────────────────────────────────────────
       if (airspace) {
         const color =
           airspace.status === "NoFly" ? "#ef4444" :
@@ -112,57 +144,141 @@ export function QuoteMap({
         }).addTo(map)
       }
 
-      // ── Rectangle draw (Step 2) ──────────────────────────────────────────────
-      if (onRectDraw) {
-        let drawing = false
-        let startLatLng: L.LatLng | null = null
-        let rectLayer: L.Rectangle | null = null
+      // ── Polygon click-draw ─────────────────────────────────────────────────────
+      if (onPolygonDraw) {
+        // Drawing state (closure-local)
+        let vertices: L.LatLng[] = []
+        let vertexMarkers: L.CircleMarker[] = []
+        let edgeLines: L.Polyline[] = []
+        let previewLine: L.Polyline | null = null
+        const SNAP_M = 10  // snap distance to first vertex (meters)
 
+        // Dim control — shows live info
         const dimDiv = L.DomUtil.create("div", "")
         dimDiv.style.cssText =
-          "display:none;background:rgba(30,30,30,.85);color:#fff;padding:4px 10px;border-radius:6px;" +
+          "display:none;background:rgba(20,20,20,.88);color:#fff;padding:4px 10px;border-radius:6px;" +
           "font-size:12px;font-weight:600;pointer-events:none;white-space:nowrap"
-        const DimControl = L.Control.extend({
-          onAdd() { return dimDiv },
-        })
-        new DimControl({ position: "topleft" }).addTo(map)
+        const DimCtrl = L.Control.extend({ onAdd() { return dimDiv } })
+        new DimCtrl({ position: "topleft" }).addTo(map)
 
-        map.on("mousedown", (e: L.LeafletMouseEvent) => {
-          if (!drawModeRef.current) return
-          drawing = true
-          startLatLng = e.latlng
-          map.dragging.disable()
-          L.DomEvent.stop(e)
-        })
-        map.on("mousemove", (e: L.LeafletMouseEvent) => {
-          if (!drawing || !startLatLng) return
-          if (rectLayer) map.removeLayer(rectLayer)
-          rectLayer = L.rectangle(L.latLngBounds(startLatLng, e.latlng), {
-            color: "#2563eb", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2,
-            dashArray: "6 4",
-          }).addTo(map)
-          const ne = L.latLngBounds(startLatLng, e.latlng).getNorthEast()
-          const sw = L.latLngBounds(startLatLng, e.latlng).getSouthWest()
-          const w = Math.round(ne.distanceTo(L.latLng(ne.lat, sw.lng)))
-          const d = Math.round(ne.distanceTo(L.latLng(sw.lat, ne.lng)))
-          const prefix = drawLabelRef.current ? `📐 ${drawLabelRef.current}  ` : "📐 "
-          dimDiv.textContent = `${prefix}${w} × ${d} m`
-          dimDiv.style.display = "block"
-        })
-        map.on("mouseup", (e: L.LeafletMouseEvent) => {
-          if (!drawing || !startLatLng) return
-          drawing = false
-          map.dragging.enable()
-          const bounds = L.latLngBounds(startLatLng, e.latlng)
-          const ne = bounds.getNorthEast(), sw = bounds.getSouthWest()
-          const w = Math.round(ne.distanceTo(L.latLng(ne.lat, sw.lng)))
-          const d = Math.round(ne.distanceTo(L.latLng(sw.lat, ne.lng)))
+        // Close hint overlay
+        const hintDiv = L.DomUtil.create("div", "")
+        hintDiv.style.cssText =
+          "display:none;background:rgba(239,68,68,.9);color:#fff;padding:3px 9px;border-radius:5px;" +
+          "font-size:11px;pointer-events:none"
+        hintDiv.textContent = "點擊閉合多邊形"
+        const HintCtrl = L.Control.extend({ onAdd() { return hintDiv } })
+        new HintCtrl({ position: "topright" }).addTo(map)
+
+        const clearInProgress = () => {
+          vertexMarkers.forEach(m => map.removeLayer(m))
+          edgeLines.forEach(l => map.removeLayer(l))
+          if (previewLine) { map.removeLayer(previewLine); previewLine = null }
+          vertexMarkers = []
+          edgeLines = []
+          vertices = []
           dimDiv.style.display = "none"
-          startLatLng = null
-          if (w > 2 && d > 2) {
-            onRectDraw(w, d, [sw.lat, sw.lng], [ne.lat, ne.lng])
-            onDrawModeEnd?.()
+          hintDiv.style.display = "none"
+        }
+
+        const closePolygon = () => {
+          if (vertices.length < 3 || isCompleteRef.current) return
+          isCompleteRef.current = true
+          clearInProgress()
+
+          const verts: [number, number][] = vertices.map(v => [v.lat, v.lng])
+          const area = polygonArea(verts)
+          const perim = polygonPerimeter(verts)
+
+          dimDiv.textContent =
+            `${drawLabelRef.current ? drawLabelRef.current + "  " : ""}${Math.round(area).toLocaleString()} ㎡ · 周長 ${Math.round(perim)} m`
+          dimDiv.style.display = "block"
+          setTimeout(() => { dimDiv.style.display = "none" }, 3000)
+
+          onPolygonDraw(verts, area, perim)
+          onDrawModeEnd?.()
+        }
+
+        // Expose reset hooks for secondary effect
+        startNewDrawRef.current = () => {
+          clearInProgress()
+          isCompleteRef.current = false
+        }
+        cancelDrawRef.current = () => {
+          if (!isCompleteRef.current) clearInProgress()
+        }
+
+        // ── Click: add vertex or close ──────────────────────────────────────────
+        map.on("click", (e: L.LeafletMouseEvent) => {
+          if (!drawModeRef.current || isCompleteRef.current) return
+
+          // Snap to first vertex to close
+          if (vertices.length >= 3) {
+            const dist = e.latlng.distanceTo(vertices[0])
+            if (dist <= SNAP_M) {
+              closePolygon()
+              return
+            }
           }
+
+          vertices.push(e.latlng)
+          const isFirst = vertices.length === 1
+
+          // Vertex marker
+          const m = L.circleMarker(e.latlng, {
+            radius: isFirst ? 8 : 5,
+            color: "#2563eb", weight: 2,
+            fillColor: isFirst ? "#ef4444" : "#fff",
+            fillOpacity: 1,
+          }).addTo(map)
+          vertexMarkers.push(m)
+
+          // Edge from previous vertex
+          if (vertices.length >= 2) {
+            const edge = L.polyline(
+              [vertices[vertices.length - 2], vertices[vertices.length - 1]],
+              { color: "#2563eb", weight: 2 }
+            ).addTo(map)
+            edgeLines.push(edge)
+          }
+
+          // Update dim
+          if (vertices.length >= 2) {
+            const perim = polygonPerimeter(vertices.map(v => [v.lat, v.lng] as [number, number]))
+            const prefix = drawLabelRef.current ? `${drawLabelRef.current}  ` : ""
+            dimDiv.textContent = `${prefix}${vertices.length} 頂點 · 約 ${Math.round(perim)} m`
+            dimDiv.style.display = "block"
+          }
+        })
+
+        // ── Mousemove: preview line + snap hint ────────────────────────────────
+        map.on("mousemove", (e: L.LeafletMouseEvent) => {
+          if (!drawModeRef.current || isCompleteRef.current || vertices.length === 0) return
+
+          if (previewLine) map.removeLayer(previewLine)
+          previewLine = L.polyline(
+            [vertices[vertices.length - 1], e.latlng],
+            { color: "#2563eb", weight: 1.5, dashArray: "6 4" }
+          ).addTo(map)
+
+          // Snap hint: highlight first vertex
+          if (vertices.length >= 3 && vertexMarkers[0]) {
+            const dist = e.latlng.distanceTo(vertices[0])
+            const near = dist <= SNAP_M
+            vertexMarkers[0].setStyle({
+              fillColor: "#ef4444",
+              radius: near ? 11 : 8,
+              color: near ? "#dc2626" : "#2563eb",
+            })
+            hintDiv.style.display = near ? "block" : "none"
+          }
+        })
+
+        // ── Double-click: close polygon ────────────────────────────────────────
+        map.on("dblclick", (e: L.LeafletMouseEvent) => {
+          if (!drawModeRef.current || isCompleteRef.current) return
+          L.DomEvent.stop(e)
+          if (vertices.length >= 3) closePolygon()
         })
       }
 
@@ -178,26 +294,27 @@ export function QuoteMap({
         mapInstance.current = null
       }
     }
-  }, [lat, lng, airspace, polygon, onRectDraw, onPositionChange, onDrawModeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lat, lng, airspace, onPolygonDraw, onPositionChange, onDrawModeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Secondary: update draw mode ────────────────────────────────────────────
+  // ── Secondary: draw mode changes ──────────────────────────────────────────
   useEffect(() => {
     drawModeRef.current = drawMode ?? false
     const map = mapInstance.current as (L.Map & { dragging: L.Handler }) | null
     if (!map) return
     if (drawMode) {
-      map.dragging.disable()
+      startNewDrawRef.current()
       ;(map.getContainer() as HTMLElement).style.cursor = "crosshair"
     } else {
-      map.dragging.enable()
+      cancelDrawRef.current()
+      isCompleteRef.current = false
       ;(map.getContainer() as HTMLElement).style.cursor = ""
     }
   }, [drawMode])
 
-  // ── Secondary: update draw label ref ──────────────────────────────────────
+  // ── Secondary: draw label ref ──────────────────────────────────────────────
   useEffect(() => { drawLabelRef.current = drawLabel ?? "" }, [drawLabel])
 
-  // ── Secondary: update persisted rect layers ────────────────────────────────
+  // ── Secondary: update persisted shape layers ───────────────────────────────
   useEffect(() => {
     const map = mapInstance.current
     if (!map) return
@@ -205,16 +322,15 @@ export function QuoteMap({
       const m = map as L.Map
       for (const layer of persistedLayersRef.current) m.removeLayer(layer as L.Layer)
       persistedLayersRef.current = []
-      if (!persistedRects?.length) return
-      for (const rect of persistedRects) {
-        const layer = L.rectangle(
-          L.latLngBounds(L.latLng(rect.sw[0], rect.sw[1]), L.latLng(rect.ne[0], rect.ne[1])),
-          { color: "#16a34a", weight: 2, fillColor: "#22c55e", fillOpacity: 0.15 },
-        ).bindTooltip(rect.label, { permanent: true, direction: "center" }).addTo(m)
+      if (!persistedShapes?.length) return
+      for (const shape of persistedShapes) {
+        const layer = L.polygon(shape.vertices, {
+          color: "#16a34a", weight: 2, fillColor: "#22c55e", fillOpacity: 0.2,
+        }).bindTooltip(shape.label, { permanent: true, direction: "center" }).addTo(m)
         persistedLayersRef.current.push(layer)
       }
     })
-  }, [persistedRects])
+  }, [persistedShapes])
 
   return (
     <div ref={containerRef} className="w-full h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />

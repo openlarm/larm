@@ -518,6 +518,72 @@ export function calcPolygonPerimeter(points: { lat: number; lon: number }[]): nu
   return total
 }
 
+/** Polygon area in m² using shoelace in local metric coords */
+export function calcPolygonArea(vertices: [number, number][]): number {
+  if (vertices.length < 3) return 0
+  const refLat = vertices[0][0]
+  const refLng = vertices[0][1]
+  const mLat = 111320
+  const mLng = 111320 * Math.cos(refLat * Math.PI / 180)
+  const pts = vertices.map(([lat, lng]) => [(lng - refLng) * mLng, (lat - refLat) * mLat])
+  let area = 0
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length
+    area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
+  }
+  return Math.abs(area) / 2
+}
+
+/** Perimeter of a lat/lng polygon (vertices as [lat, lng] pairs) */
+export function calcLatLngPerimeter(vertices: [number, number][]): number {
+  if (vertices.length < 2) return 0
+  let total = 0
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i]
+    const b = vertices[(i + 1) % vertices.length]
+    total += haversineM(a[0], a[1], b[0], b[1])
+  }
+  return total
+}
+
+/** Estimate from multi-building drawn polygons (each with its own perimeter) */
+export function estimateFromMultiPerimeters(
+  perimeters_m: (number | null)[],
+  numBuildings: number,
+  floors: number,
+  numFacades: number,
+): AreaEstimate {
+  const height = floors * FLOOR_HEIGHT_M
+  const fallback = perimeters_m.find(p => p != null) ?? 80
+  const perBuildingFacadeWidths: number[][] = []
+  let totalProjectArea = 0
+
+  for (let b = 0; b < numBuildings; b++) {
+    const perim = perimeters_m[b] ?? fallback
+    const widths = Array.from({ length: numFacades }, () => Math.round(perim / numFacades))
+    perBuildingFacadeWidths.push(widths)
+    totalProjectArea += perim * height
+  }
+
+  const validPerims = perimeters_m.filter((p): p is number => p != null)
+  const avgPerim = validPerims.length > 0
+    ? validPerims.reduce((s, p) => s + p, 0) / validPerims.length
+    : fallback
+  const avgWidth = Math.round(avgPerim / numFacades)
+
+  return {
+    source: "manual-draw",
+    perimeter_m: Math.round(avgPerim),
+    facade_width_m: avgWidth,
+    building_height_m: height,
+    facade_area_m2: Math.round(avgWidth * height),
+    total_area_m2: Math.round(avgPerim * height),
+    num_facades: numFacades,
+    perBuildingFacadeWidths,
+    project_total_m2: Math.round(totalProjectArea),
+  }
+}
+
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000
   const dLat = (lat2 - lat1) * (Math.PI / 180)

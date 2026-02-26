@@ -2,15 +2,15 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import type { RooftopAccess } from "@/lib/types"
-import type { QuoteFormData, AreaEstimate, QuoteFacadeInput, BuildingDimensions, CleaningAgent, DrawnRectBounds } from "./quote-defaults"
+import type { QuoteFormData, AreaEstimate, QuoteFacadeInput, BuildingDimensions, CleaningAgent } from "./quote-defaults"
 import {
   BUILDING_TYPE_OPTIONS, TIME_SLOT_OPTIONS, CLEANING_AGENT_OPTIONS,
-  estimateFromPerimeter, estimateFromDefaults, estimateFromRect, estimateFromDimensions,
-  estimateFromMultiRects,
+  estimateFromPerimeter, estimateFromDefaults, estimateFromDimensions,
+  estimateFromMultiPerimeters,
   buildDefaultFacadeInputs,
 } from "./quote-defaults"
 import { QuoteMap } from "./QuoteMap"
-import type { PersistedRect } from "./QuoteMap"
+import type { PersistedShape } from "./QuoteMap"
 import { QuoteFacadeEditor } from "./QuoteFacadeEditor"
 
 interface Props {
@@ -25,9 +25,16 @@ interface Props {
   onBack: () => void
 }
 
+// Local type for a completed drawn polygon
+interface DrawnPolygon {
+  vertices: [number, number][]
+  area_m2: number
+  perimeter_m: number
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   overpass: "地圖自動偵測（MBR）",
-  "manual-draw": "手動框選",
+  "manual-draw": "手動繪製",
   default: "智慧預設值",
 }
 
@@ -35,7 +42,7 @@ const FACE_DISPLAY = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 export function QuoteStep2({
-  formData, updateForm, buildingPerimeter, buildingPolygon,
+  formData, updateForm, buildingPerimeter,
   buildingDimensions, areaEstimate, setAreaEstimate, onNext, onBack,
 }: Props) {
   const floors = formData.floors ?? 10
@@ -45,8 +52,8 @@ export function QuoteStep2({
   const [overrideWidth, setOverrideWidth] = useState<string>("")
   const [drawMode, setDrawMode] = useState(false)
 
-  // Per-building drawn rectangles (one slot per building index)
-  const [drawnRects, setDrawnRects] = useState<(DrawnRectBounds | null)[]>([])
+  // Per-building drawn polygons (one slot per building index)
+  const [drawnPolygons, setDrawnPolygons] = useState<(DrawnPolygon | null)[]>([])
   const [drawTarget, setDrawTarget] = useState(0)
   const drawTargetRef = useRef(drawTarget)
   useEffect(() => { drawTargetRef.current = drawTarget }, [drawTarget])
@@ -61,12 +68,16 @@ export function QuoteStep2({
     }
   }, [numFacades, numBuildings]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Recalculate area estimate
+  // Recalculate area estimate whenever inputs change
   useEffect(() => {
-    if (numBuildings > 1 && drawnRects.some(r => r !== null)) {
-      setAreaEstimate(estimateFromMultiRects(drawnRects, numBuildings, floors, numFacades))
-    } else if (drawnRects[0]) {
-      setAreaEstimate(estimateFromRect(drawnRects[0].w, drawnRects[0].d, floors, numFacades))
+    const hasDrawn = drawnPolygons.some(p => p != null)
+    if (numBuildings > 1 && hasDrawn) {
+      setAreaEstimate(estimateFromMultiPerimeters(
+        drawnPolygons.map(p => p?.perimeter_m ?? null),
+        numBuildings, floors, numFacades,
+      ))
+    } else if (drawnPolygons[0]) {
+      setAreaEstimate(estimateFromPerimeter(drawnPolygons[0].perimeter_m, floors, numFacades, "manual-draw"))
     } else if (overrideWidth && Number(overrideWidth) > 0) {
       const w = Number(overrideWidth)
       setAreaEstimate(estimateFromPerimeter(w * numFacades, floors, numFacades, "manual-draw"))
@@ -77,20 +88,21 @@ export function QuoteStep2({
     } else {
       setAreaEstimate(estimateFromDefaults(buildingType, floors, numFacades))
     }
-  }, [floors, numFacades, numBuildings, buildingType, buildingPerimeter, buildingDimensions, overrideWidth, drawnRects, setAreaEstimate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [floors, numFacades, numBuildings, buildingType, buildingPerimeter, buildingDimensions, overrideWidth, drawnPolygons, setAreaEstimate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stable callback — uses ref to avoid map re-init when drawTarget changes
-  const handleRectDraw = useCallback((
-    w: number, d: number,
-    sw: [number, number], ne: [number, number],
+  const handlePolygonDraw = useCallback((
+    vertices: [number, number][],
+    area_m2: number,
+    perimeter_m: number,
   ) => {
     const idx = drawTargetRef.current
-    setDrawnRects(prev => {
+    setDrawnPolygons(prev => {
       const next = Array.from(
         { length: Math.max(prev.length, idx + 1) },
         (_, i) => prev[i] ?? null,
       )
-      next[idx] = { w, d, sw, ne }
+      next[idx] = { vertices, area_m2, perimeter_m }
       return next
     })
     setOverrideWidth("")
@@ -98,19 +110,20 @@ export function QuoteStep2({
 
   const handleDrawModeEnd = useCallback(() => setDrawMode(false), [])
 
-  const clearRect = useCallback((idx: number) => {
-    setDrawnRects(prev => { const next = [...prev]; next[idx] = null; return next })
+  const clearPolygon = useCallback((idx: number) => {
+    setDrawnPolygons(prev => { const next = [...prev]; next[idx] = null; return next })
   }, [])
 
   const handleFacadesChange = useCallback((facades: QuoteFacadeInput[]) => {
     updateForm({ facadeInputs: facades })
   }, [updateForm])
 
-  const persistedRects: PersistedRect[] = drawnRects
-    .map((r, i) => r
-      ? { sw: r.sw, ne: r.ne, label: numBuildings > 1 ? `棟${BUILDING_LABELS[i] ?? i + 1}` : "框選範圍" }
+  // Build persisted shapes for map display
+  const persistedShapes: PersistedShape[] = drawnPolygons
+    .map((p, i) => p
+      ? { vertices: p.vertices, label: numBuildings > 1 ? `棟${BUILDING_LABELS[i] ?? i + 1}` : "已繪範圍" }
       : null)
-    .filter((r): r is PersistedRect => r !== null)
+    .filter((s): s is PersistedShape => s !== null)
 
   const drawLabel = numBuildings > 1 && drawMode
     ? `棟${BUILDING_LABELS[drawTarget] ?? drawTarget + 1}`
@@ -281,44 +294,49 @@ export function QuoteStep2({
         <div className="space-y-3">
           {formData.lat && formData.lng && (
             <>
-              {/* Draw mode controls */}
+              {/* ── Draw mode controls ── */}
               {numBuildings <= 1 ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setDrawTarget(0); setDrawMode(m => !m) }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors ${
-                      drawMode
-                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                        : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400 hover:text-blue-600"
-                    }`}
-                  >
-                    📐 {drawMode ? "框選中 — 按此取消" : "手動框選建物範圍"}
-                  </button>
-                  {drawMode && (
-                    <span className="text-xs text-zinc-500">在地圖上拖拉以框定建物邊界</span>
-                  )}
-                  {drawnRects[0] && !drawMode && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-medium">
-                        框選：{drawnRects[0].w} × {drawnRects[0].d} m
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => clearRect(0)}
-                        className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
-                      >×</button>
-                    </div>
-                  )}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setDrawTarget(0); setDrawMode(m => !m) }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors ${
+                        drawMode
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400 hover:text-blue-600"
+                      }`}
+                    >
+                      ✏️ {drawMode ? "繪製中 — 按此取消" : "點擊繪製建物範圍"}
+                    </button>
+                    {drawMode && (
+                      <span className="text-xs text-zinc-500">點擊地圖逐點加入頂點，點擊起點（紅圓）閉合</span>
+                    )}
+                    {drawnPolygons[0] && !drawMode && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-medium">
+                          {Math.round(drawnPolygons[0].area_m2).toLocaleString()} ㎡
+                          <span className="font-normal ml-1 opacity-70">
+                            · {drawnPolygons[0].vertices.length} 頂點
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => clearPolygon(0)}
+                          className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                        >×</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 /* Multi-building — per-building draw buttons */
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-zinc-500">分別框選各棟範圍：</p>
+                  <p className="text-xs font-medium text-zinc-500">分別繪製各棟範圍：</p>
                   <div className="flex flex-wrap gap-2">
                     {Array.from({ length: numBuildings }, (_, i) => {
                       const bLabel = BUILDING_LABELS[i] ?? String(i + 1)
-                      const rect = drawnRects[i]
+                      const poly = drawnPolygons[i]
                       const isActive = drawMode && drawTarget === i
                       return (
                         <div key={i} className="flex items-center gap-1">
@@ -331,18 +349,22 @@ export function QuoteStep2({
                             className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-colors ${
                               isActive
                                 ? "bg-blue-600 text-white border-blue-600"
-                                : rect
+                                : poly
                                   ? "bg-green-50 text-green-700 border-green-400 hover:border-green-600"
                                   : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400"
                             }`}
                           >
-                            📐 棟{bLabel}
-                            {isActive ? " — 按此取消" : rect ? ` ${rect.w}×${rect.d}m` : "（未設定）"}
+                            ✏️ 棟{bLabel}
+                            {isActive
+                              ? " — 按此取消"
+                              : poly
+                                ? ` ${Math.round(poly.area_m2).toLocaleString()}㎡`
+                                : "（未繪製）"}
                           </button>
-                          {rect && !isActive && (
+                          {poly && !isActive && (
                             <button
                               type="button"
-                              onClick={() => clearRect(i)}
+                              onClick={() => clearPolygon(i)}
                               className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
                             >×</button>
                           )}
@@ -352,7 +374,7 @@ export function QuoteStep2({
                   </div>
                   {drawMode && (
                     <span className="text-xs text-zinc-400">
-                      在地圖上拖拉以框定棟{BUILDING_LABELS[drawTarget] ?? drawTarget + 1}邊界
+                      點擊地圖逐點加入頂點，點擊起點閉合棟{BUILDING_LABELS[drawTarget] ?? drawTarget + 1}範圍
                     </span>
                   )}
                 </div>
@@ -360,11 +382,11 @@ export function QuoteStep2({
 
               <QuoteMap
                 lat={formData.lat} lng={formData.lng}
-                airspace={null} polygon={buildingPolygon}
+                airspace={null}
                 drawMode={drawMode}
                 drawLabel={drawLabel}
-                persistedRects={persistedRects}
-                onRectDraw={handleRectDraw}
+                persistedShapes={persistedShapes}
+                onPolygonDraw={handlePolygonDraw}
                 onDrawModeEnd={handleDrawModeEnd}
               />
             </>
@@ -380,12 +402,17 @@ export function QuoteStep2({
                 </span>
               </div>
               <div className="space-y-1 text-sm text-blue-800">
-                {buildingDimensions && buildingDimensions.width_m > 0 && !drawnRects.some(r => r !== null) && (
+                {buildingDimensions && buildingDimensions.width_m > 0 && !drawnPolygons.some(p => p != null) && (
                   <p className="font-medium">
                     建物尺寸：{buildingDimensions.width_m} × {buildingDimensions.depth_m} m
                     <span className="text-xs font-normal ml-1 opacity-70">
                       （方位 {buildingDimensions.angle_deg}°）
                     </span>
+                  </p>
+                )}
+                {drawnPolygons[0] && (
+                  <p className="text-xs text-blue-700 opacity-80">
+                    多邊形周長 ≈ {Math.round(drawnPolygons[0].perimeter_m)} m
                   </p>
                 )}
                 {!areaEstimate.perBuildingFacadeWidths && areaEstimate.facadeWidths_m && areaEstimate.facadeWidths_m.length > 1 ? (
@@ -418,13 +445,13 @@ export function QuoteStep2({
             </div>
           )}
 
-          {/* Manual width override (single building only) */}
-          {numBuildings <= 1 && (
+          {/* Manual width override — only when no polygon drawn */}
+          {numBuildings <= 1 && !drawnPolygons[0] && (
             <div>
-              <label className="block text-sm text-zinc-500 mb-1">手動調整每面寬度（可選）</label>
+              <label className="block text-sm text-zinc-500 mb-1">手動輸入每面寬度（可選）</label>
               <div className="flex items-center gap-2">
                 <input type="number" value={overrideWidth}
-                  onChange={e => { setOverrideWidth(e.target.value); setDrawnRects([]) }}
+                  onChange={e => { setOverrideWidth(e.target.value) }}
                   placeholder={areaEstimate ? String(areaEstimate.facade_width_m) : ""}
                   min={1}
                   className="w-28 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
