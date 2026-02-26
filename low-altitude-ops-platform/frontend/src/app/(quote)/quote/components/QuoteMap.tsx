@@ -184,11 +184,13 @@ export function QuoteMap({
         const closePolygon = () => {
           if (vertices.length < 3 || isCompleteRef.current) return
           isCompleteRef.current = true
-          clearInProgress()
 
+          // Capture before clearInProgress() resets the vertices array
           const verts: [number, number][] = vertices.map(v => [v.lat, v.lng])
           const area = polygonArea(verts)
           const perim = polygonPerimeter(verts)
+
+          clearInProgress()
 
           dimDiv.textContent =
             `${drawLabelRef.current ? drawLabelRef.current + "  " : ""}${Math.round(area).toLocaleString()} ㎡ · 周長 ${Math.round(perim)} m`
