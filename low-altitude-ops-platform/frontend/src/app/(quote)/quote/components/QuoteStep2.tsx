@@ -481,13 +481,13 @@ export function QuoteStep2({
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between pt-2">
+      <div className="flex justify-between pt-2 gap-3">
         <button onClick={onBack}
-          className="px-6 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
+          className="flex-1 sm:flex-none px-6 py-3 sm:py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors">
           上一步
         </button>
         <button onClick={onNext} disabled={!areaEstimate}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
+          className="flex-1 sm:flex-none px-6 py-3 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
           產生報價
         </button>
       </div>

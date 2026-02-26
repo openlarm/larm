@@ -287,7 +287,7 @@ export function QuoteStep1({
             const diffDays = Math.ceil((selected.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
             updateForm({ expectedDate: dateStr, urgent: diffDays <= 30 })
           }}
-          className="px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          className="w-full sm:w-auto px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
         />
         {/* Urgent auto-set notice */}
         {formData.expectedDate && (() => {
@@ -329,7 +329,7 @@ export function QuoteStep1({
       {/* Next */}
       <div className="flex justify-end pt-4">
         <button onClick={onNext} disabled={!canProceed}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
+          className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 transition-colors font-medium">
           下一步
         </button>
       </div>

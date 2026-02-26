@@ -336,6 +336,6 @@ export function QuoteMap({
   }, [persistedShapes])
 
   return (
-    <div ref={containerRef} className="w-full h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />
+    <div ref={containerRef} className="w-full h-[220px] sm:h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />
   )
 }

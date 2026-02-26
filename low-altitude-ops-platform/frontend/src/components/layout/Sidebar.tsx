@@ -2,7 +2,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Rocket, Building2, Users, Wrench, BookOpen, FileText,
+  Rocket, Building2, Users, Wrench, BookOpen, FileText, X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SYSTEM_VERSIONS } from "@/lib/mock-data"
@@ -16,15 +16,38 @@ const NAV = [
   { href: "/documents", label: "Documents", sublabel: "文件中心", icon: FileText },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   return (
-    <aside className="fixed inset-y-0 left-0 w-56 flex flex-col bg-zinc-950 border-r border-zinc-800 z-40">
+    <aside className={cn(
+      "fixed inset-y-0 left-0 w-56 flex flex-col bg-zinc-950 border-r border-zinc-800 z-40",
+      "transition-transform duration-300 ease-in-out",
+      // Desktop: always visible; Mobile: show/hide based on isOpen
+      "lg:translate-x-0",
+      isOpen ? "translate-x-0" : "-translate-x-full",
+    )}>
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-zinc-800">
-        <div className="text-xs font-bold tracking-widest text-zinc-400 uppercase">LAOP</div>
-        <div className="text-sm font-semibold text-white mt-0.5">Low Altitude Ops</div>
-        <div className="text-[10px] text-zinc-500 mt-0.5">Mock Prototype</div>
+      <div className="px-4 py-5 border-b border-zinc-800 flex items-start justify-between">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-zinc-400 uppercase">LAOP</div>
+          <div className="text-sm font-semibold text-white mt-0.5">Low Altitude Ops</div>
+          <div className="text-[10px] text-zinc-500 mt-0.5">Mock Prototype</div>
+        </div>
+        {/* Close button — visible on mobile only */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1 text-zinc-500 hover:text-white transition-colors"
+            aria-label="關閉選單"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -35,6 +58,7 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
+              onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                 active

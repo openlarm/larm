@@ -199,13 +199,13 @@ export function QuoteStep3({
 
       <div id="quote-print-area" className="border border-zinc-300 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-zinc-800 text-white px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-zinc-800 text-white px-4 sm:px-6 py-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-lg font-bold">GDS 低空作業 快速報價單</h3>
-              <p className="text-zinc-400 text-sm">Quick Quote — 估算報價，正式報價以現場勘查為準</p>
+              <h3 className="text-base sm:text-lg font-bold">GDS 低空作業 快速報價單</h3>
+              <p className="text-zinc-400 text-xs sm:text-sm">Quick Quote — 估算報價，正式報價以現場勘查為準</p>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <p className="font-mono text-sm">{pricing.quote_code}</p>
               <p className="text-zinc-400 text-xs">有效至 {pricing.valid_until}</p>
             </div>
@@ -213,8 +213,8 @@ export function QuoteStep3({
         </div>
 
         {/* Info grid */}
-        <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-200">
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+        <div className="px-4 sm:px-6 py-4 bg-zinc-50 border-b border-zinc-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <InfoRow label="客戶" value={infoConfirmed ? localInfo.clientName : formData.clientName} />
             <InfoRow label="地址" value={infoConfirmed ? localInfo.address : formData.address} />
             {(infoConfirmed ? localInfo.buildingName : buildingName) && (
@@ -258,9 +258,9 @@ export function QuoteStep3({
 
         {/* Per-facade summary */}
         {formData.facadeInputs && formData.facadeInputs.length > 0 && (
-          <div className="px-6 py-4 border-b border-zinc-200">
+          <div className="px-4 sm:px-6 py-4 border-b border-zinc-200">
             <h4 className="text-sm font-semibold text-zinc-600 mb-3">各立面概況</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {formData.facadeInputs.map(f => (
                 <div key={f.id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 text-xs">
                   <div className="font-semibold text-zinc-800 mb-1">{f.buildingLabel ? `棟${f.buildingLabel} ${f.label}` : f.label}</div>
@@ -306,9 +306,10 @@ export function QuoteStep3({
         <WeatherAdvisory date={formData.expectedDate} suggestedDays={timeResult.suggested_days} />
 
         {/* Line items — grouped by building */}
-        <div className="px-6 py-4">
+        <div className="px-4 sm:px-6 py-4">
           <h4 className="text-sm font-semibold text-zinc-600 mb-3">費用明細</h4>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-sm min-w-[360px]">
             <thead>
               <tr className="text-zinc-500 border-b">
                 <th className="text-left py-2 font-medium">項目</th>
@@ -353,10 +354,11 @@ export function QuoteStep3({
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
 
         {/* Multipliers */}
-        <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200">
+        <div className="px-4 sm:px-6 py-4 bg-zinc-50 border-t border-zinc-200">
           <h4 className="text-sm font-semibold text-zinc-600 mb-3">調整係數</h4>
           <div className="space-y-1 text-sm">
             {Object.entries(pricing.multiplier_breakdown).map(([key, val]) => (
@@ -380,7 +382,7 @@ export function QuoteStep3({
         </div>
 
         {/* Total */}
-        <div className="px-6 py-5 bg-blue-600 text-white">
+        <div className="px-4 sm:px-6 py-5 bg-blue-600 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-blue-200 text-sm">報價總額</p>
@@ -424,7 +426,7 @@ export function QuoteStep3({
               <span className="text-amber-600">📋</span>
               <p className="text-sm font-semibold text-amber-800">請填寫客戶資料後方可下載 PDF</p>
             </div>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
               {[
                 { key: "clientName",    label: "客戶名稱", placeholder: "例：遠雄建設",         type: "text"  },
                 { key: "buildingName",  label: "建物名稱", placeholder: "例：信義之星",          type: "text"  },
@@ -467,10 +469,10 @@ export function QuoteStep3({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center pt-2 no-print">
+      <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2 no-print">
         <button
           onClick={onBack}
-          className="px-5 py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
+          className="px-5 py-3 sm:py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
         >
           上一步
         </button>
@@ -478,7 +480,7 @@ export function QuoteStep3({
           onClick={handlePrint}
           disabled={!infoConfirmed}
           title={!infoConfirmed ? "請先填寫並確認客戶資料" : ""}
-          className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+          className={`px-5 py-3 sm:py-2.5 rounded-lg font-medium transition-colors ${
             infoConfirmed
               ? "bg-emerald-600 text-white hover:bg-emerald-700"
               : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
@@ -488,7 +490,7 @@ export function QuoteStep3({
         </button>
         <button
           onClick={onReset}
-          className="px-5 py-2.5 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors"
+          className="px-5 py-3 sm:py-2.5 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors"
         >
           重新填寫
         </button>

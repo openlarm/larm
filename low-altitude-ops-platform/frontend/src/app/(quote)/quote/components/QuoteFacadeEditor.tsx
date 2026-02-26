@@ -78,7 +78,7 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
 
       {/* Building tabs — only show when multiple buildings */}
       {numBuildings > 1 && (
-        <div className="flex gap-1 border-b border-zinc-200">
+        <div className="flex gap-1 border-b border-zinc-200 overflow-x-auto scrollbar-thin">
           {buildingTabLabels.map((label, idx) => (
             <button
               key={idx}

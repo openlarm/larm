@@ -57,20 +57,24 @@ export default function QuotePage() {
   return (
     <div>
       {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-6 sm:mb-8">
         {STEPS.map((label, i) => (
-          <div key={label} className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+          <div key={label} className="flex items-center gap-1.5 sm:gap-2">
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium transition-colors shrink-0 ${
               i < step ? "bg-blue-600 text-white" :
               i === step ? "bg-blue-600 text-white ring-2 ring-blue-300" :
               "bg-zinc-200 text-zinc-500"
             }`}>
               {i < step ? "✓" : i + 1}
             </div>
-            <span className={`text-sm ${i === step ? "text-zinc-900 font-medium" : "text-zinc-400"}`}>
+            <span className={`text-xs sm:text-sm hidden sm:inline ${i === step ? "text-zinc-900 font-medium" : "text-zinc-400"}`}>
               {label}
             </span>
-            {i < STEPS.length - 1 && <div className="w-12 h-px bg-zinc-300" />}
+            {/* Show active label below on mobile */}
+            {i === step && (
+              <span className="text-xs text-zinc-900 font-medium sm:hidden">{label}</span>
+            )}
+            {i < STEPS.length - 1 && <div className="w-6 sm:w-12 h-px bg-zinc-300 shrink-0" />}
           </div>
         ))}
       </div>
