@@ -1,6 +1,3 @@
 {
-  "framework": "nextjs",
-  "installCommand": "cd low-altitude-ops-platform/frontend && npm install",
-  "buildCommand": "cd low-altitude-ops-platform/frontend && npm run build",
-  "outputDirectory": "low-altitude-ops-platform/frontend/.next"
+  "framework": "nextjs"
 }
