@@ -1,11 +1,11 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { StepShell } from "../StepShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle, CalendarX, CheckSquare, Info, ChevronLeft, ChevronRight } from "lucide-react"
 import { MOCK_WEATHER_SCENARIOS, MOCK_WEATHER_30D, MOCK_CONFLICTS } from "@/lib/mock-data"
-import type { Mission, WeatherDay, RiskLevel, WeatherType } from "@/lib/types"
+import type { Mission, WeatherDay, RiskLevel, WeatherType, Weather30dInput, WeatherTodayInput } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
@@ -80,11 +80,84 @@ function quickEstimateDays(facades: { area_m2: number }[], buildingType?: string
   return Math.max(1, Math.ceil(total / (baseline * 8)))
 }
 
+// ── Real-weather helpers ───────────────────────────────────────────────────────
+
+/** Infer a W-code from a real daily forecast + 30d background context */
+function inferWCode(today: WeatherTodayInput, w30d: Weather30dInput): WeatherType {
+  const wind = today.wind_now_kmh
+  const rain = today.rain_prob_today_pct
+  if (wind >= 28 && (w30d.gust_p90_kmh ?? 0) >= 39) return "W5"
+  if (today.thunder_risk === 1 && rain >= 40) return "W4"
+  if (w30d.rain_days_30 >= 15 && rain >= 60) return "W3"
+  if (w30d.rain_days_30 >= 10 && rain >= 40) return "W2"
+  if (wind >= 20 && w30d.wind_p90_kmh >= 28) return "W1"
+  return "W0"
+}
+
+/** Simple deterministic risk level from W-code (used for real forecast days) */
+function simpleRiskFromW(w: WeatherType): RiskLevel {
+  const map: Record<WeatherType, RiskLevel> = {
+    W0: "R0", W1: "R1", W2: "R1", W3: "R2", W4: "R2", W5: "R3",
+  }
+  return map[w]
+}
+
+/** Estimated completion probability from risk + W-code */
+function completionForRiskLocal(rl: RiskLevel, w: WeatherType): number {
+  const rIdx = parseInt(rl[1])
+  const wIdx = parseInt(w[1])
+  const base = [97, 82, 60, 35, 10][rIdx]
+  return Math.max(5, Math.min(99, base - wIdx * 3))
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Step5Weather({ mission, update, next, back }: Props) {
   const scenarioKey = mission.airspace?.status === "NeedPermit" ? "W1-R2" : "W0-R0"
-  const allDays = MOCK_WEATHER_SCENARIOS[scenarioKey]
+
+  // ── Real weather state ────────────────────────────────────────────────────
+  const [realWeather, setRealWeather] = useState<{
+    weather_30d: Weather30dInput
+    forecast: { date: string; weather_today: WeatherTodayInput }[]
+  } | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
+
+  useEffect(() => {
+    const lat = mission.address?.lat
+    const lng = mission.address?.lng
+    if (!lat || !lng) { setWeatherLoading(false); return }
+    const city = encodeURIComponent(mission.address?.city ?? "")
+    fetch(`/api/weather/context?lat=${lat}&lng=${lng}&city=${city}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.weather_30d) setRealWeather(data) })
+      .catch(() => {})
+      .finally(() => setWeatherLoading(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── allDays: mock baseline overridden by real forecast for near-future ────
+  const allDays = useMemo(() => {
+    const mockDays = MOCK_WEATHER_SCENARIOS[scenarioKey]
+    if (!realWeather?.forecast?.length) return mockDays
+
+    const forecastMap = new Map(
+      realWeather.forecast.map(f => [f.date, f.weather_today])
+    )
+    return mockDays.map((day): WeatherDay => {
+      const realToday = forecastMap.get(day.date)
+      if (!realToday) return day  // far-future: keep mock generation as-is
+      const wt = inferWCode(realToday, realWeather.weather_30d)
+      const rl = simpleRiskFromW(wt)
+      return {
+        ...day,
+        weather_type: wt,
+        risk_level: rl,
+        wind_ms: Math.round(realToday.wind_now_kmh / 3.6 * 10) / 10,
+        rain_prob: realToday.rain_prob_today_pct,
+        completion_prob: completionForRiskLocal(rl, wt),
+        weather_today: realToday,
+      }
+    })
+  }, [scenarioKey, realWeather])
 
   const initSelected =
     mission.selected_dates ??
@@ -159,7 +232,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
       selected_dates: selected,
       selected_date: selected[0],
       weather: worst,
-      weather_30d: MOCK_WEATHER_30D[scenarioKey],
+      weather_30d: realWeather?.weather_30d ?? MOCK_WEATHER_30D[scenarioKey],
     })
     next()
   }
@@ -287,7 +360,18 @@ export function Step5Weather({ mission, update, next, back }: Props) {
                 <tr>
                   <th className="px-2 py-2 w-8" />
                   <th className="px-3 py-2 text-left">日期</th>
-                  <th className="px-3 py-2 text-left">天候</th>
+                  <th className="px-3 py-2 text-left">
+                    天候
+                    {weatherLoading && (
+                      <span className="ml-1 text-[9px] text-zinc-600 animate-pulse">取得中…</span>
+                    )}
+                    {!weatherLoading && realWeather && (
+                      <span className="ml-1 text-[9px] text-emerald-600">● 即時</span>
+                    )}
+                    {!weatherLoading && !realWeather && (
+                      <span className="ml-1 text-[9px] text-zinc-600">● 模擬</span>
+                    )}
+                  </th>
                   <th className="px-3 py-2 text-center">風速</th>
                   <th className="px-3 py-2 text-center">降雨%</th>
                   <th className="px-3 py-2 text-center">風險</th>
