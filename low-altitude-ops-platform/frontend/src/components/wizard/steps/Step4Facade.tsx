@@ -48,13 +48,12 @@ export function Step4Facade({ mission, update, next, back, facadeInputs, setFaca
 
   return (
     <StepShell title="Step 4 — Façade Details" subtitle="立面詳細資料" onBack={back} onNext={handleNext} nextDisabled={!canNext} wide>
-      <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden p-4">
-        <QuoteFacadeEditor
-          facades={facadeInputs}
-          numBuildings={numBuildings}
-          onChange={setFacadeInputs}
-        />
-      </div>
+      <QuoteFacadeEditor
+        facades={facadeInputs}
+        numBuildings={numBuildings}
+        dark={true}
+        onChange={setFacadeInputs}
+      />
     </StepShell>
   )
 }

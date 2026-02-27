@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Building2 } from "lucide-react"
 import { MOCK_BUILDINGS } from "@/lib/mock-data"
+import { cn } from "@/lib/utils"
 import type { Mission, BuildingType, RooftopAccess, Supply, RegionExposure, CrowdDensity } from "@/lib/types"
 import type { PersistedShape } from "@/app/(quote)/quote/components/QuoteMap"
 
@@ -16,16 +17,20 @@ const QuoteMap = dynamic(
   { ssr: false }
 )
 
+const BUILDING_ALPHA = "ABCDEFGH"
+
 interface Props {
   mission: Partial<Mission>
   update: (p: Partial<Mission>) => void
   next: () => void
   back: () => void
-  polygon: [number, number][] | null
-  onPolygonDraw: (vertices: [number, number][], area_m2: number, perimeter_m: number) => void
+  /** Per-building polygon vertices; sparse (null = not yet drawn) */
+  buildingPolygons: ([number, number][] | null)[]
+  /** idx = which building (0-based); called when user closes a polygon */
+  onPolygonDraw: (idx: number, vertices: [number, number][], area_m2: number, perimeter_m: number) => void
 }
 
-export function Step3Building({ mission, update, next, back, polygon, onPolygonDraw }: Props) {
+export function Step3Building({ mission, update, next, back, buildingPolygons, onPolygonDraw }: Props) {
   const init = mission.building
   const [name, setName] = useState(init?.name ?? "")
   const [floors, setFloors] = useState(String(init?.height_floors ?? ""))
@@ -41,8 +46,14 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
   const [nearBaseStation, setNearBaseStation] = useState<boolean>(init?.near_base_station === 1)
   const [windChannelEffect, setWindChannelEffect] = useState<boolean>(init?.wind_channel_effect === 1)
   const [clearanceM, setClearanceM] = useState(String(init?.clearance_m ?? ""))
-  // Local perimeter from polygon draw (used for area estimate display)
-  const [localPerimeterM, setLocalPerimeterM] = useState<number | null>(null)
+
+  // ── Multi-building polygon drawing state ────────────────────────────────────
+  /** Which building tab is currently active for drawing */
+  const [activeDrawIdx, setActiveDrawIdx] = useState(0)
+  /** Perimeter (m) for each drawn building polygon, keyed by building index */
+  const [perimeterByBuilding, setPerimeterByBuilding] = useState<Record<number, number>>({})
+
+  const numBuildingsNum = parseInt(numBuildings) || 1
 
   const loadTemplate = (key: string) => {
     const t = MOCK_BUILDINGS[key]
@@ -63,7 +74,7 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
       height_floors: f,
       height_m: f * 3.5,
       building_type: buildingType as BuildingType,
-      num_buildings: parseInt(numBuildings) || 1,
+      num_buildings: numBuildingsNum,
       num_facades: parseInt(numFacades) || 4,
       rooftop_access: rooftop,
       water_supply: water,
@@ -82,14 +93,24 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
   const lng = mission.address?.lng ?? 121.565
   const floorsNum = parseInt(floors) || 10
   const numFacadesNum = parseInt(numFacades) || 4
-  const perimeterDisplay = localPerimeterM ?? null
-  const facadeEstimate = perimeterDisplay
-    ? Math.round((perimeterDisplay / numFacadesNum) * floorsNum * 3.5)
+
+  // Area estimate for the active building
+  const activePerim = perimeterByBuilding[activeDrawIdx] ?? null
+  const facadeEstimate = activePerim
+    ? Math.round((activePerim / numFacadesNum) * floorsNum * 3.5)
     : null
 
-  const persistedShapes: PersistedShape[] = polygon
-    ? [{ vertices: polygon, label: name || "建物範圍" }]
-    : []
+  // All drawn polygons as persisted shapes (shown while drawing any building)
+  const persistedShapes: PersistedShape[] = buildingPolygons
+    .map((poly, i) =>
+      poly ? {
+        vertices: poly,
+        label: numBuildingsNum > 1 ? `棟 ${BUILDING_ALPHA[i]}` : (name || "建物範圍"),
+      } : null
+    )
+    .filter(Boolean) as PersistedShape[]
+
+  const drawnCount = buildingPolygons.filter(Boolean).length
 
   return (
     <StepShell title="Step 3 — Building Basics" subtitle="建物基本資料與地圖範圍" onBack={back} onNext={handleNext} nextDisabled={!canNext} wide>
@@ -133,7 +154,7 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
 
             <div className="space-y-2">
               <Label>棟數</Label>
-              <Select value={numBuildings} onValueChange={setNumBuildings}>
+              <Select value={numBuildings} onValueChange={v => { setNumBuildings(v); setActiveDrawIdx(0) }}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
                   {[1,2,3,4,5,6,7,8].map(n => (
@@ -265,31 +286,89 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
 
         {/* ── Right: map + area estimate ───────────────────────────────────── */}
         <div className="space-y-3">
-          <p className="text-sm font-medium text-zinc-300">地圖圈選範圍</p>
-          <p className="text-xs text-zinc-500">在地圖上點擊各頂點圈選建物輪廓，閉合後自動計算周長與立面估算面積。</p>
+
+          {/* Building tabs (shown when numBuildings > 1) */}
+          {numBuildingsNum > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {Array.from({ length: numBuildingsNum }, (_, i) => {
+                const label = BUILDING_ALPHA[i] ?? String(i + 1)
+                const hasPoly = !!buildingPolygons[i]
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setActiveDrawIdx(i)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs rounded-md border transition-colors flex items-center gap-1.5",
+                      i === activeDrawIdx
+                        ? "bg-sky-600/20 border-sky-500/50 text-sky-300"
+                        : "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+                    )}
+                  >
+                    棟 {label}
+                    {hasPoly
+                      ? <span className="text-emerald-400 text-[10px]">✓</span>
+                      : <span className="text-zinc-600 text-[10px]">○</span>
+                    }
+                  </button>
+                )
+              })}
+              <span className="text-[10px] text-zinc-600 ml-1">
+                {drawnCount}/{numBuildingsNum} 棟已圈選
+              </span>
+            </div>
+          )}
+
+          {/* Map label */}
+          <p className="text-sm font-medium text-zinc-300">
+            {numBuildingsNum > 1
+              ? `棟 ${BUILDING_ALPHA[activeDrawIdx] ?? activeDrawIdx + 1} 範圍圈選`
+              : "地圖圈選範圍"
+            }
+          </p>
+          {numBuildingsNum > 1 && (
+            <p className="text-xs text-zinc-500 -mt-2">
+              切換上方棟別按鈕可分別圈選各棟輪廓。
+            </p>
+          )}
+          {numBuildingsNum === 1 && (
+            <p className="text-xs text-zinc-500 -mt-2">在地圖上點擊各頂點圈選建物輪廓，閉合後自動計算周長與立面估算面積。</p>
+          )}
+
+          {/* Map — key forces remount when switching building tabs so draw state resets */}
           <div className="rounded-md overflow-hidden border border-zinc-700">
             <QuoteMap
+              key={`building-${activeDrawIdx}`}
               lat={lat}
               lng={lng}
-              airspace={null}
+              airspace={mission.airspace ?? null}
               drawMode={true}
-              drawLabel={name || "建物範圍"}
+              drawLabel={numBuildingsNum > 1
+                ? `棟 ${BUILDING_ALPHA[activeDrawIdx] ?? activeDrawIdx + 1}`
+                : (name || "建物範圍")
+              }
               persistedShapes={persistedShapes}
               onPolygonDraw={(verts, area, perim) => {
-                setLocalPerimeterM(perim)
-                onPolygonDraw(verts, area, perim)
+                setPerimeterByBuilding(prev => ({ ...prev, [activeDrawIdx]: perim }))
+                onPolygonDraw(activeDrawIdx, verts, area, perim)
               }}
             />
           </div>
-          {perimeterDisplay && (
+
+          {/* Area estimate for active building */}
+          {activePerim ? (
             <div className="text-xs text-zinc-400 bg-zinc-800/60 rounded-lg p-3 space-y-1 border border-zinc-700">
+              {numBuildingsNum > 1 && (
+                <p className="text-[10px] text-zinc-500 font-medium mb-1.5">
+                  棟 {BUILDING_ALPHA[activeDrawIdx] ?? activeDrawIdx + 1} 估算
+                </p>
+              )}
               <div className="flex justify-between">
                 <span>周長</span>
-                <span className="text-white font-mono">{perimeterDisplay.toFixed(0)} m</span>
+                <span className="text-white font-mono">{activePerim.toFixed(0)} m</span>
               </div>
               {facadeEstimate && (
                 <div className="flex justify-between">
-                  <span>單立面估算面積（{floorsNum}F × {(perimeterDisplay / numFacadesNum).toFixed(0)}m）</span>
+                  <span>單立面估算面積（{floorsNum}F × {(activePerim / numFacadesNum).toFixed(0)}m）</span>
                   <span className="text-white font-mono">{facadeEstimate} m²</span>
                 </div>
               )}
@@ -300,9 +379,13 @@ export function Step3Building({ mission, update, next, back, polygon, onPolygonD
                 </div>
               )}
             </div>
-          )}
-          {!perimeterDisplay && (
-            <p className="text-xs text-zinc-600 italic">尚未圈選範圍。圈選後可在下一步自動帶入立面面積估算。</p>
+          ) : (
+            <p className="text-xs text-zinc-600 italic">
+              {numBuildingsNum > 1
+                ? `尚未圈選棟 ${BUILDING_ALPHA[activeDrawIdx] ?? activeDrawIdx + 1}。圈選後自動計算立面面積估算。`
+                : "尚未圈選範圍。圈選後可在下一步自動帶入立面面積估算。"
+              }
+            </p>
           )}
         </div>
       </div>

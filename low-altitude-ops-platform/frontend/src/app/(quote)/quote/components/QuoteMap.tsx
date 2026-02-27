@@ -77,12 +77,26 @@ export function QuoteMap({
   const drawLabelRef = useRef(drawLabel ?? "")
   const persistedLayersRef = useRef<unknown[]>([])
 
+  // ── Marker ref: exposed so pan-to effect can update position without reinit ──
+  const markerRef = useRef<unknown>(null)
+
+  // ── Callback refs: prevents map reinit when parent re-renders with new inline lambdas ──
+  const onPolygonDrawCb    = useRef(onPolygonDraw)
+  const onPositionChangeCb = useRef(onPositionChange)
+  const onDrawModeEndCb    = useRef(onDrawModeEnd)
+
+  useEffect(() => { onPolygonDrawCb.current    = onPolygonDraw    }, [onPolygonDraw])
+  useEffect(() => { onPositionChangeCb.current = onPositionChange }, [onPositionChange])
+  useEffect(() => { onDrawModeEndCb.current    = onDrawModeEnd    }, [onDrawModeEnd])
+
   // Refs for communicating with secondary effects
   const startNewDrawRef = useRef<() => void>(() => {})
   const cancelDrawRef   = useRef<() => void>(() => {})
   const isCompleteRef   = useRef(false)
 
   // ── Main effect: initialise the Leaflet map ──────────────────────────────────
+  // Deps: only `airspace` — lat/lng are used as initial values at init time
+  // and updated via the pan-to effect below without full reinit.
   useEffect(() => {
     if (!containerRef.current) return
     let cancelled = false
@@ -96,6 +110,7 @@ export function QuoteMap({
       if (mapInstance.current) {
         (mapInstance.current as L.Map).remove()
         mapInstance.current = null
+        markerRef.current = null
       }
 
       const icon = L.icon({
@@ -111,18 +126,19 @@ export function QuoteMap({
 
       // ── Marker ────────────────────────────────────────────────────────────────
       const marker = L.marker([lat, lng] as [number, number], {
-        icon, draggable: !!onPositionChange,
+        icon, draggable: !!onPositionChangeCb.current,
       }).addTo(map)
+      markerRef.current = marker   // expose for pan-to effect
 
-      if (onPositionChange) {
+      if (onPositionChangeCb.current) {
         marker.on("dragend", () => {
           const { lat: newLat, lng: newLng } = marker.getLatLng()
-          onPositionChange(newLat, newLng)
+          onPositionChangeCb.current?.(newLat, newLng)
         })
         map.on("click", (e: L.LeafletMouseEvent) => {
           if (drawModeRef.current) return
           marker.setLatLng(e.latlng)
-          onPositionChange(e.latlng.lat, e.latlng.lng)
+          onPositionChangeCb.current?.(e.latlng.lat, e.latlng.lng)
         })
         const PinHelp = L.Control.extend({
           onAdd() {
@@ -145,7 +161,7 @@ export function QuoteMap({
       }
 
       // ── Polygon click-draw ─────────────────────────────────────────────────────
-      if (onPolygonDraw) {
+      if (onPolygonDrawCb.current) {
         // Drawing state (closure-local)
         let vertices: L.LatLng[] = []
         let vertexMarkers: L.CircleMarker[] = []
@@ -197,8 +213,8 @@ export function QuoteMap({
           dimDiv.style.display = "block"
           setTimeout(() => { dimDiv.style.display = "none" }, 3000)
 
-          onPolygonDraw(verts, area, perim)
-          onDrawModeEnd?.()
+          onPolygonDrawCb.current?.(verts, area, perim)
+          onDrawModeEndCb.current?.()
         }
 
         // Expose reset hooks for secondary effect
@@ -294,9 +310,30 @@ export function QuoteMap({
       if (mapInstance.current) {
         (mapInstance.current as { remove: () => void }).remove()
         mapInstance.current = null
+        markerRef.current = null
       }
     }
-  }, [lat, lng, airspace, onPolygonDraw, onPositionChange, onDrawModeEnd]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [airspace]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ^ lat/lng intentionally omitted: used as init-time values only.
+  //   Subsequent changes are handled by the pan-to effect below.
+
+  // ── Pan-to: update map position without full reinit ────────────────────────
+  // Prevents the drag-feedback loop: drag marker → parent updates lat/lng →
+  // map pans to same position (no visible change) rather than reinitialising.
+  useEffect(() => {
+    type Marker = { getLatLng: () => { lat: number; lng: number }; setLatLng: (ll: [number, number]) => void }
+    type Map = { setView: (c: [number, number], z: number) => void; getZoom: () => number }
+    const map = mapInstance.current as Map | null
+    const marker = markerRef.current as Marker | null
+    if (!map || !marker) return
+    const cur = marker.getLatLng()
+    // Only reposition if meaningfully different (>0.00005° ≈ 5m) to avoid
+    // feedback loop when the change originated from a marker drag.
+    if (Math.abs(cur.lat - lat) > 0.00005 || Math.abs(cur.lng - lng) > 0.00005) {
+      marker.setLatLng([lat, lng])
+      map.setView([lat, lng], map.getZoom())
+    }
+  }, [lat, lng])
 
   // ── Secondary: draw mode changes ──────────────────────────────────────────
   useEffect(() => {
@@ -336,6 +373,6 @@ export function QuoteMap({
   }, [persistedShapes])
 
   return (
-    <div ref={containerRef} className="w-full h-[220px] sm:h-[300px] rounded-lg border border-zinc-200 overflow-hidden" />
+    <div ref={containerRef} className="w-full h-[220px] sm:h-[300px] rounded-lg border border-zinc-700 overflow-hidden" />
   )
 }

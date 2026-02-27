@@ -28,8 +28,9 @@ export default function NewMissionPage() {
   const [mission, setMission] = useState<Partial<Mission>>({})
   // Shared state for polygon-based area estimation (Step 3 → Step 4)
   const [facadeInputs, setFacadeInputs] = useState<QuoteFacadeInput[]>([])
-  const [buildingPolygon, setBuildingPolygon] = useState<[number, number][] | null>(null)
-  const [perimeterM, setPerimeterM] = useState<number | null>(null)
+  // Per-building polygon state (sparse arrays, indexed by building tab index)
+  const [buildingPolygons, setBuildingPolygons] = useState<([number, number][] | null)[]>([])
+  const [perimeterMs, setPerimeterMs] = useState<(number | null)[]>([])
 
   const update = (patch: Partial<Mission>) =>
     setMission(prev => ({ ...prev, ...patch }))
@@ -62,10 +63,20 @@ export default function NewMissionPage() {
         {step === 2 && (
           <Step3Building
             {...stepProps}
-            polygon={buildingPolygon}
-            onPolygonDraw={(verts, _area, perim) => {
-              setBuildingPolygon(verts)
-              setPerimeterM(perim)
+            buildingPolygons={buildingPolygons}
+            onPolygonDraw={(idx, verts, _area, perim) => {
+              setBuildingPolygons(prev => {
+                const next = [...prev]
+                while (next.length <= idx) next.push(null)
+                next[idx] = verts
+                return next
+              })
+              setPerimeterMs(prev => {
+                const next = [...prev]
+                while (next.length <= idx) next.push(null)
+                next[idx] = perim
+                return next
+              })
             }}
           />
         )}
@@ -74,7 +85,7 @@ export default function NewMissionPage() {
             {...stepProps}
             facadeInputs={facadeInputs}
             setFacadeInputs={setFacadeInputs}
-            perimeterM={perimeterM}
+            perimeterM={perimeterMs.reduce((s: number, p) => s + (p ?? 0), 0) || null}
           />
         )}
         {step === 4 && <Step5Weather {...stepProps} />}

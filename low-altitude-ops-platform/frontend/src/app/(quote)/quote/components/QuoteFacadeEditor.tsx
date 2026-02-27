@@ -11,10 +11,11 @@ interface Props {
   facades: QuoteFacadeInput[]
   facadeWidths_m?: number[]    // per-facade actual widths from MBR (per building)
   numBuildings?: number        // for tab-based grouping
+  dark?: boolean               // dark-theme mode (for LARM wizard)
   onChange: (facades: QuoteFacadeInput[]) => void
 }
 
-export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, onChange }: Props) {
+export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, dark = false, onChange }: Props) {
   const [activeTab, setActiveTab] = useState(0)
 
   // Reset tab if numBuildings shrinks below active tab
@@ -72,22 +73,33 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
     Math.min(activeBuildingStart + numFacadesPerBuilding, facades.length),
   )
 
+  // ── Theme tokens ──────────────────────────────────────────────────────────
+  const t = dark ? {
+    heading:       "text-zinc-100",
+    tabBorder:     "border-zinc-700",
+    tabActive:     "border-sky-500 text-sky-400 bg-zinc-800/50",
+    tabInactive:   "border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800",
+  } : {
+    heading:       "text-zinc-800",
+    tabBorder:     "border-zinc-200",
+    tabActive:     "border-blue-600 text-blue-600 bg-blue-50",
+    tabInactive:   "border-transparent text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50",
+  }
+
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold text-zinc-800">各立面詳細資訊</h3>
+      <h3 className={`text-base font-semibold ${t.heading}`}>各立面詳細資訊</h3>
 
       {/* Building tabs — only show when multiple buildings */}
       {numBuildings > 1 && (
-        <div className="flex gap-1 border-b border-zinc-200 overflow-x-auto scrollbar-thin">
+        <div className={`flex gap-1 border-b ${t.tabBorder} overflow-x-auto scrollbar-thin`}>
           {buildingTabLabels.map((label, idx) => (
             <button
               key={idx}
               type="button"
               onClick={() => setActiveTab(idx)}
               className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-                activeTab === idx
-                  ? "border-blue-600 text-blue-600 bg-blue-50"
-                  : "border-transparent text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
+                activeTab === idx ? t.tabActive : t.tabInactive
               }`}
             >
               棟 {label}
@@ -105,6 +117,7 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
               key={facade.id}
               facade={facade}
               width_m={facadeWidths_m?.[j]}
+              dark={dark}
               onToggleDirt={(type) => toggleDirt(globalIndex, type)}
               onComplexity={(c) => update(globalIndex, { complexity: c })}
               onToggleRecesses={() => update(globalIndex, { hasRecesses: !facade.hasRecesses })}
@@ -134,6 +147,7 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, o
 interface CardProps {
   facade: QuoteFacadeInput
   width_m?: number
+  dark?: boolean
   onToggleDirt: (type: DirtType) => void
   onComplexity: (c: Complexity) => void
   onToggleRecesses: () => void
@@ -150,7 +164,7 @@ interface CardProps {
 }
 
 function FacadeCard({
-  facade, width_m,
+  facade, width_m, dark = false,
   onToggleDirt, onComplexity, onToggleRecesses, onToggleHighRisk,
   onToggleAdjacentTrees, onTreeFloorsChange, onCleanTreeFloorsChange,
   onWaterSupply, onPowerChange,
@@ -160,16 +174,57 @@ function FacadeCard({
   const photoRef = useRef<HTMLInputElement>(null)
   const supplyPhotoRef = useRef<HTMLInputElement>(null)
 
+  // ── Theme tokens ────────────────────────────────────────────────────────────
+  const t = dark ? {
+    card:        "border-zinc-700 bg-zinc-800/40",
+    badgeBg:     "bg-sky-500 text-white",
+    badgeWidth:  "bg-sky-900/50 text-sky-300",
+    heading:     "text-zinc-400",
+    label:       "text-zinc-300",
+    subLabel:    "text-zinc-400",
+    note:        "text-zinc-500",
+    check:       "accent-sky-500",
+    checkGreen:  "accent-emerald-500",
+    treeBorder:  "border-emerald-800",
+    treeInput:   "border-zinc-600 text-zinc-200 bg-zinc-800 focus:ring-emerald-600",
+    btnOff:      "bg-zinc-800 text-zinc-300 border-zinc-600 hover:border-zinc-400",
+    btnOn:       "bg-sky-600 text-white border-sky-600",
+    btnCompOff:  "bg-zinc-800 text-zinc-300 border-zinc-600 hover:border-zinc-400",
+    btnCompOn:   "bg-zinc-600 text-white border-zinc-600",
+    dirtOff:     "bg-zinc-800 text-zinc-300 border-zinc-600 hover:border-sky-500",
+    dirtOn:      "bg-sky-600 text-white border-sky-600",
+    warnText:    "text-amber-400",
+  } : {
+    card:        "border-zinc-200 bg-zinc-50",
+    badgeBg:     "bg-blue-600 text-white",
+    badgeWidth:  "bg-blue-100 text-blue-700",
+    heading:     "text-zinc-500",
+    label:       "text-zinc-700",
+    subLabel:    "text-zinc-400",
+    note:        "text-zinc-400",
+    check:       "accent-blue-600",
+    checkGreen:  "accent-green-600",
+    treeBorder:  "border-green-200",
+    treeInput:   "border-zinc-300 text-zinc-700 bg-white focus:ring-green-500",
+    btnOff:      "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400",
+    btnOn:       "bg-blue-600 text-white border-blue-600",
+    btnCompOff:  "bg-white text-zinc-600 border-zinc-300 hover:border-zinc-500",
+    btnCompOn:   "bg-zinc-800 text-white border-zinc-800",
+    dirtOff:     "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400",
+    dirtOn:      "bg-blue-600 text-white border-blue-600",
+    warnText:    "text-amber-600",
+  }
+
   return (
-    <div className="border border-zinc-200 rounded-xl p-4 bg-zinc-50 space-y-4">
+    <div className={`border rounded-xl p-4 space-y-4 ${t.card}`}>
       {/* Header */}
       <div className="flex items-center gap-2">
-        <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-sm font-bold flex items-center justify-center">
+        <span className={`w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center ${t.badgeBg}`}>
           {facade.label}
         </span>
-        <span className="text-sm font-semibold text-zinc-700">{facade.label}</span>
+        <span className={`text-sm font-semibold ${t.label}`}>{facade.label}</span>
         {width_m != null && (
-          <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${t.badgeWidth}`}>
             實測 {width_m} m
           </span>
         )}
@@ -177,14 +232,14 @@ function FacadeCard({
 
       {/* Dirt types */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">髒汙類型（可多選）</p>
+        <p className={`text-xs font-medium mb-2 ${t.heading}`}>髒汙類型（可多選）</p>
         <div className="flex flex-wrap gap-2">
           {DIRT_TYPE_OPTIONS.map(opt => {
             const active = facade.dirtTypes.includes(opt.value)
             return (
               <button key={opt.value} type="button" onClick={() => onToggleDirt(opt.value)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                  active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400"
+                  active ? t.dirtOn : t.dirtOff
                 }`}>
                 <span>{opt.emoji}</span><span>{opt.label}</span>
               </button>
@@ -195,57 +250,57 @@ function FacadeCard({
 
       {/* Complexity */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">立面複雜程度</p>
+        <p className={`text-xs font-medium mb-2 ${t.heading}`}>立面複雜程度</p>
         <div className="flex gap-2">
           {COMPLEXITY_OPTIONS.map(opt => (
             <button key={opt.value} type="button" onClick={() => onComplexity(opt.value)}
               title={opt.desc}
               className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                facade.complexity === opt.value ? "bg-zinc-800 text-white border-zinc-800" : "bg-white text-zinc-600 border-zinc-300 hover:border-zinc-500"
+                facade.complexity === opt.value ? t.btnCompOn : t.btnCompOff
               }`}>
               {opt.label}
             </button>
           ))}
         </div>
-        <p className="text-xs text-zinc-400 mt-1">
+        <p className={`text-xs mt-1 ${t.note}`}>
           {COMPLEXITY_OPTIONS.find(o => o.value === facade.complexity)?.desc}
         </p>
       </div>
 
       {/* Special conditions */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">特殊狀況</p>
+        <p className={`text-xs font-medium mb-2 ${t.heading}`}>特殊狀況</p>
         <div className="space-y-2">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={facade.hasRecesses} onChange={onToggleRecesses}
-              className="w-4 h-4 accent-blue-600" />
-            <span className="text-sm text-zinc-700">有內縮 / 露台 / 天井</span>
+              className={`w-4 h-4 ${t.check}`} />
+            <span className={`text-sm ${t.label}`}>有內縮 / 露台 / 天井</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={facade.isHighRisk} onChange={onToggleHighRisk}
-              className="w-4 h-4 accent-blue-600" />
-            <span className="text-sm text-zinc-700">緊鄰特殊風險環境</span>
-            <span className="text-xs text-zinc-400">（電線 / 交通要道）</span>
+              className={`w-4 h-4 ${t.check}`} />
+            <span className={`text-sm ${t.label}`}>緊鄰特殊風險環境</span>
+            <span className={`text-xs ${t.subLabel}`}>（電線 / 交通要道）</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={facade.hasAdjacentTrees} onChange={onToggleAdjacentTrees}
-              className="w-4 h-4 accent-green-600" />
-            <span className="text-sm text-zinc-700">鄰樹</span>
-            <span className="text-xs text-zinc-400">（+5 NTD/㎡）</span>
+              className={`w-4 h-4 ${t.checkGreen}`} />
+            <span className={`text-sm ${t.label}`}>鄰樹</span>
+            <span className={`text-xs ${t.subLabel}`}>（+5 NTD/㎡）</span>
           </label>
           {facade.hasAdjacentTrees && (
-            <div className="ml-6 space-y-2 border-l-2 border-green-200 pl-3">
+            <div className={`ml-6 space-y-2 border-l-2 pl-3 ${t.treeBorder}`}>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">樹木遮蔽樓層數：</span>
+                <span className={`text-xs ${t.subLabel}`}>樹木遮蔽樓層數：</span>
                 <input
                   type="number"
                   value={facade.treeFloors}
                   min={0}
                   max={facade.hasAdjacentTrees ? 999 : 0}
                   onChange={e => onTreeFloorsChange(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-16 px-2 py-1 border border-zinc-300 rounded text-sm text-center focus:ring-1 focus:ring-green-500 outline-none"
+                  className={`w-16 px-2 py-1 border rounded text-sm text-center outline-none focus:ring-1 ${t.treeInput}`}
                 />
-                <span className="text-xs text-zinc-400">F</span>
+                <span className={`text-xs ${t.subLabel}`}>F</span>
               </div>
               {facade.treeFloors > 0 && (
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -253,13 +308,13 @@ function FacadeCard({
                     type="checkbox"
                     checked={facade.cleanTreeFloors}
                     onChange={e => onCleanTreeFloorsChange(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-green-600"
+                    className={`w-3.5 h-3.5 ${t.checkGreen}`}
                   />
-                  <span className="text-xs text-zinc-600">
+                  <span className={`text-xs ${t.label}`}>
                     清洗樹遮樓層（+10 NTD/㎡）
                   </span>
                   {!facade.cleanTreeFloors && (
-                    <span className="text-xs text-amber-600">不計入清洗範圍</span>
+                    <span className={`text-xs ${t.warnText}`}>不計入清洗範圍</span>
                   )}
                 </label>
               )}
@@ -274,20 +329,23 @@ function FacadeCard({
           icon="💧"
           label="用水"
           value={facade.waterSupply}
+          dark={dark}
           onChange={onWaterSupply}
         />
         <PowerVoltageField
           supply={facade.powerSupply}
           voltages={facade.powerVoltage ?? []}
+          dark={dark}
           onChange={onPowerChange}
         />
       </div>
 
       {/* Supply access photos */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">水電接口現況照片（選填）</p>
+        <p className={`text-xs font-medium mb-2 ${t.heading}`}>水電接口現況照片（選填）</p>
         <PhotoStrip
           photos={facade.supplyPhotos}
+          dark={dark}
           onAdd={() => supplyPhotoRef.current?.click()}
           onRemove={onRemoveSupplyPhoto}
         />
@@ -297,9 +355,10 @@ function FacadeCard({
 
       {/* General facade photos */}
       <div>
-        <p className="text-xs font-medium text-zinc-500 mb-2">立面照片（選填）</p>
+        <p className={`text-xs font-medium mb-2 ${t.heading}`}>立面照片（選填）</p>
         <PhotoStrip
           photos={facade.photos}
+          dark={dark}
           onAdd={() => photoRef.current?.click()}
           onRemove={onRemovePhoto}
         />
@@ -313,18 +372,23 @@ function FacadeCard({
 // ─── Water supply field ───────────────────────────────────────────────────────
 
 function SupplyField({
-  icon, label, value, onChange,
+  icon, label, value, dark = false, onChange,
 }: {
-  icon: string; label: string; value: Supply; onChange: (v: Supply) => void
+  icon: string; label: string; value: Supply; dark?: boolean; onChange: (v: Supply) => void
 }) {
+  const border = dark ? "border-zinc-600" : "border-zinc-300"
+  const active  = dark ? "bg-sky-600 text-white" : "bg-blue-600 text-white"
+  const inactive = dark ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700" : "bg-white text-zinc-600 hover:bg-zinc-50"
+  const lbl = dark ? "text-zinc-400" : "text-zinc-500"
+
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-1.5">{icon} {label}</p>
-      <div className="flex rounded-lg border border-zinc-300 overflow-hidden text-xs">
+      <p className={`text-xs mb-1.5 ${lbl}`}>{icon} {label}</p>
+      <div className={`flex rounded-lg border overflow-hidden text-xs ${border}`}>
         {(["Provided", "SelfSupply"] as Supply[]).map(opt => (
           <button key={opt} type="button" onClick={() => onChange(opt)}
             className={`flex-1 py-2 text-center transition-colors ${
-              value === opt ? "bg-blue-600 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50"
+              value === opt ? active : inactive
             }`}>
             {opt === "Provided" ? "業主提供" : "自備"}
           </button>
@@ -337,12 +401,20 @@ function SupplyField({
 // ─── Power voltage field (110V / 220V checkboxes) ────────────────────────────
 
 function PowerVoltageField({
-  supply, voltages, onChange,
+  supply, voltages, dark = false, onChange,
 }: {
   supply: Supply
   voltages: PowerVoltage[]
+  dark?: boolean
   onChange: (supply: Supply, voltages: PowerVoltage[]) => void
 }) {
+  const lbl      = dark ? "text-zinc-400" : "text-zinc-500"
+  const vBtnOn   = dark ? "bg-sky-600 text-white border-sky-600" : "bg-blue-600 text-white border-blue-600"
+  const vBtnDis  = dark ? "bg-zinc-700 text-zinc-500 border-zinc-600 cursor-not-allowed" : "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
+  const vBtnOff  = dark ? "bg-zinc-800 text-zinc-300 border-zinc-600 hover:border-sky-400" : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400"
+  const selfChk  = dark ? "accent-orange-400" : "accent-orange-500"
+  const selfLbl  = dark ? "text-zinc-400" : "text-zinc-500"
+
   function toggleVoltage(v: PowerVoltage) {
     if (supply === "SelfSupply") {
       onChange("Provided", [v])
@@ -362,7 +434,7 @@ function PowerVoltageField({
 
   return (
     <div>
-      <p className="text-xs text-zinc-500 mb-1.5">⚡ 用電</p>
+      <p className={`text-xs mb-1.5 ${lbl}`}>⚡ 用電</p>
       <div className="space-y-2">
         {/* Voltage checkboxes */}
         <div className="flex gap-2">
@@ -374,11 +446,7 @@ function PowerVoltageField({
                 type="button"
                 onClick={() => toggleVoltage(v)}
                 className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                  checked
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : supply === "SelfSupply"
-                    ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
-                    : "bg-white text-zinc-600 border-zinc-300 hover:border-blue-400"
+                  checked ? vBtnOn : supply === "SelfSupply" ? vBtnDis : vBtnOff
                 }`}
               >
                 {v}
@@ -392,9 +460,9 @@ function PowerVoltageField({
             type="checkbox"
             checked={supply === "SelfSupply"}
             onChange={toggleSelfSupply}
-            className="w-3.5 h-3.5 accent-orange-500"
+            className={`w-3.5 h-3.5 ${selfChk}`}
           />
-          <span className="text-xs text-zinc-500">自備電源</span>
+          <span className={`text-xs ${selfLbl}`}>自備電源</span>
         </label>
       </div>
     </div>
@@ -404,19 +472,23 @@ function PowerVoltageField({
 // ─── Photo strip ─────────────────────────────────────────────────────────────
 
 function PhotoStrip({
-  photos, onAdd, onRemove,
+  photos, dark = false, onAdd, onRemove,
 }: {
   photos: { name: string; url: string }[]
+  dark?: boolean
   onAdd: () => void
   onRemove: (i: number) => void
 }) {
+  const border  = dark ? "border-zinc-600" : "border-zinc-200"
+  const addBorder = dark ? "border-zinc-600 hover:border-sky-400 text-zinc-500 hover:text-sky-400" : "border-zinc-300 hover:border-blue-400 text-zinc-400 hover:text-blue-500"
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {photos.map((photo, i) => (
         <div key={i} className="relative group w-16 h-16">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photo.url} alt={photo.name}
-            className="w-full h-full object-cover rounded-lg border border-zinc-200" />
+            className={`w-full h-full object-cover rounded-lg border ${border}`} />
           <button type="button" onClick={() => onRemove(i)}
             className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs hidden group-hover:flex items-center justify-center">
             ×
@@ -424,7 +496,7 @@ function PhotoStrip({
         </div>
       ))}
       <button type="button" onClick={onAdd}
-        className="w-16 h-16 rounded-lg border-2 border-dashed border-zinc-300 hover:border-blue-400 flex flex-col items-center justify-center text-zinc-400 hover:text-blue-500 transition-colors">
+        className={`w-16 h-16 rounded-lg border-2 border-dashed flex flex-col items-center justify-center transition-colors ${addBorder}`}>
         <span className="text-xl leading-none">+</span>
         <span className="text-[10px] mt-0.5">上傳</span>
       </button>
