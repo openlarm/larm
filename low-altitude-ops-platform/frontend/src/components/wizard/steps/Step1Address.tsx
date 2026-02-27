@@ -1,6 +1,12 @@
 "use client"
 import { useState, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { StepShell } from "../StepShell"
+
+const QuoteMap = dynamic(
+  () => import("@/app/(quote)/quote/components/QuoteMap").then(m => m.QuoteMap),
+  { ssr: false }
+)
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -277,13 +283,21 @@ export function Step1Address({ mission, update, next }: Props) {
               </div>
             )}
 
-            {/* Map placeholder */}
+            {/* Location label */}
             <div className="flex items-center gap-1.5 text-xs text-zinc-500">
               <MapPin className="h-3 w-3" />
               {parsed.city} {parsed.district} ({parsed.lat.toFixed(3)}, {parsed.lng.toFixed(3)})
             </div>
-            <div className="h-20 rounded bg-zinc-800 flex items-center justify-center text-zinc-600 text-xs">
-              [ Map Preview — {parsed.city} {parsed.district} ({parsed.lat.toFixed(3)}, {parsed.lng.toFixed(3)}) ]
+            {/* Interactive satellite map — drag marker to fine-tune position */}
+            <div className="rounded-md overflow-hidden border border-zinc-700">
+              <QuoteMap
+                lat={parsed.lat}
+                lng={parsed.lng}
+                airspace={airspace}
+                onPositionChange={(lat, lng) =>
+                  setParsed(prev => prev ? { ...prev, lat, lng } : prev)
+                }
+              />
             </div>
           </CardContent>
         </Card>

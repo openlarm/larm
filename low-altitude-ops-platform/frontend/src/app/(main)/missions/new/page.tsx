@@ -14,6 +14,7 @@ import { Step8Pricing } from "@/components/wizard/steps/Step8Pricing"
 import { Step9Assign } from "@/components/wizard/steps/Step9Assign"
 import { Step10Plan } from "@/components/wizard/steps/Step10Plan"
 import type { Mission } from "@/lib/types"
+import type { QuoteFacadeInput } from "@/app/(quote)/quote/components/quote-defaults"
 import { saveMission } from "@/lib/stores/mission-store"
 
 const STEPS = [
@@ -25,6 +26,10 @@ export default function NewMissionPage() {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [mission, setMission] = useState<Partial<Mission>>({})
+  // Shared state for polygon-based area estimation (Step 3 → Step 4)
+  const [facadeInputs, setFacadeInputs] = useState<QuoteFacadeInput[]>([])
+  const [buildingPolygon, setBuildingPolygon] = useState<[number, number][] | null>(null)
+  const [perimeterM, setPerimeterM] = useState<number | null>(null)
 
   const update = (patch: Partial<Mission>) =>
     setMission(prev => ({ ...prev, ...patch }))
@@ -54,8 +59,24 @@ export default function NewMissionPage() {
       <div className="flex-1 px-4 sm:px-8 py-4 sm:py-6">
         {step === 0 && <Step1Address {...stepProps} />}
         {step === 1 && <Step2Airspace {...stepProps} />}
-        {step === 2 && <Step3Building {...stepProps} />}
-        {step === 3 && <Step4Facade {...stepProps} />}
+        {step === 2 && (
+          <Step3Building
+            {...stepProps}
+            polygon={buildingPolygon}
+            onPolygonDraw={(verts, _area, perim) => {
+              setBuildingPolygon(verts)
+              setPerimeterM(perim)
+            }}
+          />
+        )}
+        {step === 3 && (
+          <Step4Facade
+            {...stepProps}
+            facadeInputs={facadeInputs}
+            setFacadeInputs={setFacadeInputs}
+            perimeterM={perimeterM}
+          />
+        )}
         {step === 4 && <Step5Weather {...stepProps} />}
         {step === 5 && <Step6Risk {...stepProps} />}
         {step === 6 && <Step7Time {...stepProps} />}

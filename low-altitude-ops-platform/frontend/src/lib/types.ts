@@ -128,6 +128,7 @@ export interface BuildingData {
   height_floors: number
   height_m: number
   building_type: BuildingType
+  num_buildings?: number
   num_facades: number
   rooftop_access: RooftopAccess
   water_supply: Supply
