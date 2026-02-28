@@ -3,11 +3,12 @@
 // Returns per-day wind P10/P50/P90 and forecast confidence from the
 // ECMWF IFS ensemble (51 members, ~0.4° resolution).
 //
+// Open-Meteo Ensemble API returns wind_speed_10m as a 2D array:
+//   hourly.wind_speed_10m[member_index][time_index]
+// (Not as separate wind_speed_10m_member01 keys)
+//
 // Requires OPEN_METEO_API_KEY (paid Open-Meteo plan).
 // Without a key → 402 response with instructions.
-//
-// Usage:
-//   curl "http://localhost:3000/api/weather/ensemble?lat=25.03&lng=121.56&days=7"
 
 import { NextResponse } from "next/server"
 
@@ -17,6 +18,44 @@ function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0
   const idx = Math.floor(sorted.length * p)
   return sorted[Math.min(idx, sorted.length - 1)]
+}
+
+// Resolve the member arrays from the hourly wind data.
+// Open-Meteo may return either:
+//   A) 2D array: hourly.wind_speed_10m = [[m0_t0, m0_t1,...], [m1_t0, m1_t1,...], ...]
+//   B) Separate keys: hourly.wind_speed_10m_member01, ..._member51
+//   C) 1D array: ensemble mean only (not useful for spread)
+function resolveMemberArrays(
+  hourly: Record<string, unknown>
+): { arrays: number[][]; format: string } {
+  const raw = hourly.wind_speed_10m
+
+  // Pattern A: 2D array [member][time]
+  if (Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0])) {
+    const arrays = (raw as number[][]).map(memberRow =>
+      memberRow.map(Number).filter(isFinite)
+    )
+    return { arrays, format: `2d_array[${arrays.length}][${arrays[0]?.length ?? 0}]` }
+  }
+
+  // Pattern B: separate wind_speed_10m_memberXX keys
+  const memberKeys = Object.keys(hourly).filter(k =>
+    /^wind_speed_10m_member\d+$/.test(k)
+  )
+  if (memberKeys.length > 0) {
+    const arrays = memberKeys.map(mk =>
+      ((hourly[mk] as number[]) ?? []).map(Number).filter(isFinite)
+    )
+    return { arrays, format: `separate_keys[${memberKeys.length}]` }
+  }
+
+  // Pattern C: 1D array (ensemble mean) — cannot compute spread
+  if (Array.isArray(raw) && raw.length > 0) {
+    const arr = (raw as number[]).map(Number).filter(isFinite)
+    return { arrays: [arr], format: `1d_mean[${arr.length}]` }
+  }
+
+  return { arrays: [], format: "unknown" }
 }
 
 export async function GET(request: Request) {
@@ -41,14 +80,14 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(ENSEMBLE_BASE)
-  url.searchParams.set("apikey",    apiKey)
-  url.searchParams.set("latitude",  lat.toFixed(4))
-  url.searchParams.set("longitude", lng.toFixed(4))
-  url.searchParams.set("models",    "ecmwf_ifs04")
-  url.searchParams.set("hourly",    "wind_speed_10m")
+  url.searchParams.set("apikey",          apiKey)
+  url.searchParams.set("latitude",        lat.toFixed(4))
+  url.searchParams.set("longitude",       lng.toFixed(4))
+  url.searchParams.set("models",          "ecmwf_ifs04")
+  url.searchParams.set("hourly",          "wind_speed_10m")
   url.searchParams.set("wind_speed_unit", "kmh")
-  url.searchParams.set("timezone",  "Asia/Taipei")
-  url.searchParams.set("forecast_days", String(days))
+  url.searchParams.set("timezone",        "Asia/Taipei")
+  url.searchParams.set("forecast_days",   String(days))
 
   const t0 = Date.now()
   let res: Response
@@ -66,38 +105,28 @@ export async function GET(request: Request) {
   }
 
   const data = await res.json()
-  const hourly = data.hourly
+  const hourly = data.hourly as Record<string, unknown> | undefined
   if (!hourly?.time) {
     return NextResponse.json({ error: "unexpected response shape", raw_keys: Object.keys(data) }, { status: 502 })
   }
 
-  // Expose all hourly keys for debugging (always included to help diagnose member naming)
-  const allHourlyKeys: string[] = Object.keys(hourly)
+  const allHourlyKeys = Object.keys(hourly)
+  const times: string[] = hourly.time as string[]
 
-  // Find all member wind keys — try both naming patterns:
-  //   pattern A: wind_speed_10m_member01  (1-based)
-  //   pattern B: wind_speed_10m_member00  (0-based, same regex)
-  //   pattern C: wind_speed_10m           (single key = no members, wrong model)
-  const memberKeys: string[] = allHourlyKeys.filter(k =>
-    /^wind_speed_10m_member\d+$/.test(k)
-  )
-
-  const times: string[] = hourly.time
+  // Resolve member data (handles 2D array, separate keys, and 1D mean)
+  const { arrays: memberArrays, format: dataFormat } = resolveMemberArrays(hourly)
 
   // dateMap: date → array of each-member's daily-max wind (km/h)
   const dateMap = new Map<string, number[]>()
 
-  for (const mk of memberKeys) {
-    const vals: number[] = (hourly[mk] ?? []).map(Number)
-
+  for (const memberVals of memberArrays) {
     const dailyByDate = new Map<string, number[]>()
-    for (let h = 0; h < Math.min(times.length, vals.length); h++) {
+    for (let h = 0; h < Math.min(times.length, memberVals.length); h++) {
       const date = times[h].split("T")[0]
       const bucket = dailyByDate.get(date) ?? []
-      bucket.push(isFinite(vals[h]) ? vals[h] : 0)
+      bucket.push(memberVals[h])
       dailyByDate.set(date, bucket)
     }
-
     for (const [date, hrs] of dailyByDate) {
       const dayMax = Math.max(...hrs)
       const arr = dateMap.get(date) ?? []
@@ -109,8 +138,8 @@ export async function GET(request: Request) {
   // Compute percentiles + confidence per day
   const forecast_days = Array.from(dateMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, memberVals]) => {
-      const sorted = [...memberVals].sort((a, b) => a - b)
+    .map(([date, vals]) => {
+      const sorted = [...vals].sort((a, b) => a - b)
       const p10 = percentile(sorted, 0.1)
       const p50 = percentile(sorted, 0.5)
       const p90 = percentile(sorted, 0.9)
@@ -124,17 +153,17 @@ export async function GET(request: Request) {
         wind_p90_kmh:       Math.round(p90),
         wind_spread_kmh:    Math.round(spread),
         forecast_confidence,
-        member_count:       memberVals.length,
+        member_count:       vals.length,
       }
     })
 
   return NextResponse.json({
     model:        "ecmwf_ifs04",
-    member_count: memberKeys.length,
+    member_count: memberArrays.length,
+    data_format:  dataFormat,
     lat, lng, days,
     latency_ms,
     forecast_days,
-    // Debug: always include all hourly keys so we can see the actual response shape
     _debug_hourly_keys: allHourlyKeys,
   })
 }

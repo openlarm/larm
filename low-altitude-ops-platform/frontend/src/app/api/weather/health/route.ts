@@ -141,7 +141,7 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
   url.searchParams.set("latitude",  TEST_LAT.toString())
   url.searchParams.set("longitude", TEST_LNG.toString())
   url.searchParams.set("models",    "ecmwf_ifs04")
-  url.searchParams.set("hourly",    "wind_speed_10m_member01")  // single member for speed
+  url.searchParams.set("hourly",    "wind_speed_10m")  // returns 2D array [member][time]
   url.searchParams.set("wind_speed_unit", "kmh")
   url.searchParams.set("timezone",  "Asia/Taipei")
   url.searchParams.set("forecast_days", "2")
@@ -155,13 +155,16 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
       return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
     }
     const data = await res.json()
-    const hourCount: number = data.hourly?.wind_speed_10m_member01?.length ?? 0
+    const raw = data.hourly?.wind_speed_10m
+    // API returns 2D array [member][time]; check first member's length
+    const memberCount: number = Array.isArray(raw) ? raw.length : 0
+    const hourCount: number = Array.isArray(raw?.[0]) ? (raw[0] as number[]).length : 0
     return {
-      ok: hourCount > 0,
+      ok: memberCount > 0 && hourCount > 0,
       endpoint: "customer-ensemble-api.open-meteo.com",
       plan: "paid",
       latency_ms,
-      sample: { hours_returned: hourCount, model: "ecmwf_ifs04" },
+      sample: { members: memberCount, hours_per_member: hourCount, model: "ecmwf_ifs04" },
     }
   } catch (e) {
     return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: Date.now() - t0, error: String(e) }

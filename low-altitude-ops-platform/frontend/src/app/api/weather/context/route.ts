@@ -212,11 +212,26 @@ async function fetchEnsemble(
   const hourly = data.hourly
   if (!hourly?.time) return new Map()
 
-  // Detect member keys dynamically (e.g. wind_speed_10m_member01 … member51)
-  const memberKeys = Object.keys(hourly).filter(k =>
-    /^wind_speed_10m_member\d+$/.test(k)
-  )
-  if (memberKeys.length === 0) return new Map()
+  // Resolve member arrays from hourly wind data.
+  // Open-Meteo may return either:
+  //   A) 2D array: hourly.wind_speed_10m = [[m0_t0,...], [m1_t0,...], ...]
+  //   B) Separate keys: hourly.wind_speed_10m_member01, ...
+  const raw = hourly.wind_speed_10m
+  let memberArrays: number[][]
+
+  if (Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0])) {
+    // Pattern A: 2D array [member][time]
+    memberArrays = (raw as number[][]).map(row => row.map(Number).filter(isFinite))
+  } else {
+    // Pattern B: separate wind_speed_10m_memberXX keys
+    const memberKeys = Object.keys(hourly).filter(k =>
+      /^wind_speed_10m_member\d+$/.test(k)
+    )
+    if (memberKeys.length === 0) return new Map()
+    memberArrays = memberKeys.map(mk =>
+      ((hourly[mk] as number[]) ?? []).map(Number).filter(isFinite)
+    )
+  }
 
   const times: string[] = hourly.time
 
@@ -224,15 +239,13 @@ async function fetchEnsemble(
   // dateMap: date → array of each member's daily-max wind speed
   const dateMap = new Map<string, number[]>()
 
-  for (const mk of memberKeys) {
-    const vals: number[] = (hourly[mk] ?? []).map(Number)
-
+  for (const memberVals of memberArrays) {
     // Bucket hourly values by date
     const dailyByDate = new Map<string, number[]>()
-    for (let h = 0; h < Math.min(times.length, vals.length); h++) {
+    for (let h = 0; h < Math.min(times.length, memberVals.length); h++) {
       const date = times[h].split("T")[0]
       const bucket = dailyByDate.get(date) ?? []
-      bucket.push(isFinite(vals[h]) ? vals[h] : 0)
+      bucket.push(memberVals[h])
       dailyByDate.set(date, bucket)
     }
 
