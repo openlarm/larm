@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle2, AlertTriangle, XCircle, ShieldCheck, Loader2 } from "lucide-react"
-import { MOCK_ADDRESSES, DEFAULT_ADDRESS_KEY } from "@/lib/mock-data"
 import type { Mission, AirspaceResult, AirspaceStatus } from "@/lib/types"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
@@ -28,52 +27,30 @@ const STATUS_COLOR: Record<AirspaceStatus, string> = {
   NoFly:      "border-red-500/30 bg-red-500/5",
 }
 
-// Check if address matches one of the mock demo addresses
-function findMockKey(raw?: string): string | undefined {
-  if (!raw) return undefined
-  return Object.keys(MOCK_ADDRESSES).find(k => raw.includes(k.slice(0, 6)))
-}
-
 export function Step2Airspace({ mission, update, next, back }: Props) {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<(AirspaceResult & { matched_zone?: string; distance_km?: number; _source?: string }) | null>(null)
+  // Try to use airspace already fetched in Step1; fall back to live API if missing
+  const [data, setData] = useState<AirspaceResult | null>(mission.airspace ?? null)
+  const [loading, setLoading] = useState(!mission.airspace)
 
   useEffect(() => {
-    const fetchAirspace = async () => {
-      setLoading(true)
-
-      // Demo addresses → use mock data for pre-defined scenarios
-      const mockKey = findMockKey(mission.address?.raw)
-      if (mockKey) {
-        setTimeout(() => {
-          setData({ ...MOCK_ADDRESSES[mockKey].airspace, _source: "mock-demo" })
-          setLoading(false)
-        }, 1000)
-        return
-      }
-
-      // Real coordinates → static zone check via API
-      const { lat, lng } = mission.address ?? {}
-      if (!lat || !lng) {
-        // No coords — fallback to OK
-        setData({ status: "OK", admin_days_added: 0, ruleset_version: "v1.1-static", _source: "fallback" })
-        setLoading(false)
-        return
-      }
-
-      try {
-        const res = await fetch(`/api/airspace/query?lat=${lat}&lng=${lng}`)
-        const result = await res.json()
-        setData({ ...result, _source: "static-zones" })
-      } catch {
-        // Network error fallback
-        setData({ status: "OK", admin_days_added: 0, ruleset_version: "v1.1-static", _source: "fallback" })
-      } finally {
-        setLoading(false)
-      }
+    if (mission.airspace) {
+      setData(mission.airspace)
+      setLoading(false)
+      return
+    }
+    // Fallback: re-fetch from real API using coordinates from Step1
+    const { lat, lng } = mission.address ?? {}
+    if (!lat || !lng) {
+      setData({ status: "OK", admin_days_added: 0, ruleset_version: "v1.1-static" })
+      setLoading(false)
+      return
     }
 
-    fetchAirspace()
+    fetch(`/api/airspace/query?lat=${lat}&lng=${lng}`)
+      .then(r => r.json())
+      .then((result: AirspaceResult) => setData(result))
+      .catch(() => setData({ status: "OK", admin_days_added: 0, ruleset_version: "v1.1-static" }))
+      .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -110,10 +87,11 @@ export function Step2Airspace({ mission, update, next, back }: Props) {
             {STATUS_ICON[data.status]}
             <span className="text-lg font-semibold">{STATUS_LABEL[data.status]}</span>
             <div className="ml-auto flex items-center gap-2">
-              {data.matched_zone && (
+              {(data as AirspaceResult & { matched_zone?: string; distance_km?: number }).matched_zone && (
                 <Badge variant="outline" className="text-xs border-zinc-600 text-zinc-400">
-                  {data.matched_zone}
-                  {data.distance_km !== undefined && ` · ${data.distance_km}km`}
+                  {(data as AirspaceResult & { matched_zone?: string; distance_km?: number }).matched_zone}
+                  {(data as AirspaceResult & { matched_zone?: string; distance_km?: number }).distance_km !== undefined &&
+                    ` · ${(data as AirspaceResult & { matched_zone?: string; distance_km?: number }).distance_km}km`}
                 </Badge>
               )}
               <span className="font-mono text-xs text-zinc-500">ruleset: {data.ruleset_version}</span>
@@ -132,13 +110,17 @@ export function Step2Airspace({ mission, update, next, back }: Props) {
               {data.admin_days_added > 0 ? `+${data.admin_days_added} 天` : "無影響"}
             </div>
             <div className="text-zinc-400">資料來源</div>
-            <div className="font-mono text-zinc-400 text-xs">
-              {data._source === "mock-demo" ? "Mock Demo (預設場景)" :
-               data._source === "static-zones" ? "靜態空域資料庫 v1.1" :
-               "Fallback"}
-            </div>
+            <div className="font-mono text-zinc-400 text-xs">靜態空域資料庫</div>
             <div className="text-zinc-400">規則版本</div>
             <div className="font-mono text-emerald-400">{data.ruleset_version}</div>
+            {mission.address && (
+              <>
+                <div className="text-zinc-400">座標</div>
+                <div className="font-mono text-zinc-300 text-xs">
+                  {mission.address.lat.toFixed(5)}, {mission.address.lng.toFixed(5)}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-zinc-500 pt-1">
