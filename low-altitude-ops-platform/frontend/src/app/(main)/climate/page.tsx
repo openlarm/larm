@@ -1,6 +1,6 @@
 "use client"
-import { useState, useCallback, useMemo } from "react"
-import { Search, ChevronLeft, ChevronRight, CloudSun, Wind, Droplets, Zap, TrendingUp, Info } from "lucide-react"
+import { useState, useCallback, useMemo, useEffect } from "react"
+import { Search, ChevronLeft, ChevronRight, CloudSun, Wind, Droplets, Zap, TrendingUp, Info, CheckCircle, AlertCircle, Loader } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import type { WeatherType, RiskLevel, WeatherTodayInput, Weather30dInput } from "@/lib/types"
@@ -183,6 +183,17 @@ interface ForecastDay {
 interface WeatherContext {
   weather_30d: Weather30dInput
   forecast: { date: string; weather_today: WeatherTodayInput }[]
+  _meta?: { meteo_plan: "paid" | "free" }
+}
+
+interface HealthStatus {
+  status: "ok" | "degraded" | "loading" | "error"
+  meteo_plan: "paid" | "free" | null
+  services?: {
+    forecast: { ok: boolean; latency_ms: number | null }
+    archive:  { ok: boolean; latency_ms: number | null }
+    cwa:      { ok: boolean; latency_ms: number | null; error?: string }
+  }
 }
 
 // ── Build 365-day dataset ──────────────────────────────────────────────────────
@@ -251,6 +262,19 @@ export default function ClimatePage() {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [health, setHealth] = useState<HealthStatus>({ status: "loading", meteo_plan: null })
+
+  // Fetch health status once on mount
+  useEffect(() => {
+    fetch("/api/weather/health")
+      .then(r => r.json())
+      .then(d => setHealth({
+        status: d.status === "ok" ? "ok" : "degraded",
+        meteo_plan: d.meteo_plan ?? "free",
+        services: d.services,
+      }))
+      .catch(() => setHealth({ status: "error", meteo_plan: null }))
+  }, [])
   const [location, setLocation] = useState<{ lat: number; lng: number; city: string; label: string } | null>(null)
   const [ctx, setCtx] = useState<WeatherContext | null>(null)
   const [allDays, setAllDays] = useState<ForecastDay[]>([])
@@ -340,12 +364,52 @@ export default function ClimatePage() {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3">
-        <CloudSun className="h-7 w-7 text-sky-400" />
-        <div>
-          <h1 className="text-xl font-semibold text-white">Climate Assessment</h1>
-          <p className="text-sm text-zinc-400">氣候評估 — 全年12個月天候窗口與場域風險查詢</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <CloudSun className="h-7 w-7 text-sky-400" />
+          <div>
+            <h1 className="text-xl font-semibold text-white">Climate Assessment</h1>
+            <p className="text-sm text-zinc-400">氣候評估 — 全年12個月天候窗口與場域風險查詢</p>
+          </div>
         </div>
+
+        {/* ── Open-Meteo connection status badge ── */}
+        <a
+          href="/api/weather/health"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="點擊查看完整診斷報告"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors hover:bg-zinc-800/60 cursor-pointer"
+          style={{ textDecoration: "none" }}
+        >
+          {health.status === "loading" && (
+            <>
+              <Loader className="h-3.5 w-3.5 text-zinc-500 animate-spin" />
+              <span className="text-xs text-zinc-500">檢查連線…</span>
+            </>
+          )}
+          {health.status === "ok" && (
+            <>
+              <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+              <div className="text-left">
+                <p className="text-[11px] font-medium text-emerald-400 leading-tight">Open-Meteo 正常</p>
+                <p className="text-[10px] text-zinc-500 leading-tight">
+                  {health.meteo_plan === "paid" ? "付費方案 ✦" : "免費方案"}
+                  {health.services?.forecast.latency_ms != null && ` · ${health.services.forecast.latency_ms}ms`}
+                </p>
+              </div>
+            </>
+          )}
+          {(health.status === "degraded" || health.status === "error") && (
+            <>
+              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+              <div className="text-left">
+                <p className="text-[11px] font-medium text-red-400 leading-tight">連線異常</p>
+                <p className="text-[10px] text-zinc-500 leading-tight">點擊查看詳情</p>
+              </div>
+            </>
+          )}
+        </a>
       </div>
 
       {/* ── Search ──────────────────────────────────────────────────────────── */}

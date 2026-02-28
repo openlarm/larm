@@ -7,9 +7,31 @@
 //   1. Open-Meteo Historical Archive API  → 30-day hourly data → compute stats
 //   2. Open-Meteo Forecast API            → 14-day daily forecast
 //   3. CWA F-C0032-001 (if CWA_API_KEY)  → enhance thunder_risk for near-term days
+//
+// Paid Open-Meteo support:
+//   Set OPEN_METEO_API_KEY in .env.local to switch to the commercial endpoints:
+//     Forecast : customer-api.open-meteo.com (no rate limit, SLA-backed)
+//     Archive  : customer-archive-api.open-meteo.com
 
 import { NextResponse } from "next/server"
 import type { Weather30dInput, WeatherTodayInput } from "@/lib/types"
+
+// ─── Open-Meteo endpoint resolver ─────────────────────────────────────────────
+
+function meteoBase(paid: boolean, service: "forecast" | "archive"): string {
+  if (paid) {
+    return service === "forecast"
+      ? "https://customer-api.open-meteo.com/v1/forecast"
+      : "https://customer-archive-api.open-meteo.com/v1/archive"
+  }
+  return service === "forecast"
+    ? "https://api.open-meteo.com/v1/forecast"
+    : "https://archive-api.open-meteo.com/v1/archive"
+}
+
+function applyApiKey(url: URL, apiKey: string | undefined) {
+  if (apiKey) url.searchParams.set("apikey", apiKey)
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,14 +61,15 @@ function stddev(arr: number[], avg: number): number {
 
 // ─── Step A: Open-Meteo Historical → Weather30dInput ─────────────────────────
 
-async function fetchHistorical(lat: number, lng: number): Promise<Weather30dInput | null> {
+async function fetchHistorical(lat: number, lng: number, apiKey?: string): Promise<Weather30dInput | null> {
   const now = new Date()
   const endDate = new Date(now)
   endDate.setDate(endDate.getDate() - 1)            // yesterday
   const startDate = new Date(endDate)
   startDate.setDate(startDate.getDate() - 29)       // 30 days total
 
-  const url = new URL("https://archive-api.open-meteo.com/v1/archive")
+  const url = new URL(meteoBase(!!apiKey, "archive"))
+  applyApiKey(url, apiKey)
   url.searchParams.set("latitude", lat.toFixed(4))
   url.searchParams.set("longitude", lng.toFixed(4))
   url.searchParams.set("start_date", toISODate(startDate))
@@ -112,8 +135,9 @@ async function fetchHistorical(lat: number, lng: number): Promise<Weather30dInpu
 
 type ForecastDay = { date: string; weather_today: WeatherTodayInput }
 
-async function fetchForecast(lat: number, lng: number): Promise<ForecastDay[]> {
-  const url = new URL("https://api.open-meteo.com/v1/forecast")
+async function fetchForecast(lat: number, lng: number, apiKey?: string): Promise<ForecastDay[]> {
+  const url = new URL(meteoBase(!!apiKey, "forecast"))
+  applyApiKey(url, apiKey)
   url.searchParams.set("latitude", lat.toFixed(4))
   url.searchParams.set("longitude", lng.toFixed(4))
   url.searchParams.set(
@@ -206,10 +230,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "invalid lat/lng" }, { status: 400 })
   }
 
+  const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
+
   // Fetch in parallel
   const [weather_30d, forecast] = await Promise.all([
-    fetchHistorical(lat, lng).catch(() => null),
-    fetchForecast(lat, lng).catch(() => []),
+    fetchHistorical(lat, lng, meteoKey).catch(() => null),
+    fetchForecast(lat, lng, meteoKey).catch(() => []),
   ])
 
   // CWA thunder enhancement (if key is configured and city is known)
@@ -229,5 +255,9 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ weather_30d, forecast })
+  return NextResponse.json({
+    weather_30d,
+    forecast,
+    _meta: { meteo_plan: meteoKey ? "paid" : "free" },
+  })
 }
