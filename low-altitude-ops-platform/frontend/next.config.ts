@@ -1,11 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  experimental: {
-    // Enable instrumentation.ts to run at server start.
-    // Used to configure HTTPS_PROXY for outgoing fetch() calls.
-    instrumentationHook: true,
-  },
-};
+// instrumentation.ts is supported natively in Next.js 16+ (no flag needed).
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
