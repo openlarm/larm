@@ -68,11 +68,17 @@ export async function GET(request: Request) {
   const data = await res.json()
   const hourly = data.hourly
   if (!hourly?.time) {
-    return NextResponse.json({ error: "unexpected response shape" }, { status: 502 })
+    return NextResponse.json({ error: "unexpected response shape", raw_keys: Object.keys(data) }, { status: 502 })
   }
 
-  // Find all member wind keys
-  const memberKeys: string[] = Object.keys(hourly).filter(k =>
+  // Expose all hourly keys for debugging (always included to help diagnose member naming)
+  const allHourlyKeys: string[] = Object.keys(hourly)
+
+  // Find all member wind keys — try both naming patterns:
+  //   pattern A: wind_speed_10m_member01  (1-based)
+  //   pattern B: wind_speed_10m_member00  (0-based, same regex)
+  //   pattern C: wind_speed_10m           (single key = no members, wrong model)
+  const memberKeys: string[] = allHourlyKeys.filter(k =>
     /^wind_speed_10m_member\d+$/.test(k)
   )
 
@@ -128,5 +134,7 @@ export async function GET(request: Request) {
     lat, lng, days,
     latency_ms,
     forecast_days,
+    // Debug: always include all hourly keys so we can see the actual response shape
+    _debug_hourly_keys: allHourlyKeys,
   })
 }
