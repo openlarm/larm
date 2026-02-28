@@ -254,27 +254,41 @@ export default function AdminParamsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {params.thresholds.wind_score_table.map((row, i) => (
-                      <tr key={i} className="border-t border-zinc-800/60">
-                        <td className="pr-4 py-1 font-mono text-zinc-300">{row.min_kmh}</td>
-                        <td className="pr-4 py-1 font-mono text-zinc-300">{row.max_kmh === 999 ? "∞" : row.max_kmh}</td>
-                        <td className="py-1">
-                          <input
-                            type="number" min={0} max={100} step={1}
-                            value={row.score}
-                            onChange={e => {
-                              const v = Number(e.target.value)
-                              setParams(prev => {
-                                const tbl = [...prev.thresholds.wind_score_table]
-                                tbl[i] = { ...tbl[i], score: v }
-                                return { ...prev, thresholds: { ...prev.thresholds, wind_score_table: tbl } }
-                              })
-                            }}
-                            className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-white font-mono text-xs"
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {params.thresholds.wind_score_table.map((row, i) => {
+                      const isFirst = i === 0
+                      const isLast  = i === params.thresholds.wind_score_table.length - 1
+                      const updRow  = (field: "min_kmh" | "max_kmh" | "score", v: number) =>
+                        setParams(prev => {
+                          const tbl = [...prev.thresholds.wind_score_table]
+                          tbl[i] = { ...tbl[i], [field]: v }
+                          return { ...prev, thresholds: { ...prev.thresholds, wind_score_table: tbl } }
+                        })
+                      return (
+                        <tr key={i} className="border-t border-zinc-800/60">
+                          <td className="pr-3 py-1">
+                            {isFirst
+                              ? <span className="font-mono text-xs text-zinc-600">0</span>
+                              : <input type="number" min={0} max={200} step={1} value={row.min_kmh}
+                                  onChange={e => updRow("min_kmh", Number(e.target.value))}
+                                  className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-white font-mono text-xs" />
+                            }
+                          </td>
+                          <td className="pr-3 py-1">
+                            {isLast
+                              ? <span className="font-mono text-xs text-zinc-600">∞</span>
+                              : <input type="number" min={0} max={200} step={1} value={row.max_kmh}
+                                  onChange={e => updRow("max_kmh", Number(e.target.value))}
+                                  className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-white font-mono text-xs" />
+                            }
+                          </td>
+                          <td className="py-1">
+                            <input type="number" min={0} max={100} step={1} value={row.score}
+                              onChange={e => updRow("score", Number(e.target.value))}
+                              className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-white font-mono text-xs" />
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
                 <label className="flex items-center gap-2 mt-2 text-xs text-zinc-400">
@@ -339,12 +353,129 @@ export default function AdminParamsPage() {
                   ))}
                 </div>
               </section>
+
+              {/* Rain score rules */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-1">降雨評分規則</h3>
+                <p className="text-[10px] text-zinc-600 mb-2">每條規則匹配後回傳對應分數（0–45），由上往下第一個符合條件為準。</p>
+                <table className="text-xs w-full">
+                  <thead>
+                    <tr className="text-zinc-500 text-[10px]">
+                      <th className="text-left pr-2 pb-1">規則</th>
+                      <th className="text-left pr-2 pb-1">機率下 (%)</th>
+                      <th className="text-left pr-2 pb-1">機率上 (%)</th>
+                      <th className="text-left pr-2 pb-1">雨量下 (mm/h)</th>
+                      <th className="text-left pr-2 pb-1">雨量上 (mm/h)</th>
+                      <th className="text-left pb-1">分數</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-zinc-400">
+                    {/* rule_0 — dry */}
+                    <tr className="border-t border-zinc-800/60">
+                      <td className="pr-2 py-1 text-zinc-500">r0 乾燥</td>
+                      <td className="pr-2 py-1"><span className="text-zinc-600 font-mono text-[10px]">0</span></td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_0.rain_prob_lt_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_0: { ...p.thresholds.rain_score_rules.rule_0, rain_prob_lt_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1"><span className="text-zinc-600 font-mono text-[10px]">0</span></td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_0.rain_mmph_lt} min={0} max={50} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_0: { ...p.thresholds.rain_score_rules.rule_0, rain_mmph_lt: v } } } }))} />
+                      </td>
+                      <td className="py-1"><NumInput value={params.thresholds.rain_score_rules.rule_0.score} min={0} max={100} step={1}
+                        onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_0: { ...p.thresholds.rain_score_rules.rule_0, score: v } } } }))} /></td>
+                    </tr>
+                    {/* rule_1 — light */}
+                    <tr className="border-t border-zinc-800/60">
+                      <td className="pr-2 py-1 text-zinc-500">r1 小雨</td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_1.rain_prob_gte_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_1: { ...p.thresholds.rain_score_rules.rule_1, rain_prob_gte_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_1.rain_prob_lte_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_1: { ...p.thresholds.rain_score_rules.rule_1, rain_prob_lte_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_1.or_mmph_gte} min={0} max={50} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_1: { ...p.thresholds.rain_score_rules.rule_1, or_mmph_gte: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_1.or_mmph_lte} min={0} max={50} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_1: { ...p.thresholds.rain_score_rules.rule_1, or_mmph_lte: v } } } }))} />
+                      </td>
+                      <td className="py-1"><NumInput value={params.thresholds.rain_score_rules.rule_1.score} min={0} max={100} step={1}
+                        onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_1: { ...p.thresholds.rain_score_rules.rule_1, score: v } } } }))} /></td>
+                    </tr>
+                    {/* rule_2 — moderate */}
+                    <tr className="border-t border-zinc-800/60">
+                      <td className="pr-2 py-1 text-zinc-500">r2 中雨</td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_2.rain_prob_gte_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_2: { ...p.thresholds.rain_score_rules.rule_2, rain_prob_gte_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_2.rain_prob_lte_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_2: { ...p.thresholds.rain_score_rules.rule_2, rain_prob_lte_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_2.or_mmph_gte} min={0} max={50} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_2: { ...p.thresholds.rain_score_rules.rule_2, or_mmph_gte: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_2.or_mmph_lte} min={0} max={50} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_2: { ...p.thresholds.rain_score_rules.rule_2, or_mmph_lte: v } } } }))} />
+                      </td>
+                      <td className="py-1"><NumInput value={params.thresholds.rain_score_rules.rule_2.score} min={0} max={100} step={1}
+                        onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_2: { ...p.thresholds.rain_score_rules.rule_2, score: v } } } }))} /></td>
+                    </tr>
+                    {/* rule_3 — heavy */}
+                    <tr className="border-t border-zinc-800/60">
+                      <td className="pr-2 py-1 text-zinc-500">r3 大雨</td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_3.rain_prob_gt_pct} min={0} max={100} step={5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_3: { ...p.thresholds.rain_score_rules.rule_3, rain_prob_gt_pct: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1"><span className="text-zinc-600 font-mono text-[10px]">100</span></td>
+                      <td className="pr-2 py-1">
+                        <NumInput value={params.thresholds.rain_score_rules.rule_3.or_mmph_gt} min={0} max={100} step={0.5}
+                          onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_3: { ...p.thresholds.rain_score_rules.rule_3, or_mmph_gt: v } } } }))} />
+                      </td>
+                      <td className="pr-2 py-1"><span className="text-zinc-600 font-mono text-[10px]">∞</span></td>
+                      <td className="py-1"><NumInput value={params.thresholds.rain_score_rules.rule_3.score} min={0} max={100} step={1}
+                        onChange={v => setParams(p => ({ ...p, thresholds: { ...p.thresholds, rain_score_rules: { ...p.thresholds.rain_score_rules, rule_3: { ...p.thresholds.rain_score_rules.rule_3, score: v } } } }))} /></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
             </div>
           )}
 
           {/* ── Tab: Weather Classification ──────────────────────────────── */}
           {activeTab === "classify" && (
-            <div>
+            <div className="space-y-5">
+              {/* Regime base scores */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">天候基礎分 (Base Score)</h3>
+                <p className="text-xs text-zinc-500 mb-2">R_score 的固定底分，反映各天候型態的固有風險高低。</p>
+                <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 text-xs text-zinc-400">
+                  {W_CODES.map(w => (
+                    <label key={w} className="flex items-center justify-between gap-2">
+                      <span className={W_COLORS[w]}>{w} {params.regimes[w].name.slice(0, 5)}</span>
+                      <NumInput
+                        value={params.regimes[w].base_score} min={0} max={40} step={1}
+                        onChange={v => setParams(p => ({
+                          ...p,
+                          regimes: { ...p.regimes, [w]: { ...p.regimes[w], base_score: v } }
+                        }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <div>
               <h3 className="text-sm font-semibold text-zinc-300 mb-3">UI 天候推斷閾值（ui_infer_thresholds）</h3>
               <p className="text-xs text-zinc-500 mb-3">用於 Climate 頁面和任務嚮導 Step 5 的即時天候顯示。</p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs text-zinc-400">
@@ -369,6 +500,7 @@ export default function AdminParamsPage() {
                     />
                   </label>
                 ))}
+              </div>
               </div>
             </div>
           )}
@@ -419,6 +551,48 @@ export default function AdminParamsPage() {
                   </label>
                 ))}
               </div>
+
+              {/* R-level score mapping */}
+              <h3 className="text-sm font-semibold text-zinc-300 mt-5 mb-1">R 等級分數對應 (mapping_r_level)</h3>
+              <p className="text-[10px] text-zinc-600 mb-2">R_score 落入哪個區間即判定為該 R 等級。</p>
+              <table className="text-xs w-auto">
+                <thead>
+                  <tr className="text-zinc-500 text-[10px]">
+                    <th className="text-left pr-4 pb-1">等級</th>
+                    <th className="text-left pr-4 pb-1">min</th>
+                    <th className="text-left pb-1">max</th>
+                  </tr>
+                </thead>
+                <tbody className="text-zinc-400">
+                  {params.thresholds.mapping_r_level.map((row, i) => {
+                    const isFirst = i === 0
+                    const isLast  = i === params.thresholds.mapping_r_level.length - 1
+                    const updRL = (field: "min" | "max", v: number) =>
+                      setParams(prev => {
+                        const tbl = [...prev.thresholds.mapping_r_level]
+                        tbl[i] = { ...tbl[i], [field]: v }
+                        return { ...prev, thresholds: { ...prev.thresholds, mapping_r_level: tbl } }
+                      })
+                    return (
+                      <tr key={i} className="border-t border-zinc-800/60">
+                        <td className="pr-4 py-1 font-mono font-bold" style={{ color: ["#34d399","#38bdf8","#fbbf24","#fb923c","#f87171"][i] }}>{row.r_level}</td>
+                        <td className="pr-4 py-1">
+                          {isFirst
+                            ? <span className="font-mono text-zinc-600 text-[10px]">0</span>
+                            : <NumInput value={row.min} min={0} max={100} step={1} onChange={v => updRL("min", v)} />
+                          }
+                        </td>
+                        <td className="py-1">
+                          {isLast
+                            ? <span className="font-mono text-zinc-600 text-[10px]">100</span>
+                            : <NumInput value={row.max} min={0} max={100} step={1} onChange={v => updRL("max", v)} />
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

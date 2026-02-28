@@ -48,6 +48,7 @@ const R_BG: Record<RiskLevel, string> = {
 
 type WDist = [number, WeatherType][]
 type MonthProfile = { wDist: WDist; riskBase: RiskLevel }
+type ProfilesSource = "real" | "fallback" | null
 
 const MONTH_PROFILES: MonthProfile[] = [
   /* Jan */ { wDist: [[0.50, "W0"], [0.85, "W1"], [1.00, "W2"]], riskBase: "R0" },
@@ -177,6 +178,7 @@ interface HealthStatus {
 function build365Days(
   ctx: WeatherContext,
   locationSeed: number,
+  profiles: MonthProfile[] = MONTH_PROFILES,
 ): ForecastDay[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -190,7 +192,7 @@ function build365Days(
     d.setDate(today.getDate() + i)
     const dateStr = d.toISOString().split("T")[0]
     const month = d.getMonth()
-    const profile = MONTH_PROFILES[month]
+    const profile = profiles[month]
 
     const realToday = realMap.get(dateStr)
     if (realToday) {
@@ -257,6 +259,7 @@ export default function ClimatePage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [siteRisk, setSiteRisk] = useState<RiskLevel>("R1")
   const [monthOffset, setMonthOffset] = useState(0)
+  const [profilesSource, setProfilesSource] = useState<ProfilesSource>(null)
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -279,17 +282,34 @@ export default function ClimatePage() {
       const loc = { lat: geo.lat as number, lng: geo.lng as number, city: (geo.city as string) ?? "", label: query }
       setLocation(loc)
 
-      const wxRes = await fetch(
-        `/api/weather/context?lat=${loc.lat}&lng=${loc.lng}&city=${encodeURIComponent(loc.city)}`
-      )
-      if (!wxRes.ok) throw new Error("weather API error")
-      const wxData: WeatherContext = await wxRes.json()
+      // Fetch weather context and historical climate profile in parallel
+      const [wxSettled, profileSettled] = await Promise.allSettled([
+        fetch(`/api/weather/context?lat=${loc.lat}&lng=${loc.lng}&city=${encodeURIComponent(loc.city)}`),
+        fetch(`/api/weather/climate-profile?lat=${loc.lat}&lng=${loc.lng}`),
+      ])
+
+      if (wxSettled.status === "rejected" || !wxSettled.value.ok) throw new Error("weather API error")
+      const wxData: WeatherContext = await wxSettled.value.json()
       if (!wxData.weather_30d || !wxData.forecast) throw new Error("incomplete data")
       setCtx(wxData)
 
+      // Use real ERA5-derived monthly distributions when available, else Taiwan defaults
+      let profiles: MonthProfile[] = MONTH_PROFILES
+      if (profileSettled.status === "fulfilled" && profileSettled.value.ok) {
+        const pd = await profileSettled.value.json().catch(() => null)
+        if (pd?.profiles?.length === 12) {
+          profiles = pd.profiles as MonthProfile[]
+          setProfilesSource("real")
+        } else {
+          setProfilesSource("fallback")
+        }
+      } else {
+        setProfilesSource("fallback")
+      }
+
       // Deterministic seed from lat/lng (so same location always gives same seasonal pattern)
       const locationSeed = Math.round(Math.abs(loc.lat * 1000 + loc.lng * 100)) % 9999
-      const days = build365Days(wxData, locationSeed)
+      const days = build365Days(wxData, locationSeed, profiles)
       setAllDays(days)
       setMonthOffset(0)
     } catch {
@@ -443,9 +463,12 @@ export default function ClimatePage() {
             </div>
           </div>
           {/* Data source legend */}
-          <div className="flex gap-3 text-[10px] w-full sm:w-auto">
+          <div className="flex gap-3 text-[10px] w-full sm:w-auto flex-wrap">
             <span className="flex items-center gap-1 text-emerald-400"><span className="inline-block w-2 h-2 rounded-full bg-emerald-400" /> 即時預報（14天）</span>
-            <span className="flex items-center gap-1 text-zinc-500"><span className="inline-block w-2 h-2 rounded-full bg-zinc-600" /> 季節估算</span>
+            {profilesSource === "real"
+              ? <span className="flex items-center gap-1 text-sky-400"><span className="inline-block w-2 h-2 rounded-full bg-sky-500" /> ERA5 統計（3年）</span>
+              : <span className="flex items-center gap-1 text-zinc-500"><span className="inline-block w-2 h-2 rounded-full bg-zinc-600" /> 台灣季節模型</span>
+            }
           </div>
         </div>
       )}
