@@ -259,7 +259,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
       nextDisabled={selected.length === 0}
       wide
     >
-      <div className="flex gap-5">
+      <div className="flex flex-col lg:flex-row gap-5">
         {/* ── Left: table ─────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 space-y-3">
 
@@ -355,7 +355,8 @@ export function Step5Weather({ mission, update, next, back }: Props) {
 
           {/* Weather table */}
           <div className="border border-zinc-700 rounded-lg overflow-hidden max-h-[480px] overflow-y-auto">
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-xs">
               <thead className="bg-zinc-800/80 text-zinc-400 sticky top-0 z-10">
                 <tr>
                   <th className="px-2 py-2 w-8" />
@@ -475,6 +476,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Summary bar */}
@@ -551,7 +553,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
         </div>
 
         {/* ── Right: Legend ────────────────────────────────────────── */}
-        <div className="w-60 shrink-0 space-y-3">
+        <div className="w-full lg:w-60 lg:shrink-0 space-y-3">
 
           {/* W levels */}
           <Card className="border-zinc-700 bg-zinc-800/20">
