@@ -388,6 +388,230 @@ WeatherNow 計算最後乘上此係數（地形 × 天候型態交互）。
 | **風雨評分** | `wind_score_table`（區間 min/max + score）<br>`weather_now_weights`（wind / rain / instability / instability_scale / predictability_discount / thunder_add / ensemble_low_conf_threshold）<br>`thresholds.rain_score_rules`（4 條規則各閾值與分數）<br>`thresholds.hard_stop`（風速 / 雨量 / 機率三個硬停門檻）|
 | **天候分類** | `regimes[W].base_score`（W0–W5 各 base score）<br>`ui_infer_thresholds`（9 個即時顯示閾值）|
 | **緩衝係數** | `buffer_coefficients`（base / score_divisor / regime_conf_penalty / ensemble_penalty / min / max）<br>`volatility_buffer_add`（W0–W5 各波動緩衝值）<br>`thresholds.mapping_r_level`（R0–R4 各等級的 min / max 邊界）|
+| **R指標** | B_score 各分項對照表（唯讀參考）、O_score 各分項對照表（唯讀）、E_score + Tier 觸發閾值（唯讀）、completionForRL 完成率估計表（唯讀）|
+| **報價** | 基本單價、立面/污染/清潔劑附加費、各類乘數一覽（唯讀參考）|
+
+---
+
+## 十一、R指標分項（B/O/E Score）
+
+> 以下參數目前硬編碼於 `risk-engine.ts`，可在 Admin Params → **R指標 Tab** 查閱。
+
+### 11-A　B_score 建築評分（上限 25）
+
+**建物樓層**：
+
+| 條件 | 分數 |
+|---|---|
+| ≤ 10 層 | +0 |
+| 11–20 層 | +4 |
+| 21–30 層 | +7 |
+| > 30 層 | +10 |
+
+**場址海拔**：
+
+| 條件 | 分數 |
+|---|---|
+| ≤ 100 m | +0 |
+| 101–300 m | +2 |
+| 301–800 m | +4 |
+| > 800 m | +6 |
+
+**立面複雜度**：
+
+| 等級 | 分數 |
+|---|---|
+| none | +0 |
+| light | +2 |
+| medium | +5 |
+| heavy | +8 |
+
+**環境危害（上限 8）**：
+
+| 因素 | 分數 |
+|---|---|
+| 鄰近高壓電 | +4 |
+| 鄰近基地台 | +2 |
+| 風道效應 | +2 |
+| 淨空 < 5 m | +2 |
+
+**交互加成（上限 6）**：
+
+| 組合條件 | 分數 |
+|---|---|
+| 高樓（>20F）× 風道效應 | +3 |
+| 高壓電 × 無屋頂緊急降落 | +2 |
+| 山區（>300m）× 淨空 < 5m | +3 |
+
+> **B_score 計算式**：`min(25, altScore + heightScore + complexityScore + min(8, envRaw) + min(6, interaction))`
+
+### 11-B　O_score 作業評分（上限 15）
+
+| 因素 | 分數 |
+|---|---|
+| 夜間作業 | +6 |
+| 週末 | +2 |
+| 封路需求 | +4 |
+| 急件 ≤ 3 天 | +6 |
+| 急件 4–7 天 | +4 |
+| 高人流密度 | +4 |
+| 中人流密度 | +2 |
+| 初級操作員 | +2 |
+| 長工期疲勞 ≥ 7 天 | +4 |
+| 長工期疲勞 4–6 天 | +2 |
+
+> **O_score 上限**：`min(15, 各項加總)`
+
+### 11-C　E_score 設備評分（上限 10）
+
+| 設備狀態 | 分數（每件） |
+|---|---|
+| Block | +4 |
+| Warn | +2 |
+| OK | 0 |
+
+> **E_score 上限**：`min(10, 加總)`
+
+**Tier 觸發閾值**（CONDITIONAL 審批等級）：
+
+| 條件 | 結果 |
+|---|---|
+| R2 + (夜間 OR 高壓電 OR 風道) + E ≥ 6 | 升至 CONDITIONAL **Tier B**（主管事前審批）|
+| E ≥ 8（任何情況）| 強制 CONDITIONAL **Tier C**（主管 + 客戶雙方書面確認）|
+| R3（任何情況）| CONDITIONAL **Tier B** |
+
+### 11-D　完成率估計（completionForRL）
+
+**公式**：`max(5, min(99, base[R] − wIdx × 3))`（wIdx = W等級數字，0–5）
+
+| R-level | 基礎完成率 | W0 | W1 | W2 | W3 | W4 | W5 |
+|---|---|---|---|---|---|---|---|
+| R0 | 97% | 97 | 94 | 91 | 88 | 85 | 82 |
+| R1 | 82% | 82 | 79 | 76 | 73 | 70 | 67 |
+| R2 | 60% | 60 | 57 | 54 | 51 | 48 | 45 |
+| R3 | 35% | 35 | 32 | 29 | 26 | 23 | 20 |
+| R4 | 10% | 10 | 7 | 5 | 5 | 5 | 5 |
+
+> 最低值 5%（min clamp），最高值 99%（max clamp）。
+
+---
+
+## 十二、報價引擎參數（pricing-engine.ts）
+
+> 可在 Admin Params → **報價 Tab** 查閱。
+>
+> **報價總額公式**：
+> ```
+> total = round( subtotal × floor_mult × time_mult × risk_mult × urgent_mult )
+> subtotal = Σ [ 有效面積 × (base_price + 各類附加費) ]（小計不足 min_order 時補差）
+> ```
+
+### 12-A　基本單價（BASE_PRICE，NTD / ㎡）
+
+| 建築類型 | 單價 |
+|---|---|
+| 商辦 commercial | 30 |
+| 豪宅 luxury | 33 |
+| 透天/獨棟 house | 200 |
+| 廠房 factory | 28 |
+| 太陽能板 solar | 8 |
+
+### 12-B　立面附加費（Section B，每立面各自計算）
+
+**立面複雜度加價（NTD / ㎡）**：
+
+| 等級 | 加價 |
+|---|---|
+| none | 0 |
+| light | +4 |
+| medium | +6 |
+| heavy | +8 |
+
+**立面條件加價（NTD / ㎡）**：
+
+| 條件 | 加價 |
+|---|---|
+| 封路 road_closure | +4 |
+| 空間受限 tight_perimeter | +6 |
+| 高風險環境 high_risk_env | +7 |
+| 鄰樹（全面通道障礙） adjacent_trees | +5 |
+| 鄰樹影區（納入清洗範圍） clean_tree_floors | 額外 +10/㎡ |
+
+**建物條件加價（NTD / ㎡，所有立面共用）**：
+
+| 條件 | 加價 |
+|---|---|
+| 自備用水（SelfSupply） | +7 |
+| 自備電力（SelfSupply） | +7 |
+| 屋頂條件不佳 | +12 |
+
+### 12-C　專案附加費（Section C，全案共用）
+
+**污染類型（可疊加，上限 15 / ㎡）**：
+
+| 類型 | 加價 |
+|---|---|
+| dust 粉塵 | 0 |
+| scale 水垢 | +7 |
+| bird 鳥糞 | +4 |
+| mold 黴菌 | +5 |
+| exhaust 廢氣排放 | +6 |
+| grease 油污 | +12 |
+
+**清潔劑（NTD / ㎡）**：
+
+| 類型 | 加價 |
+|---|---|
+| water 清水 | 0 |
+| neutral 中性劑 | +3 |
+| acid 酸性劑 | +10 |
+| alkali 鹼性劑 | +10 |
+
+### 12-D　乘數（Section D Multipliers）
+
+**樓層乘數（FLOOR_MULTIPLIER）**：
+
+| 樓層 | 乘數 |
+|---|---|
+| ≤ 10 層 | ×1.0 |
+| 11–20 層 | ×1.3 |
+| 21–30 層 | ×2.0 |
+| > 30 層 | ×3.0 |
+
+**時間窗口乘數（TIME_WINDOW_MULTIPLIER）**：
+
+| 時段 | 乘數 |
+|---|---|
+| 日間 day | ×1.0 |
+| 週末 weekend | ×1.2 |
+| 夜間 night | ×1.5 |
+
+**風險等級乘數（RISK_MULTIPLIER）**：
+
+| R-level | 乘數 | 說明 |
+|---|---|---|
+| R0 | ×1.00 | 無附加費 |
+| R1 | ×1.05 | 輕微風險加成 |
+| R2 | ×1.15 | 中度風險加成 |
+| R3 | ×1.40 | 重度風險加成 |
+| R4 | — 拒承 | 禁止排程，不生成報價 |
+
+**急件乘數**：×1.33（`urgent = true` 時）
+
+**最低訂單金額**：NT$ 15,000（小計不足時補差至 MIN_ORDER）
+
+### 12-E　報價參數調整建議
+
+| 調整目標 | 做法 |
+|---|---|
+| 颱風季/高風險任務報價更高 | 提高 RISK_MULTIPLIER R3（如 1.40 → 1.60）|
+| 夜間作業加成更高 | 提高 TIME_WINDOW_MULTIPLIER.night（如 1.5 → 1.8）|
+| 高樓作業加乘更陡 | 調整 FLOOR_MULTIPLIER 各層閾值 |
+| 油污清洗報價更高 | 提高 grease 污染加價（如 12 → 15）|
+| 酸鹼劑報價更高 | 提高 acid/alkali 清潔劑加價（如 10 → 15）|
+| 最低訂單門檻提高 | 調整 MIN_ORDER（如 15000 → 20000）|
+
+> ⚠️ 目前報價參數定義於原始碼，若需調整請修改 `pricing-engine.ts` 後重啟服務。
 
 ---
 
@@ -397,8 +621,14 @@ WeatherNow 計算最後乘上此係數（地形 × 天候型態交互）。
 |---|---|
 | `classifyWeatherRegime()` | `src/lib/engines/risk-engine.ts` |
 | `evaluateRisk()` — 完整 R_score 計算 | `src/lib/engines/risk-engine.ts` |
+| `computeBuildingScore()` — B_score | `src/lib/engines/risk-engine.ts` |
+| `computeOperationalScore()` — O_score | `src/lib/engines/risk-engine.ts` |
+| `computeEquipmentScore()` — E_score | `src/lib/engines/risk-engine.ts` |
+| `computeGating()` — CONDITIONAL Tier 判斷 | `src/lib/engines/risk-engine.ts` |
 | `inferWCode()` — UI 即時推斷 | `src/lib/engines/model-helpers.ts` |
+| `completionForRL()` — 完成率估計 | `src/lib/engines/model-helpers.ts` |
 | `getWRDecision()` | `src/lib/engines/model-helpers.ts` |
 | 所有可調參數與預設值 | `src/lib/engines/weather-regime-params.ts` |
+| `generateQuote()` — 報價引擎 | `src/lib/engines/pricing-engine.ts` |
 | Admin Params UI | `src/app/(main)/admin/params/page.tsx` |
 | Climate 氣候日曆 | `src/app/(main)/climate/page.tsx` |

@@ -97,7 +97,7 @@ function previewScore(p: WeatherRegimeParams): {
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-type TabKey = "wr" | "wind_rain" | "classify" | "buffer"
+type TabKey = "wr" | "wind_rain" | "classify" | "buffer" | "r_index" | "pricing"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +161,8 @@ export default function AdminParamsPage() {
     { key: "wind_rain", label: "風雨評分",      sublabel: "分級 + 權重" },
     { key: "classify",  label: "天候分類",      sublabel: "W1-W5 閾值" },
     { key: "buffer",    label: "緩衝係數",      sublabel: "Buffer formula" },
+    { key: "r_index",   label: "R指標",         sublabel: "B/O/E + 完成率" },
+    { key: "pricing",   label: "報價",           sublabel: "計費參數" },
   ]
 
   return (
@@ -593,6 +595,302 @@ export default function AdminParamsPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── Tab: R指標 ───────────────────────────────────────────── */}
+          {activeTab === "r_index" && (
+            <div className="space-y-5">
+              <p className="text-[11px] text-amber-600/70 border border-amber-900/30 rounded px-3 py-2 bg-amber-950/20">
+                ⓘ 以下參數定義於 <code className="font-mono">risk-engine.ts</code>，目前為唯讀參考（不受 localStorage 覆寫影響）。
+              </p>
+
+              {/* 完成率估計 */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-1">任務完成率估計（completionForRL）</h3>
+                <p className="text-[10px] text-zinc-500 mb-2 font-mono">max(5, min(99, base[R] − wIdx × 3))　W 每升一級扣 3%</p>
+                <table className="text-xs w-auto">
+                  <thead>
+                    <tr className="text-zinc-500 text-[10px]">
+                      <th className="text-left pr-4 pb-1">R-level</th>
+                      <th className="text-right pr-6 pb-1">基礎完成率</th>
+                      <th className="text-left pb-1">W0 / W1 / W2 / W3 / W4 / W5</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-zinc-400">
+                    {([
+                      ["R0", "97%", "97 / 94 / 91 / 88 / 85 / 82"],
+                      ["R1", "82%", "82 / 79 / 76 / 73 / 70 / 67"],
+                      ["R2", "60%", "60 / 57 / 54 / 51 / 48 / 45"],
+                      ["R3", "35%", "35 / 32 / 29 / 26 / 23 / 20"],
+                      ["R4", "10%", "10 / 7 / 5 / 5 / 5 / 5　(min=5)"],
+                    ] as [string, string, string][]).map(([rl, base, wRange]) => (
+                      <tr key={rl} className="border-t border-zinc-800/60">
+                        <td className="pr-4 py-1 font-mono font-bold">{rl}</td>
+                        <td className="pr-6 py-1 text-right font-mono">{base}</td>
+                        <td className="py-1 text-zinc-500 text-[10px] font-mono">{wRange}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+
+              {/* B_score */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">B_score 建築評分（上限 25）</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] text-zinc-500 mb-1">建物樓層</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-zinc-400">
+                        {[["≤ 10 層", "+0"], ["11–20 層", "+4"], ["21–30 層", "+7"], ["> 30 層", "+10"]].map(([tier, pts]) => (
+                          <tr key={tier} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{tier}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-zinc-500 mb-1">場址海拔</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-zinc-400">
+                        {[["≤ 100 m", "+0"], ["101–300 m", "+2"], ["301–800 m", "+4"], ["> 800 m", "+6"]].map(([tier, pts]) => (
+                          <tr key={tier} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{tier}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-zinc-500 mb-1">立面複雜度</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-zinc-400">
+                        {[["none", "+0"], ["light", "+2"], ["medium", "+5"], ["heavy", "+8"]].map(([tier, pts]) => (
+                          <tr key={tier} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{tier}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-zinc-500 mb-1">環境危害（上限 8）</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-zinc-400">
+                        {[["鄰近高壓電", "+4"], ["鄰近基地台", "+2"], ["風道效應", "+2"], ["淨空 < 5 m", "+2"]].map(([item, pts]) => (
+                          <tr key={item} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{item}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-[10px] text-zinc-500 mb-1">交互加成（上限 6）</p>
+                  <table className="text-xs w-auto">
+                    <tbody className="text-zinc-400">
+                      {[["高樓（>20F）× 風道效應", "+3"], ["高壓電 × 無屋頂緊急降落", "+2"], ["山區（>300m）× 淨空 < 5m", "+3"]].map(([item, pts]) => (
+                        <tr key={item} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-6">{item}</td>
+                          <td className="py-0.5 font-mono">{pts}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* O_score */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">O_score 作業評分（上限 15）</h3>
+                <table className="text-xs w-auto">
+                  <tbody className="text-zinc-400">
+                    {[
+                      ["夜間作業", "+6"], ["週末", "+2"], ["封路需求", "+4"],
+                      ["急件 ≤ 3 天", "+6"], ["急件 4–7 天", "+4"],
+                      ["高人流密度", "+4"], ["中人流密度", "+2"],
+                      ["初級操作員", "+2"],
+                      ["長工期疲勞 ≥ 7 天", "+4"], ["長工期疲勞 4–6 天", "+2"],
+                    ].map(([item, pts]) => (
+                      <tr key={item} className="border-t border-zinc-800/40">
+                        <td className="py-0.5 pr-8">{item}</td>
+                        <td className="py-0.5 font-mono text-right">{pts}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+
+              {/* E_score */}
+              <section>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">E_score 設備評分（上限 10）</h3>
+                <table className="text-xs w-auto mb-2">
+                  <tbody className="text-zinc-400">
+                    {[["Block 狀態設備", "每件 +4"], ["Warn 狀態設備", "每件 +2"], ["OK 狀態設備", "0"]].map(([item, pts]) => (
+                      <tr key={item} className="border-t border-zinc-800/40">
+                        <td className="py-0.5 pr-8">{item}</td>
+                        <td className="py-0.5 font-mono">{pts}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="text-[10px] text-zinc-500 space-y-0.5">
+                  <div><span className="text-amber-400">E ≥ 6</span> + R2 + 夜間/高壓電 → CONDITIONAL <span className="text-amber-400">Tier B</span>（主管審批）</div>
+                  <div><span className="text-red-400">E ≥ 8</span> → 強制 CONDITIONAL <span className="text-red-400">Tier C</span>（主管 + 客戶雙方書面確認）</div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* ── Tab: 報價 ─────────────────────────────────────────────── */}
+          {activeTab === "pricing" && (
+            <div className="space-y-5">
+              <p className="text-[11px] text-amber-600/70 border border-amber-900/30 rounded px-3 py-2 bg-amber-950/20">
+                ⓘ 以下參數定義於 <code className="font-mono">pricing-engine.ts</code>，目前為唯讀參考（不受 localStorage 覆寫影響）。
+              </p>
+
+              <div className="grid grid-cols-2 gap-6">
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">基本單價（NTD / ㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["商辦 commercial", "30"], ["豪宅 luxury", "33"], ["透天/獨棟 house", "200"], ["廠房 factory", "28"], ["太陽能板 solar", "8"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">立面複雜度加價（NTD / ㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["none — 無複雜度", "0"], ["light — 輕度", "+4"], ["medium — 中度", "+6"], ["heavy — 重度", "+8"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">污染類型加價（可疊加，上限 15/㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["dust — 粉塵", "0"], ["scale — 水垢", "+7"], ["bird — 鳥糞", "+4"], ["mold — 黴菌", "+5"], ["exhaust — 廢氣排放", "+6"], ["grease — 油污", "+12"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">清潔劑加價（NTD / ㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["water — 清水", "0"], ["neutral — 中性劑", "+3"], ["acid — 酸性劑", "+10"], ["alkali — 鹼性劑", "+10"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">每立面條件加價（NTD / ㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["封路 road_closure", "+4"], ["空間受限 tight_perimeter", "+6"], ["高風險環境 high_risk_env", "+7"], ["鄰樹 adjacent_trees", "+5"], ["鄰樹影清洗 clean_tree_floors", "+10 額外"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">建物條件加價（NTD / ㎡）</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["自備用水（SelfSupply）", "+7"], ["自備電力（SelfSupply）", "+7"], ["屋頂條件不佳", "+12"]].map(([type, price]) => (
+                        <tr key={type} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-4">{type}</td>
+                          <td className="py-0.5 font-mono text-right">{price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              </div>
+
+              <div className="grid grid-cols-3 gap-6">
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">樓層乘數</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["≤ 10 層", "×1.0"], ["11–20 層", "×1.3"], ["21–30 層", "×2.0"], ["> 30 層", "×3.0"]].map(([tier, mult]) => (
+                        <tr key={tier} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-3">{tier}</td>
+                          <td className="py-0.5 font-mono text-right">{mult}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">時間窗口乘數</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["日間 day", "×1.0"], ["週末 weekend", "×1.2"], ["夜間 night", "×1.5"]].map(([tier, mult]) => (
+                        <tr key={tier} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-3">{tier}</td>
+                          <td className="py-0.5 font-mono text-right">{mult}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">風險等級乘數</h3>
+                  <table className="text-xs w-full">
+                    <tbody className="text-zinc-400">
+                      {[["R0", "×1.00"], ["R1", "×1.05"], ["R2", "×1.15"], ["R3", "×1.40"], ["R4", "— 拒承"]].map(([rl, mult]) => (
+                        <tr key={rl} className="border-t border-zinc-800/40">
+                          <td className="py-0.5 pr-3 font-mono">{rl}</td>
+                          <td className="py-0.5 font-mono text-right">{mult}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              </div>
+
+              <div className="flex gap-8 text-xs text-zinc-400 border-t border-zinc-800 pt-3">
+                <span>急件乘數：<span className="font-mono text-white">×1.33</span></span>
+                <span>最低訂單金額：<span className="font-mono text-white">NT$ 15,000</span></span>
+                <span className="text-zinc-600 text-[10px] self-center">總額 = round(小計 × 樓層 × 時間 × 風險 × 急件)</span>
+              </div>
             </div>
           )}
         </div>
