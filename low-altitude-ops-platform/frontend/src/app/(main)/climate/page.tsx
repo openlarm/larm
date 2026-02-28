@@ -4,6 +4,7 @@ import { Search, ChevronLeft, ChevronRight, CloudSun, Wind, Droplets, Zap, Trend
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import type { WeatherType, RiskLevel, WeatherTodayInput, Weather30dInput } from "@/lib/types"
+import { inferWCode, completionForRL, getWRDecision } from "@/lib/engines/model-helpers"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -26,14 +27,6 @@ const R_LEVELS: { level: RiskLevel; label: string; desc: string; color: string; 
   { level: "R4", label: "禁止",     desc: "R_score 86–100，NO-GO",             color: "text-red-400",     bg: "bg-red-500/10" },
 ]
 
-const WR_MATRIX: Record<WeatherType, Record<RiskLevel, "go" | "cond" | "nogo">> = {
-  W0: { R0: "go",   R1: "go",   R2: "cond", R3: "nogo", R4: "nogo" },
-  W1: { R0: "nogo", R1: "go",   R2: "cond", R3: "cond", R4: "nogo" },
-  W2: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-  W3: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
-  W4: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-  W5: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
-}
 
 const MATRIX_CELL: Record<"go" | "cond" | "nogo", { label: string; cls: string; fullLabel: string }> = {
   go:   { label: "GO",   fullLabel: "可執行",   cls: "bg-emerald-500/20 text-emerald-300 font-semibold" },
@@ -96,28 +89,11 @@ function riskForW(w: WeatherType, baseRisk: RiskLevel, rand: number): RiskLevel 
 
 // ── Weather inference (from real forecast data) ────────────────────────────────
 
-function inferWCode(today: WeatherTodayInput, w30d: Weather30dInput): WeatherType {
-  const wind = today.wind_now_kmh
-  const rain = today.rain_prob_today_pct
-  if (wind >= 28 && (w30d.gust_p90_kmh ?? 0) >= 39) return "W5"
-  if (today.thunder_risk === 1 && rain >= 40) return "W4"
-  if (w30d.rain_days_30 >= 15 && rain >= 60) return "W3"
-  if (w30d.rain_days_30 >= 10 && rain >= 40) return "W2"
-  if (wind >= 20 && w30d.wind_p90_kmh >= 28) return "W1"
-  return "W0"
-}
-
 function simpleRiskFromW(w: WeatherType): RiskLevel {
   const map: Record<WeatherType, RiskLevel> = {
     W0: "R0", W1: "R1", W2: "R1", W3: "R2", W4: "R2", W5: "R3",
   }
   return map[w]
-}
-
-function completionForRL(rl: RiskLevel, w: WeatherType): number {
-  const rIdx = parseInt(rl[1])
-  const wIdx = parseInt(w[1])
-  return Math.max(5, Math.min(99, [97, 82, 60, 35, 10][rIdx] - wIdx * 3))
 }
 
 function genWeatherTodayForW(w: WeatherType, seed: number): WeatherTodayInput {
@@ -345,7 +321,7 @@ export default function ClimatePage() {
   const visibleDays = currentGroup?.days ?? []
 
   const selectedDay = selectedDate ? allDays.find(d => d.date === selectedDate) ?? null : null
-  const wrDecision = selectedDay ? WR_MATRIX[selectedDay.weather_type][siteRisk] : null
+  const wrDecision = selectedDay ? getWRDecision(selectedDay.weather_type, siteRisk) : null
 
   // ── Monthly stats ──────────────────────────────────────────────────────────
 
@@ -838,7 +814,7 @@ export default function ClimatePage() {
                         <tr key={w}>
                           <td className={cn("font-mono font-bold pr-1 py-0.5", wDef?.color ?? "text-zinc-400")}>{w}</td>
                           {(["R0","R1","R2","R3","R4"] as RiskLevel[]).map(r => {
-                            const cell = MATRIX_CELL[WR_MATRIX[w][r]]
+                            const cell = MATRIX_CELL[getWRDecision(w, r)]
                             const isActive = selectedDay?.weather_type === w && siteRisk === r
                             return (
                               <td key={r} className="py-0.5 px-0.5 text-center">

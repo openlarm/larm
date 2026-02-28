@@ -7,6 +7,7 @@ import { AlertTriangle, CalendarX, CheckSquare, Info, ChevronLeft, ChevronRight 
 import { MOCK_WEATHER_SCENARIOS, MOCK_WEATHER_30D, MOCK_CONFLICTS } from "@/lib/mock-data"
 import type { Mission, WeatherDay, RiskLevel, WeatherType, Weather30dInput, WeatherTodayInput } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { inferWCode, completionForRL, getWRDecision, simpleRiskFromW } from "@/lib/engines/model-helpers"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
 
@@ -31,15 +32,6 @@ const R_LEVELS: { level: RiskLevel; label: string; desc: string; color: string; 
 
 const MONTH_NAMES = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
 
-// W×R decision matrix
-const WR_MATRIX: Record<WeatherType, Record<RiskLevel, "go" | "cond" | "nogo">> = {
-  W0: { R0: "go",   R1: "go",   R2: "cond", R3: "nogo", R4: "nogo" },
-  W1: { R0: "nogo", R1: "go",   R2: "cond", R3: "cond", R4: "nogo" },
-  W2: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-  W3: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
-  W4: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-  W5: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
-}
 
 const MATRIX_CELL: Record<"go" | "cond" | "nogo", { label: string; cls: string }> = {
   go:   { label: "GO",   cls: "bg-emerald-500/20 text-emerald-300 font-semibold" },
@@ -80,35 +72,7 @@ function quickEstimateDays(facades: { area_m2: number }[], buildingType?: string
   return Math.max(1, Math.ceil(total / (baseline * 8)))
 }
 
-// ── Real-weather helpers ───────────────────────────────────────────────────────
-
-/** Infer a W-code from a real daily forecast + 30d background context */
-function inferWCode(today: WeatherTodayInput, w30d: Weather30dInput): WeatherType {
-  const wind = today.wind_now_kmh
-  const rain = today.rain_prob_today_pct
-  if (wind >= 28 && (w30d.gust_p90_kmh ?? 0) >= 39) return "W5"
-  if (today.thunder_risk === 1 && rain >= 40) return "W4"
-  if (w30d.rain_days_30 >= 15 && rain >= 60) return "W3"
-  if (w30d.rain_days_30 >= 10 && rain >= 40) return "W2"
-  if (wind >= 20 && w30d.wind_p90_kmh >= 28) return "W1"
-  return "W0"
-}
-
-/** Simple deterministic risk level from W-code (used for real forecast days) */
-function simpleRiskFromW(w: WeatherType): RiskLevel {
-  const map: Record<WeatherType, RiskLevel> = {
-    W0: "R0", W1: "R1", W2: "R1", W3: "R2", W4: "R2", W5: "R3",
-  }
-  return map[w]
-}
-
-/** Estimated completion probability from risk + W-code */
-function completionForRiskLocal(rl: RiskLevel, w: WeatherType): number {
-  const rIdx = parseInt(rl[1])
-  const wIdx = parseInt(w[1])
-  const base = [97, 82, 60, 35, 10][rIdx]
-  return Math.max(5, Math.min(99, base - wIdx * 3))
-}
+// ── Real-weather helpers (inferWCode, completionForRL, getWRDecision, simpleRiskFromW imported from model-helpers) ──
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +117,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
         risk_level: rl,
         wind_ms: Math.round(realToday.wind_now_kmh / 3.6 * 10) / 10,
         rain_prob: realToday.rain_prob_today_pct,
-        completion_prob: completionForRiskLocal(rl, wt),
+        completion_prob: completionForRL(rl, wt),
         weather_today: realToday,
       }
     })
@@ -617,7 +581,7 @@ export function Step5Weather({ mission, update, next, back }: Props) {
                       <tr key={w}>
                         <td className={cn("font-mono font-bold pr-1 py-0.5", wDef?.color ?? "text-zinc-400")}>{w}</td>
                         {(["R0","R1","R2","R3","R4"] as RiskLevel[]).map(r => {
-                          const cell = MATRIX_CELL[WR_MATRIX[w][r]]
+                          const cell = MATRIX_CELL[getWRDecision(w, r)]
                           return (
                             <td key={r} className="py-0.5 px-0.5 text-center">
                               <span className={cn("inline-block px-1 py-px rounded text-[9px] w-full text-center", cell.cls)}>

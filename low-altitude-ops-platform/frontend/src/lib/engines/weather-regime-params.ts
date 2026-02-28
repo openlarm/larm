@@ -25,6 +25,40 @@ export interface RLevelRow {
   r_level: string
 }
 
+export interface WeatherNowWeights {
+  wind: number                       // default 0.55
+  rain: number                       // default 0.35
+  instability: number                // default 0.15
+  instability_scale: number          // default 15  (instability_index × N)
+  predictability_discount: number    // default 10  (predictability × -N)
+  thunder_add: number                // default 5
+  ensemble_low_conf_threshold: number // default 55 (%)
+}
+
+export interface BufferCoefficients {
+  base: number                 // default 0.05
+  score_divisor: number        // default 250
+  regime_conf_penalty: number  // default 0.04
+  ensemble_penalty: number     // default 0.08
+  min: number                  // default 0.05
+  max: number                  // default 0.40
+}
+
+export interface UIInferThresholds {
+  W5_wind_now_kmh: number   // default 28
+  W5_gust_p90_kmh: number   // default 39
+  W4_rain_prob_pct: number  // default 40
+  W3_rain_days: number      // default 15
+  W3_rain_prob_pct: number  // default 60
+  W2_rain_days: number      // default 10
+  W2_rain_prob_pct: number  // default 40
+  W1_wind_now_kmh: number   // default 20
+  W1_wind_p90_kmh: number   // default 28
+}
+
+export type RLevelKey = "R0" | "R1" | "R2" | "R3" | "R4"
+export type WRDecision = "go" | "cond" | "nogo"
+
 export interface WeatherRegimeParams {
   version: string
   units: { wind: string; rain_daily_heavy_threshold_mm: number }
@@ -43,6 +77,11 @@ export interface WeatherRegimeParams {
     hard_stop: { wind_kmh: number; rain_mmph: number; rain_prob_pct: number }
     mapping_r_level: RLevelRow[]
   }
+  // ── v1.1 extensions ────────────────────────────────────────────────────────
+  wr_matrix: Record<WCode, Record<RLevelKey, WRDecision>>
+  weather_now_weights: WeatherNowWeights
+  buffer_coefficients: BufferCoefficients
+  ui_infer_thresholds: UIInferThresholds
 }
 
 const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
@@ -65,6 +104,42 @@ const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
     W5: { windward: 1.15, leeward: 1.05, coastal: 1.18, rooftop_open: 1.12 },
   },
   volatility_buffer_add: { W0: 0.00, W1: 0.02, W2: 0.03, W3: 0.04, W4: 0.05, W5: 0.06 },
+  wr_matrix: {
+    W0: { R0: "go",   R1: "go",   R2: "cond", R3: "nogo", R4: "nogo" },
+    W1: { R0: "nogo", R1: "go",   R2: "cond", R3: "cond", R4: "nogo" },
+    W2: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
+    W3: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
+    W4: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
+    W5: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
+  },
+  weather_now_weights: {
+    wind: 0.55,
+    rain: 0.35,
+    instability: 0.15,
+    instability_scale: 15,
+    predictability_discount: 10,
+    thunder_add: 5,
+    ensemble_low_conf_threshold: 55,
+  },
+  buffer_coefficients: {
+    base: 0.05,
+    score_divisor: 250,
+    regime_conf_penalty: 0.04,
+    ensemble_penalty: 0.08,
+    min: 0.05,
+    max: 0.40,
+  },
+  ui_infer_thresholds: {
+    W5_wind_now_kmh: 28,
+    W5_gust_p90_kmh: 39,
+    W4_rain_prob_pct: 40,
+    W3_rain_days: 15,
+    W3_rain_prob_pct: 60,
+    W2_rain_days: 10,
+    W2_rain_prob_pct: 40,
+    W1_wind_now_kmh: 20,
+    W1_wind_p90_kmh: 28,
+  },
   thresholds: {
     wind_score_table: [
       { min_kmh: 0,  max_kmh: 10,  score: 0  },
