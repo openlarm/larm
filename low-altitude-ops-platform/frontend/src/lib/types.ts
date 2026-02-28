@@ -36,10 +36,13 @@ export interface Weather30dInput {
 /** Today's forecast / real-time weather */
 export interface WeatherTodayInput {
   wind_now_kmh: number
+  wind_p10_kmh?: number          // Ensemble P10 wind (optimistic bound), km/h
+  wind_p90_kmh?: number          // Ensemble P90 wind (conservative bound), km/h
   gust_now_kmh: number | null
   rain_prob_today_pct: number    // 0..100
   rain_mmph_forecast: number     // 1-hr rain rate (mm/h)
   thunder_risk: 0 | 1 | null
+  forecast_confidence?: number   // 0..100 — ensemble member agreement (100 = all agree)
 }
 
 /** Building and site characteristics */

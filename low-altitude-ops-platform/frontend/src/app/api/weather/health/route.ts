@@ -129,30 +129,73 @@ async function checkCWA(apiKey: string | undefined): Promise<ServiceStatus> {
   }
 }
 
+async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus> {
+  if (!apiKey) {
+    return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: null, error: "OPEN_METEO_API_KEY not set — ensemble requires paid plan" }
+  }
+
+  const url = new URL("https://customer-ensemble-api.open-meteo.com/v1/ensemble")
+  url.searchParams.set("apikey",    apiKey)
+  url.searchParams.set("latitude",  TEST_LAT.toString())
+  url.searchParams.set("longitude", TEST_LNG.toString())
+  url.searchParams.set("models",    "ecmwf_ifs04")
+  url.searchParams.set("hourly",    "wind_speed_10m_member01")  // single member for speed
+  url.searchParams.set("wind_speed_unit", "kmh")
+  url.searchParams.set("timezone",  "Asia/Taipei")
+  url.searchParams.set("forecast_days", "2")
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
+    }
+    const data = await res.json()
+    const hourCount: number = data.hourly?.wind_speed_10m_member01?.length ?? 0
+    return {
+      ok: hourCount > 0,
+      endpoint: "customer-ensemble-api.open-meteo.com",
+      plan: "paid",
+      latency_ms,
+      sample: { hours_returned: hourCount, model: "ecmwf_ifs04" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
 export async function GET() {
   const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
   const cwaKey   = process.env.CWA_API_KEY || undefined
 
-  const [forecast, archive, cwa] = await Promise.all([
+  const [forecast, archive, ensemble, cwa] = await Promise.all([
     checkForecast(meteoKey),
     checkArchive(meteoKey),
+    checkEnsemble(meteoKey),
     checkCWA(cwaKey),
   ])
 
   const allOk = forecast.ok && archive.ok
+
+  const instructions = meteoKey
+    ? [
+        "Using paid Open-Meteo commercial endpoints.",
+        "Forecast: customer-api | Archive: customer-historical-forecast-api (IFS 9km, P1) | Ensemble: customer-ensemble-api (51-member ECMWF IFS).",
+      ].join(" ")
+    : [
+        "Using free Open-Meteo endpoints (rate-limited). Ensemble not available.",
+        "To activate paid plan: add OPEN_METEO_API_KEY=<your_key> to .env.local and restart.",
+      ].join(" ")
 
   return NextResponse.json(
     {
       status:   allOk ? "ok" : "degraded",
       meteo_plan: meteoKey ? "paid" : "free",
       checked_at: new Date().toISOString(),
-      services: { forecast, archive, cwa },
-      instructions: meteoKey
-        ? "Using paid Open-Meteo commercial endpoints (customer-api / customer-archive-api)"
-        : [
-            "Using free Open-Meteo endpoints (rate-limited).",
-            "To activate paid plan: add OPEN_METEO_API_KEY=<your_key> to .env.local and restart.",
-          ].join(" "),
+      services: { forecast, archive, ensemble, cwa },
+      instructions,
     },
     { status: allOk ? 200 : 207 }
   )

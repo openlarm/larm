@@ -564,7 +564,18 @@ export default function ClimatePage() {
                           <td className={cn("px-3 py-2 font-mono font-bold", wDef?.color ?? "text-zinc-300")}>
                             {day.weather_type}
                           </td>
-                          <td className="px-3 py-2 text-center text-zinc-300 whitespace-nowrap">{day.wind_ms.toFixed(1)} m/s</td>
+                          <td className="px-3 py-2 text-center text-zinc-300 whitespace-nowrap">
+                            <span>{day.wind_ms.toFixed(1)} m/s</span>
+                            {day.source === "real" && day.weather_today.forecast_confidence != null && (
+                              <span className={cn(
+                                "ml-1 text-[9px] font-mono",
+                                day.weather_today.forecast_confidence >= 70 ? "text-emerald-500" :
+                                day.weather_today.forecast_confidence >= 45 ? "text-yellow-500" : "text-red-400"
+                              )}>
+                                {day.weather_today.forecast_confidence}%
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-center text-zinc-400 whitespace-nowrap">
                             {day.weather_today.gust_now_kmh != null
                               ? `${(day.weather_today.gust_now_kmh / 3.6).toFixed(1)} m/s`
@@ -645,6 +656,19 @@ export default function ClimatePage() {
                     </div>
                     <p className="text-lg font-bold text-white font-mono">{selectedDay.wind_ms.toFixed(1)}</p>
                     <p className="text-[10px] text-zinc-500">m/s ({Math.round(selectedDay.wind_ms * 3.6)} km/h)</p>
+                    {selectedDay.source === "real" &&
+                      selectedDay.weather_today.wind_p10_kmh != null &&
+                      selectedDay.weather_today.wind_p90_kmh != null && (
+                      <p className={cn(
+                        "text-[10px] mt-0.5 font-mono",
+                        (selectedDay.weather_today.forecast_confidence ?? 100) >= 70 ? "text-emerald-400" :
+                        (selectedDay.weather_today.forecast_confidence ?? 100) >= 45 ? "text-yellow-400" : "text-red-400"
+                      )}>
+                        {selectedDay.weather_today.wind_p10_kmh}–{selectedDay.weather_today.wind_p90_kmh} km/h
+                        {selectedDay.weather_today.forecast_confidence != null &&
+                          ` (${selectedDay.weather_today.forecast_confidence}%)`}
+                      </p>
+                    )}
                   </div>
                   <div className="bg-zinc-800/50 rounded-lg p-3">
                     <div className="flex items-center gap-1.5 mb-1">

@@ -76,7 +76,14 @@ function computeWeatherNow(
   expl: RiskExplanation[],
   P: ReturnType<typeof getParams>,
 ): number {
-  const windScore  = getWindScore(today.wind_now_kmh, P)
+  // When ensemble confidence is low (<55%), use the conservative P90 wind bound
+  // so the risk score reflects the pessimistic scenario rather than the point forecast.
+  const lowConfidence = today.forecast_confidence != null && today.forecast_confidence < 55
+  const effectiveWindKmh =
+    lowConfidence && today.wind_p90_kmh != null
+      ? today.wind_p90_kmh
+      : today.wind_now_kmh
+  const windScore  = getWindScore(effectiveWindKmh, P)
   const windComp   = Math.min(50, windScore * P.thresholds.wind_weight_scale)
   const rainScore  = getRainScore(today.rain_prob_today_pct, today.rain_mmph_forecast, P)
   const instComp   = w30.instability_index * 15
@@ -92,7 +99,10 @@ function computeWeatherNow(
     wn = Math.max(0, Math.min(50, wn * regionWeight))
   }
 
-  expl.push({ factor: "風速",           value: `${today.wind_now_kmh} km/h`,                      score: Math.round(0.55 * windComp * 10) / 10, note: `wind_score=${windScore} ×0.8 ×0.55` })
+  const windNote = lowConfidence
+    ? `P90保守值 ${effectiveWindKmh} km/h (信心${today.forecast_confidence}%<55%)`
+    : `wind_score=${windScore} ×0.8 ×0.55`
+  expl.push({ factor: "風速", value: `${effectiveWindKmh} km/h`, score: Math.round(0.55 * windComp * 10) / 10, note: windNote })
   expl.push({ factor: "降雨",           value: `${today.rain_prob_today_pct}% / ${today.rain_mmph_forecast} mm/h`, score: Math.round(0.35 * rainScore * 10) / 10, note: `rain_score=${rainScore} ×0.35` })
   expl.push({ factor: "不穩定指數",     value: w30.instability_index.toFixed(2),                  score: Math.round(0.15 * instComp * 10) / 10, note: `×15 ×0.15` })
   expl.push({ factor: "預測性折扣",     value: w30.predictability_score.toFixed(2),                score: Math.round(predDisc * 10) / 10,        note: `predictability×(-10)` })
@@ -280,12 +290,22 @@ function computeGating(
 
 // ─── Buffer Ratio ─────────────────────────────────────────────────────────────
 
-function computeBufferRatio(risk_score: number, w_code: WeatherType, confidence: number, P: ReturnType<typeof getParams>): number {
+function computeBufferRatio(
+  risk_score: number,
+  w_code: WeatherType,
+  confidence: number,       // regime classification confidence (0..1)
+  P: ReturnType<typeof getParams>,
+  forecast_confidence?: number, // ensemble agreement (0..100), optional
+): number {
   const base = 0.05 + risk_score / 250
   const vol  = (P.volatility_buffer_add as Record<string, number>)[w_code] ?? 0
-  // [2-B] Confidence penalty: lower confidence → higher buffer
+  // [2-B] Regime confidence penalty: lower regime confidence → higher buffer
   const confPenalty = (1 - confidence) * 0.04
-  return Math.round(Math.max(0.05, Math.min(0.40, base + vol + confPenalty)) * 1000) / 1000
+  // Ensemble uncertainty penalty: low forecast_confidence → additional buffer (+0 to +0.08)
+  const ensemblePenalty = forecast_confidence != null
+    ? (1 - forecast_confidence / 100) * 0.08
+    : 0
+  return Math.round(Math.max(0.05, Math.min(0.40, base + vol + confPenalty + ensemblePenalty)) * 1000) / 1000
 }
 
 function getInternalGrade(r: RiskLevel): "A" | "B" | "C" | "D" {
@@ -334,7 +354,7 @@ export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResu
   // D
   const { decision, requires_approval, controls, conditional_tier } = computeGating(risk_level, weather_today, building, ops, w_code, e_score, P)
 
-  const buffer_ratio = computeBufferRatio(risk_score, w_code, confidence, P)
+  const buffer_ratio = computeBufferRatio(risk_score, w_code, confidence, P, weather_today.forecast_confidence)
 
   const usedVersion = paramsVersion ?? ACTIVE_PARAMS_VERSION
   const versions: LARMVersions = {
