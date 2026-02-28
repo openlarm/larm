@@ -6,7 +6,7 @@
 // Data sources:
 //   1. Open-Meteo Historical API    → 30-day hourly data → compute stats
 //   2. Open-Meteo Forecast API      → 14-day daily forecast
-//   3. Open-Meteo Ensemble API      → P10/P90/confidence per day (paid only)
+//   3. Open-Meteo Ensemble API      → P10/P90/confidence per day (free + paid)
 //   4. CWA F-C0032-001 (if key)    → enhance thunder_risk for near-term days
 //
 // Paid Open-Meteo support (OPEN_METEO_API_KEY in .env.local):
@@ -26,6 +26,7 @@ function meteoBase(paid: boolean, service: "forecast" | "archive" | "ensemble"):
     // P1: Historical Forecast API — real forecast-model archive, IFS ~9km vs ERA5 25km
     return "https://customer-historical-forecast-api.open-meteo.com/v1/forecast"
   }
+  if (service === "ensemble") return "https://ensemble-api.open-meteo.com/v1/ensemble"
   return service === "forecast"
     ? "https://api.open-meteo.com/v1/forecast"
     : "https://archive-api.open-meteo.com/v1/archive"
@@ -180,8 +181,10 @@ async function fetchForecast(lat: number, lng: number, apiKey?: string): Promise
   })
 }
 
-// ─── Step C: Ensemble API → P10/P90/confidence per day (paid only) ────────────
-// Uses ECMWF IFS (51 members, ~0.4°).  Confidence formula:
+// ─── Step C: Ensemble API → P10/P90/confidence per day ────────────────────────
+// Uses ECMWF IFS (ecmwf_ifs025, ~0.25°, 50 members).
+// Works on both free (ensemble-api.open-meteo.com) and paid plan.
+// Confidence formula:
 //   confidence = clamp(1 − (P90 − P10) / 30, 0, 1) × 100
 //   → 0 km/h spread = 100%, 30+ km/h spread = 0%
 
@@ -190,13 +193,13 @@ type EnsembleDay = { p10: number; p90: number; confidence: number }
 async function fetchEnsemble(
   lat: number,
   lng: number,
-  apiKey: string,
+  apiKey?: string,
 ): Promise<Map<string, EnsembleDay>> {
-  const url = new URL(meteoBase(true, "ensemble"))
-  url.searchParams.set("apikey",    apiKey)
+  const url = new URL(meteoBase(!!apiKey, "ensemble"))
+  if (apiKey) url.searchParams.set("apikey", apiKey)
   url.searchParams.set("latitude",  lat.toFixed(4))
   url.searchParams.set("longitude", lng.toFixed(4))
-  url.searchParams.set("models",    "ecmwf_ifs04")
+  url.searchParams.set("models",    "ecmwf_ifs025")
   url.searchParams.set("hourly",    "wind_speed_10m")
   url.searchParams.set("wind_speed_unit", "kmh")
   url.searchParams.set("timezone",  "Asia/Taipei")
@@ -212,24 +215,25 @@ async function fetchEnsemble(
   const hourly = data.hourly
   if (!hourly?.time) return new Map()
 
-  // Resolve member arrays from hourly wind data.
-  // Open-Meteo may return either:
-  //   A) 2D array: hourly.wind_speed_10m = [[m0_t0,...], [m1_t0,...], ...]
-  //   B) Separate keys: hourly.wind_speed_10m_member01, ...
+  // Resolve member arrays — ecmwf_ifs025 uses Pattern B (separate member keys).
+  // Pattern A (2D array) kept as fallback for API format changes.
   const raw = hourly.wind_speed_10m
   let memberArrays: number[][]
 
   if (Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0])) {
     // Pattern A: 2D array [member][time]
-    memberArrays = (raw as number[][]).map(row => row.map(Number).filter(isFinite))
-  } else {
-    // Pattern B: separate wind_speed_10m_memberXX keys
-    const memberKeys = Object.keys(hourly).filter(k =>
-      /^wind_speed_10m_member\d+$/.test(k)
+    memberArrays = (raw as (number | null)[][]).map(row =>
+      row.filter((v): v is number => v != null && isFinite(v))
     )
+  } else {
+    // Pattern B: separate wind_speed_10m_memberXX keys (ecmwf_ifs025 standard)
+    const memberKeys = Object.keys(hourly)
+      .filter(k => /^wind_speed_10m_member\d+$/.test(k))
+      .sort()
     if (memberKeys.length === 0) return new Map()
     memberArrays = memberKeys.map(mk =>
-      ((hourly[mk] as number[]) ?? []).map(Number).filter(isFinite)
+      ((hourly[mk] as (number | null)[]) ?? [])
+        .filter((v): v is number => v != null && isFinite(v))
     )
   }
 
@@ -318,13 +322,11 @@ export async function GET(request: Request) {
 
   const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
 
-  // Fetch historical + forecast (+ ensemble when paid) in parallel
+  // Fetch all three in parallel; ensemble works on free tier too (lower rate limit)
   const [weather_30d, forecast, ensembleMap] = await Promise.all([
     fetchHistorical(lat, lng, meteoKey).catch(() => null),
     fetchForecast(lat, lng, meteoKey).catch(() => []),
-    meteoKey
-      ? fetchEnsemble(lat, lng, meteoKey).catch(() => new Map<string, EnsembleDay>())
-      : Promise.resolve(new Map<string, EnsembleDay>()),
+    fetchEnsemble(lat, lng, meteoKey).catch(() => new Map<string, EnsembleDay>()),
   ])
 
   // Merge ensemble P10/P90/confidence into each forecast day

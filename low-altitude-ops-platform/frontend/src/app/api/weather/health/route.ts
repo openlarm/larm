@@ -140,7 +140,7 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
   url.searchParams.set("apikey",    apiKey)
   url.searchParams.set("latitude",  TEST_LAT.toString())
   url.searchParams.set("longitude", TEST_LNG.toString())
-  url.searchParams.set("models",    "ecmwf_ifs04")
+  url.searchParams.set("models",    "ecmwf_ifs025")
   url.searchParams.set("hourly",    "wind_speed_10m")  // returns 2D array [member][time]
   url.searchParams.set("wind_speed_unit", "kmh")
   url.searchParams.set("timezone",  "Asia/Taipei")
@@ -155,16 +155,21 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
       return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
     }
     const data = await res.json()
-    const raw = data.hourly?.wind_speed_10m
-    // API returns 2D array [member][time]; check first member's length
-    const memberCount: number = Array.isArray(raw) ? raw.length : 0
-    const hourCount: number = Array.isArray(raw?.[0]) ? (raw[0] as number[]).length : 0
+    // ecmwf_ifs025 returns separate member keys: wind_speed_10m_member01..50
+    const hourly = data.hourly ?? {}
+    const memberKeys: string[] = Object.keys(hourly).filter((k: string) =>
+      /^wind_speed_10m_member\d+$/.test(k)
+    )
+    const memberCount = memberKeys.length
+    const hourCount: number = Array.isArray(hourly.wind_speed_10m)
+      ? (hourly.wind_speed_10m as unknown[]).length
+      : 0
     return {
       ok: memberCount > 0 && hourCount > 0,
       endpoint: "customer-ensemble-api.open-meteo.com",
       plan: "paid",
       latency_ms,
-      sample: { members: memberCount, hours_per_member: hourCount, model: "ecmwf_ifs04" },
+      sample: { members: memberCount, hours: hourCount, model: "ecmwf_ifs025" },
     }
   } catch (e) {
     return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: Date.now() - t0, error: String(e) }
@@ -187,10 +192,10 @@ export async function GET() {
   const instructions = meteoKey
     ? [
         "Using paid Open-Meteo commercial endpoints.",
-        "Forecast: customer-api | Archive: customer-historical-forecast-api (IFS 9km, P1) | Ensemble: customer-ensemble-api (51-member ECMWF IFS).",
+        "Forecast: customer-api | Archive: customer-historical-forecast-api (IFS 9km, P1) | Ensemble: customer-ensemble-api (ecmwf_ifs025, 50 members).",
       ].join(" ")
     : [
-        "Using free Open-Meteo endpoints (rate-limited). Ensemble not available.",
+        "Using free Open-Meteo endpoints (rate-limited). Ensemble available on free tier (ecmwf_ifs025, lower rate limit).",
         "To activate paid plan: add OPEN_METEO_API_KEY=<your_key> to .env.local and restart.",
       ].join(" ")
 
