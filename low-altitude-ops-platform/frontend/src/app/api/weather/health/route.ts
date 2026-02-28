@@ -59,8 +59,10 @@ async function checkForecast(apiKey: string | undefined): Promise<ServiceStatus>
 
 async function checkArchive(apiKey: string | undefined): Promise<ServiceStatus> {
   const paid = !!apiKey
+  // Paid: Historical Forecast API (IFS ~9km) — matches what context/route.ts actually uses
+  // Free: ERA5 archive
   const base = paid
-    ? "https://customer-archive-api.open-meteo.com/v1/archive"
+    ? "https://customer-historical-forecast-api.open-meteo.com/v1/forecast"
     : "https://archive-api.open-meteo.com/v1/archive"
 
   const now = new Date()
