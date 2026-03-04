@@ -7,7 +7,7 @@ import { estimateTime } from "@/lib/engines/time-engine"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
 import {
   buildFacadesFromInputs, buildFacades,
-  inferRiskLevel, allContaminationTypes, aggregateSupply,
+  allContaminationTypes, aggregateSupply,
   mapServiceToMissionType, mapTimeSlot,
   getWeatherRisk,
 } from "./quote-defaults"
@@ -123,12 +123,6 @@ export function QuoteStep3({
       ? allContaminationTypes(formData.facadeInputs!)
       : (["dust"] as Contamination[])
 
-    const riskLevel = inferRiskLevel(formData.floors, {
-      wind_channel: formData.windChannelEffect,
-      region_exposure: formData.regionExposure,
-      crowd_density: formData.crowdDensity,
-      near_base_station: formData.nearBaseStation,
-    })
     const timeWindow = mapTimeSlot(formData.timeSlot)
     const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
     const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
@@ -142,7 +136,6 @@ export function QuoteStep3({
       contamination,
       cleaningAgent,
       timeWindow,
-      riskLevel,
       waterSupply,
       powerSupply,
       rooftopAccess,
@@ -157,7 +150,7 @@ export function QuoteStep3({
       facades,
       contamination,
       timeWindow,
-      riskLevel,
+      riskLevel: "R0",
       waterSupply,
       powerSupply,
       rooftopAccess,
@@ -366,7 +359,6 @@ export function QuoteStep3({
                 <span className="text-zinc-600">
                   {key === "floor"       ? `高樓加價（${FLOOR_MULTIPLIER_LABEL[String(val)] ?? ""}）` :
                    key === "time_window" ? "施工時段" :
-                   key === "risk"        ? "風險係數" :
                    key === "urgent"      ? "急件加價" : key}
                 </span>
                 <span className={val > 1 ? "text-orange-600 font-medium" : "text-zinc-500"}>

@@ -7,11 +7,8 @@ import { Step1Address } from "@/components/wizard/steps/Step1Address"
 import { Step2Airspace } from "@/components/wizard/steps/Step2Airspace"
 import { Step3Building } from "@/components/wizard/steps/Step3Building"
 import { Step4Facade } from "@/components/wizard/steps/Step4Facade"
-import { Step5Weather } from "@/components/wizard/steps/Step5Weather"
-import { Step6Risk } from "@/components/wizard/steps/Step6Risk"
-import { Step7Time } from "@/components/wizard/steps/Step7Time"
 import { Step8Pricing } from "@/components/wizard/steps/Step8Pricing"
-import { Step9Assign } from "@/components/wizard/steps/Step9Assign"
+import { Step6Operations } from "@/components/wizard/steps/Step6Operations"
 import { Step10Plan } from "@/components/wizard/steps/Step10Plan"
 import type { Mission } from "@/lib/types"
 import type { QuoteFacadeInput } from "@/app/(quote)/quote/components/quote-defaults"
@@ -19,7 +16,7 @@ import { saveMission } from "@/lib/stores/mission-store"
 
 const STEPS = [
   "Address", "Airspace", "Building", "Façade",
-  "Weather", "Risk", "Time", "Pricing", "Assign", "Plan",
+  "Pricing", "Operations", "Plan",
 ]
 
 export default function NewMissionPage() {
@@ -88,12 +85,9 @@ export default function NewMissionPage() {
             perimeterM={perimeterMs.reduce((s: number, p) => s + (p ?? 0), 0) || null}
           />
         )}
-        {step === 4 && <Step5Weather {...stepProps} />}
-        {step === 5 && <Step6Risk {...stepProps} />}
-        {step === 6 && <Step7Time {...stepProps} />}
-        {step === 7 && <Step8Pricing {...stepProps} />}
-        {step === 8 && <Step9Assign {...stepProps} />}
-        {step === 9 && <Step10Plan {...stepProps} onFinish={() => {
+        {step === 4 && <Step8Pricing {...stepProps} />}
+        {step === 5 && <Step6Operations {...stepProps} />}
+        {step === 6 && <Step10Plan {...stepProps} onFinish={() => {
           saveMission(mission)
           router.push("/missions")
         }} />}

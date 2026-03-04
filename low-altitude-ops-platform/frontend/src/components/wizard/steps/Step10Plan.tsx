@@ -24,7 +24,7 @@ export function Step10Plan({ mission, back, onFinish }: Props) {
 
   return (
     <StepShell
-      title="Step 10 — Mission Plan & Permit Package"
+      title="Step 7 — Mission Plan & Permit Package"
       subtitle="任務規劃書 + 申請包"
       onBack={back}
       onNext={isReady ? onFinish : undefined}
@@ -139,16 +139,6 @@ export function Step10Plan({ mission, back, onFinish }: Props) {
               </div>
             )}
 
-            {/* Team */}
-            <div className="pt-2 border-t border-zinc-700">
-              <p className="text-xs text-zinc-500 mb-2">人員配置</p>
-              <div className="flex flex-wrap gap-2">
-                {mission.assignment?.team.map(m => (
-                  <span key={m.id} className="px-2 py-0.5 text-xs rounded bg-zinc-700 text-zinc-300">{m.name} ({m.role})</span>
-                ))}
-              </div>
-            </div>
-
             <div className="flex items-center gap-1.5 text-xs text-emerald-400 pt-1">
               <ShieldCheck className="h-3.5 w-3.5" />
               Evidence Saved ✓ · Snapshot ID: EVD-{Date.now().toString(36).toUpperCase()}
@@ -166,8 +156,6 @@ export function Step10Plan({ mission, back, onFinish }: Props) {
               <span className="text-zinc-300">{mission.facades?.reduce((s, f) => s + f.area_m2, 0).toLocaleString()} ㎡</span>
               <span className="text-zinc-500">最大高度</span>
               <span className="text-zinc-300">{mission.building?.height_m} m AGL</span>
-              <span className="text-zinc-500">責任人</span>
-              <span className="text-zinc-300">{mission.assignment?.team.find(m => m.role === "RPIC")?.name ?? "—"}</span>
               <span className="text-zinc-500">格式</span>
               <span className="text-zinc-300">PDF + JSON (mock)</span>
             </div>

@@ -24,8 +24,7 @@ export function Step8Pricing({ mission, update, next, back }: Props) {
         contamination: ["scale"] as Contamination[],
         cleaningAgent: "water",
         rooftopAccess: mission.building?.rooftop_access ?? "Good",
-        timeWindow: mission.time_estimate?.coefficient_snapshot?.time_window === 0.75 ? "night" : "day",
-        riskLevel: mission.risk?.risk_level ?? "R1",
+        timeWindow: "day",
         waterSupply: mission.building?.water_supply ?? "Provided",
         powerSupply: mission.building?.power_supply ?? "Provided",
         urgent: false,
@@ -44,12 +43,12 @@ export function Step8Pricing({ mission, update, next, back }: Props) {
   const lowMargin = result && result.total < 50000
 
   return (
-    <StepShell title="Step 8 — Pricing" subtitle="報價預覽" onBack={back} onNext={handleNext} nextDisabled={!result || loading}>
+    <StepShell title="Step 5 — Pricing" subtitle="報價預覽" onBack={back} onNext={handleNext} nextDisabled={!result || loading}>
 
       {loading ? (
         <div className="space-y-3">
           <div className="h-40 bg-zinc-800 rounded animate-pulse" />
-          <p className="text-xs text-zinc-500">報價引擎計算中… pricing_v1.0</p>
+          <p className="text-xs text-zinc-500">報價引擎計算中…</p>
         </div>
       ) : result && (
         <>
@@ -67,17 +66,10 @@ export function Step8Pricing({ mission, update, next, back }: Props) {
                 </div>
               </div>
 
-              <div className="border-t border-zinc-700 pt-3">
-                <p className="text-xs text-zinc-500 mb-2">風險代碼</p>
-                <span className="font-mono font-bold text-lg text-zinc-100">
-                  {mission.weather?.weather_type}–{mission.risk?.risk_level}
-                </span>
-              </div>
-
               <div className="border-t border-zinc-700 pt-3 flex items-end justify-between">
                 <div className="text-xs text-zinc-500 space-y-1">
                   <p>整案小計：{result.subtotal.toLocaleString()} {result.currency}</p>
-                  <p>倍率：×{result.multiplier}（樓層×{result.multiplier_breakdown.floor} · 時段×{result.multiplier_breakdown.time_window} · 風險×{result.multiplier_breakdown.risk}）</p>
+                  <p>倍率：×{result.multiplier}（樓層×{result.multiplier_breakdown.floor} · 時段×{result.multiplier_breakdown.time_window}{result.multiplier_breakdown.urgent > 1 ? ` · 急件×${result.multiplier_breakdown.urgent}` : ""}）</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-zinc-500">Total</p>

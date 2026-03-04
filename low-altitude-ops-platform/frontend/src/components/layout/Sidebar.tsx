@@ -2,7 +2,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Rocket, Building2, Users, Wrench, BookOpen, FileText, X, CloudSun, SlidersHorizontal,
+  Rocket, Building2, BookOpen, FileText, X, CloudSun, SlidersHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SYSTEM_VERSIONS } from "@/lib/mock-data"
@@ -10,8 +10,6 @@ import { SYSTEM_VERSIONS } from "@/lib/mock-data"
 const NAV = [
   { href: "/missions", label: "Missions", sublabel: "任務", icon: Rocket },
   { href: "/buildings", label: "Buildings", sublabel: "建物庫", icon: Building2 },
-  { href: "/teams", label: "Teams", sublabel: "人員/認證", icon: Users },
-  { href: "/equipment", label: "Equipment", sublabel: "設備履歷", icon: Wrench },
   { href: "/rules", label: "Rules & Versions", sublabel: "規則版本", icon: BookOpen },
   { href: "/documents", label: "Documents", sublabel: "文件中心", icon: FileText },
   { href: "/climate", label: "Climate", sublabel: "氣候評估", icon: CloudSun },

@@ -35,10 +35,7 @@ function timeLabel(): string {
 function buildAudit(m: Partial<Mission>): AuditEntry[] {
   const t = timeLabel()
   const larmVer = m.risk?.versions?.larm_version ?? SYSTEM_VERSIONS.ruleset
-  const actor =
-    m.assignment?.team.find(p => p.role === "PM")?.name ??
-    m.assignment?.team.find(p => p.role === "RPIC")?.name ??
-    "系統"
+  const actor = "系統"
 
   const entries: AuditEntry[] = []
 
@@ -110,10 +107,6 @@ function buildAudit(m: Partial<Mission>): AuditEntry[] {
       event: `Quote Generated · ${m.pricing.quote_code} · ${m.pricing.total.toLocaleString()} NTD`,
       version: `pricing_${SYSTEM_VERSIONS.pricing}`, actor: "System",
     })
-  }
-
-  if (m.assignment && m.assignment.team.length > 0) {
-    entries.push({ time: t, event: "Team & Equipment Assigned", version: larmVer, actor })
   }
 
   entries.push({ time: t, event: "Mission Plan Generated", version: larmVer, actor })
