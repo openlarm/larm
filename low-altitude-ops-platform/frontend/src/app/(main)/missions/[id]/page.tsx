@@ -201,31 +201,6 @@ export default function MissionDetailPage() {
             </Card>
           )}
 
-          {/* Assignments */}
-          {mission.assignment && (
-            <Card className="border-zinc-700 bg-zinc-800/20">
-              <CardContent className="pt-4">
-                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Assignments</p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {mission.assignment.team.map(m => (
-                    <span key={m.id} className="px-2 py-0.5 text-xs rounded bg-zinc-700 text-zinc-300">
-                      {m.name} ({m.role})
-                    </span>
-                  ))}
-                </div>
-                {mission.assignment.equipment.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {mission.assignment.equipment.map(e => (
-                      <span key={e.id} className="px-2 py-0.5 text-xs rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
-                        {e.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {/* Pricing */}
           {mission.pricing && (
             <Card className="border-zinc-700 bg-zinc-800/20">

@@ -25,6 +25,11 @@ import {
   type RLevelKey,
   type WRDecision,
 } from "@/lib/engines/weather-regime-params"
+import {
+  getPricingParams,
+  PRICING_PARAMS_DEFAULT,
+  type PricingParams,
+} from "@/lib/engines/pricing-params"
 import type { RiskLevel, WeatherType } from "@/lib/types"
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -45,6 +50,26 @@ function saveOverride(p: WeatherRegimeParams) {
 
 function clearOverride() {
   localStorage.removeItem(LS_KEY)
+}
+
+// ── Pricing localStorage helpers ─────────────────────────────────────────────
+
+const PRICING_LS_KEY = "pricing_params_override"
+
+function loadPricingOverride(): PricingParams | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(PRICING_LS_KEY)
+    return raw ? { ...PRICING_PARAMS_DEFAULT, ...JSON.parse(raw) } : null
+  } catch { return null }
+}
+
+function savePricingOverride(p: PricingParams) {
+  localStorage.setItem(PRICING_LS_KEY, JSON.stringify(p))
+}
+
+function clearPricingOverride() {
+  localStorage.removeItem(PRICING_LS_KEY)
 }
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -103,32 +128,37 @@ type TabKey = "wr" | "wind_rain" | "classify" | "buffer" | "r_index" | "pricing"
 
 export default function AdminParamsPage() {
   const [params, setParams] = useState<WeatherRegimeParams>(() => loadOverride() ?? getParams())
+  const [pricingParams, setPricingParams] = useState<PricingParams>(() => loadPricingOverride() ?? getPricingParams())
   const [activeTab, setActiveTab] = useState<TabKey>("wr")
   const [saved, setSaved] = useState(false)
   const [hasOverride, setHasOverride] = useState(false)
 
-  useEffect(() => { setHasOverride(!!loadOverride()) }, [])
+  useEffect(() => { setHasOverride(!!loadOverride() || !!loadPricingOverride()) }, [])
 
   const apply = useCallback(() => {
     saveOverride(params)
+    savePricingOverride(pricingParams)
     setSaved(true)
     setHasOverride(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [params])
+  }, [params, pricingParams])
 
   const reset = useCallback(() => {
     clearOverride()
+    clearPricingOverride()
     setParams(WEATHER_REGIME_PARAMS)
+    setPricingParams(PRICING_PARAMS_DEFAULT)
     setHasOverride(false)
   }, [])
 
   const exportJSON = useCallback(() => {
-    const blob = new Blob([JSON.stringify(params, null, 2)], { type: "application/json" })
+    const data = { larm: params, pricing: pricingParams }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const a = document.createElement("a")
     a.href = URL.createObjectURL(blob)
-    a.download = "larm_params.json"
+    a.download = "model_params.json"
     a.click()
-  }, [params])
+  }, [params, pricingParams])
 
   // ── WR Matrix cell toggle ─────────────────────────────────────────────────
   const toggleWR = useCallback((w: WCode, r: RLevelKey) => {
@@ -752,8 +782,8 @@ export default function AdminParamsPage() {
           {/* ── Tab: 報價 ─────────────────────────────────────────────── */}
           {activeTab === "pricing" && (
             <div className="space-y-5">
-              <p className="text-[11px] text-amber-600/70 border border-amber-900/30 rounded px-3 py-2 bg-amber-950/20">
-                ⓘ 以下參數定義於 <code className="font-mono">pricing-engine.ts</code>，目前為唯讀參考（不受 localStorage 覆寫影響）。
+              <p className="text-[11px] text-violet-400/70 border border-violet-900/30 rounded px-3 py-2 bg-violet-950/20">
+                ⓘ 調整報價參數後點「套用」，Mission Wizard 及 Quote Wizard 皆會連動。版本：<span className="font-mono">{pricingParams.version}</span>
               </p>
 
               <div className="grid grid-cols-2 gap-6">
@@ -761,10 +791,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">基本單價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["商辦 commercial", "30"], ["豪宅 luxury", "33"], ["透天/獨棟 house", "200"], ["廠房 factory", "28"], ["太陽能板 solar", "8"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["commercial", "商辦"], ["luxury", "豪宅"], ["house", "透天/獨棟"], ["factory", "廠房"], ["solar", "太陽能板"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label} {key}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.base_price[key]} min={0} max={999} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, base_price: { ...p.base_price, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -775,10 +808,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">立面複雜度加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["none — 無複雜度", "0"], ["light — 輕度", "+4"], ["medium — 中度", "+6"], ["heavy — 重度", "+8"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["none", "無複雜度"], ["light", "輕度"], ["medium", "中度"], ["heavy", "重度"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label} {key}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.complexity_surcharge[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, complexity_surcharge: { ...p.complexity_surcharge, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -786,15 +822,25 @@ export default function AdminParamsPage() {
                 </section>
 
                 <section>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">污染類型加價（可疊加，上限 15/㎡）</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">污染類型加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["dust — 粉塵", "0"], ["scale — 水垢", "+7"], ["bird — 鳥糞", "+4"], ["mold — 黴菌", "+5"], ["exhaust — 廢氣排放", "+6"], ["grease — 油污", "+12"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["dust", "粉塵"], ["scale", "水垢"], ["bird", "鳥糞"], ["mold", "黴菌"], ["exhaust", "廢氣排放"], ["grease", "油污"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label} {key}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.contamination_surcharge[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, contamination_surcharge: { ...p.contamination_surcharge, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
+                      <tr className="border-t border-zinc-800/40">
+                        <td className="py-1 pr-4 text-zinc-500">疊加上限 cap</td>
+                        <td className="py-1 text-right">
+                          <NumInput value={pricingParams.contamination_cap} min={0} max={99} step={1}
+                            onChange={v => setPricingParams(p => ({ ...p, contamination_cap: v }))} />
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </section>
@@ -803,10 +849,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">清潔劑加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["water — 清水", "0"], ["neutral — 中性劑", "+3"], ["acid — 酸性劑", "+10"], ["alkali — 鹼性劑", "+10"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["water", "清水"], ["neutral", "中性劑"], ["acid", "酸性劑"], ["alkali", "鹼性劑"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label} {key}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.cleaning_agent_surcharge[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, cleaning_agent_surcharge: { ...p.cleaning_agent_surcharge, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -817,10 +866,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">每立面條件加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["封路 road_closure", "+4"], ["空間受限 tight_perimeter", "+6"], ["高風險環境 high_risk_env", "+7"], ["鄰樹 adjacent_trees", "+5"], ["鄰樹影清洗 clean_tree_floors", "+10 額外"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["road_closure", "封路"], ["tight_perimeter", "空間受限"], ["high_risk_env", "高風險環境"], ["adjacent_trees", "鄰樹"], ["tree_extra", "鄰樹影清洗"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.facade_surcharges[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, facade_surcharges: { ...p.facade_surcharges, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -831,10 +883,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">建物條件加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["自備用水（SelfSupply）", "+7"], ["自備電力（SelfSupply）", "+7"], ["屋頂條件不佳", "+12"]].map(([type, price]) => (
-                        <tr key={type} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-4">{type}</td>
-                          <td className="py-0.5 font-mono text-right">{price}</td>
+                      {([["water_self", "自備用水"], ["power_self", "自備電力"], ["rooftop_not_good", "屋頂條件不佳"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-4">{label}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.supply_surcharges[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, supply_surcharges: { ...p.supply_surcharges, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -847,10 +902,16 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">樓層乘數</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["≤ 10 層", "×1.0"], ["11–20 層", "×1.3"], ["21–30 層", "×2.0"], ["> 30 層", "×3.0"]].map(([tier, mult]) => (
-                        <tr key={tier} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-3">{tier}</td>
-                          <td className="py-0.5 font-mono text-right">{mult}</td>
+                      {pricingParams.floor_multiplier.map((tier, i) => (
+                        <tr key={i} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-3">≤ {tier.max_floor >= 9999 ? "∞" : tier.max_floor} 層</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={tier.multiplier} min={0.1} max={10} step={0.1}
+                              onChange={v => setPricingParams(p => ({
+                                ...p,
+                                floor_multiplier: p.floor_multiplier.map((t, j) => j === i ? { ...t, multiplier: v } : t),
+                              }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -861,10 +922,13 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">時間窗口乘數</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["日間 day", "×1.0"], ["週末 weekend", "×1.2"], ["夜間 night", "×1.5"]].map(([tier, mult]) => (
-                        <tr key={tier} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-3">{tier}</td>
-                          <td className="py-0.5 font-mono text-right">{mult}</td>
+                      {([["day", "日間"], ["weekend", "週末"], ["night", "夜間"]] as const).map(([key, label]) => (
+                        <tr key={key} className="border-t border-zinc-800/40">
+                          <td className="py-1 pr-3">{label} {key}</td>
+                          <td className="py-1 text-right">
+                            <NumInput value={pricingParams.time_window_multiplier[key]} min={0.1} max={10} step={0.1}
+                              onChange={v => setPricingParams(p => ({ ...p, time_window_multiplier: { ...p.time_window_multiplier, [key]: v } }))} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -872,24 +936,30 @@ export default function AdminParamsPage() {
                 </section>
 
                 <section>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">風險等級乘數</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">其他參數</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {[["R0", "×1.00"], ["R1", "×1.05"], ["R2", "×1.15"], ["R3", "×1.40"], ["R4", "— 拒承"]].map(([rl, mult]) => (
-                        <tr key={rl} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-3 font-mono">{rl}</td>
-                          <td className="py-0.5 font-mono text-right">{mult}</td>
-                        </tr>
-                      ))}
+                      <tr className="border-t border-zinc-800/40">
+                        <td className="py-1 pr-3">急件乘數</td>
+                        <td className="py-1 text-right">
+                          <NumInput value={pricingParams.urgent_multiplier} min={1} max={5} step={0.01}
+                            onChange={v => setPricingParams(p => ({ ...p, urgent_multiplier: v }))} />
+                        </td>
+                      </tr>
+                      <tr className="border-t border-zinc-800/40">
+                        <td className="py-1 pr-3">最低訂單金額</td>
+                        <td className="py-1 text-right">
+                          <NumInput value={pricingParams.min_order} min={0} max={999999} step={1000}
+                            onChange={v => setPricingParams(p => ({ ...p, min_order: v }))} />
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </section>
               </div>
 
-              <div className="flex gap-8 text-xs text-zinc-400 border-t border-zinc-800 pt-3">
-                <span>急件乘數：<span className="font-mono text-white">×1.33</span></span>
-                <span>最低訂單金額：<span className="font-mono text-white">NT$ 15,000</span></span>
-                <span className="text-zinc-600 text-[10px] self-center">總額 = round(小計 × 樓層 × 時間 × 風險 × 急件)</span>
+              <div className="text-xs text-zinc-600 border-t border-zinc-800 pt-3">
+                總額 = round(小計 × 樓層 × 時間 × 急件)
               </div>
             </div>
           )}

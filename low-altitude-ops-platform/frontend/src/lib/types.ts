@@ -242,17 +242,7 @@ export interface PricingResult {
   pricing_version: string
 }
 
-// ─── Team & Equipment ────────────────────────────────────────────────────────
-
-export interface TeamMember {
-  id: string
-  name: string
-  role: "RPIC" | "Observer" | "Safety" | "PM"
-  cert_number: string
-  cert_expires: string // ISO date
-  night_qualified: boolean
-  highrise_qualified: boolean
-}
+// ─── Equipment (used by risk engine for E-score computation) ─────────────────
 
 export interface Equipment {
   id: string
@@ -264,19 +254,6 @@ export interface Equipment {
   calibration_expires: string // ISO date
   last_maintenance: string // ISO date
   notes?: string
-}
-
-export interface QualCheck {
-  item: string
-  result: QualCheckResult
-  reason?: string
-}
-
-export interface AssignmentData {
-  team: TeamMember[]
-  equipment: Equipment[]
-  qual_checks: QualCheck[]
-  health_checks: QualCheck[]
 }
 
 // ─── Mission (aggregate) ──────────────────────────────────────────────────────
@@ -307,7 +284,6 @@ export interface Mission {
   risk?: RiskResult
   time_estimate?: TimeResult
   pricing?: PricingResult
-  assignment?: AssignmentData
 }
 
 // ─── Wizard state ─────────────────────────────────────────────────────────────
