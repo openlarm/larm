@@ -356,6 +356,66 @@ export default function ClimatePage() {
     return { goC, condC, nogoC, avg, realCount }
   }, [visibleDays])
 
+  // ── Month-specific weather summary (for header bar) ──────────────────────
+
+  const monthWeatherSummary = useMemo(() => {
+    if (visibleDays.length === 0) return null
+
+    // Compute aggregated stats from the visible month's days
+    const winds = visibleDays.map(d => d.weather_today.wind_now_kmh)
+    const windMean = Math.round(winds.reduce((s, v) => s + v, 0) / winds.length)
+
+    const sortedWinds = [...winds].sort((a, b) => a - b)
+    const p90Idx = Math.min(Math.floor(sortedWinds.length * 0.9), sortedWinds.length - 1)
+    const windP90 = sortedWinds[p90Idx]
+
+    // Rain days: count days with rain_prob >= 30%
+    const rainDays = visibleDays.filter(d => d.rain_prob >= 30).length
+    const totalDays = visibleDays.length
+
+    // Heavy rain days: rain_prob >= 70%
+    const heavyRainDays = visibleDays.filter(d => d.rain_prob >= 70).length
+
+    // Predictability: 1 - CV * 0.7 (same formula as API)
+    const windAvg = winds.reduce((s, v) => s + v, 0) / winds.length
+    const variance = winds.reduce((s, v) => s + (v - windAvg) ** 2, 0) / winds.length
+    const stddev = Math.sqrt(variance)
+    const cv = stddev / Math.max(windAvg, 1)
+    const predictability = Math.max(0, Math.min(1, 1 - cv * 0.7))
+
+    // Instability: same formula as API
+    const instability = Math.max(0, Math.min(1,
+      (rainDays / totalDays) * 0.6 + (heavyRainDays / Math.max(rainDays, 1)) * 0.4
+    ))
+
+    // Gust P90
+    const gusts = visibleDays
+      .map(d => d.weather_today.gust_now_kmh)
+      .filter((g): g is number => g != null)
+    const gustP90 = gusts.length > 0
+      ? [...gusts].sort((a, b) => a - b)[Math.min(Math.floor(gusts.length * 0.9), gusts.length - 1)]
+      : null
+
+    const realCount = visibleDays.filter(d => d.source === "real").length
+    const isCurrentPeriod = clampedOffset === 0
+
+    return {
+      windMean,
+      windP90,
+      rainDays,
+      totalDays,
+      heavyRainDays,
+      predictability: Math.round(predictability * 100),
+      instability: Math.round(instability * 100),
+      gustP90,
+      realCount,
+      isCurrentPeriod,
+      source: realCount === totalDays ? "real" as const
+        : realCount > 0 ? "mixed" as const
+        : "seasonal" as const,
+    }
+  }, [visibleDays, clampedOffset])
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
 
@@ -435,41 +495,93 @@ export default function ClimatePage() {
         </div>
       )}
 
-      {/* ── 30-day summary bar ──────────────────────────────────────────────── */}
+      {/* ── Summary bar (syncs with selected month) ────────────────────────── */}
       {ctx && location && (
-        <div className="rounded-lg border border-zinc-700 bg-zinc-800/30 px-4 py-3 flex flex-wrap gap-4 items-center">
+        <div className="rounded-lg border border-zinc-700 bg-zinc-800/30 px-4 py-3 flex flex-wrap gap-4 items-center transition-all">
           <div>
             <p className="text-xs text-zinc-500 mb-0.5">查詢地點</p>
             <p className="text-sm font-medium text-white">{location.label}</p>
             <p className="text-[10px] text-zinc-600 font-mono">{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</p>
           </div>
           <div className="h-8 w-px bg-zinc-700 hidden sm:block" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 min-w-0">
-            <div>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">30日均風</p>
-              <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.wind_mean_kmh} <span className="text-xs text-zinc-500">km/h</span></p>
+          {monthWeatherSummary ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 min-w-0">
+                <div>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">
+                    {monthWeatherSummary.isCurrentPeriod ? "30日均風" : "月均風"}
+                  </p>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {monthWeatherSummary.windMean} <span className="text-xs text-zinc-500">km/h</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">風速 P90</p>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {monthWeatherSummary.windP90} <span className="text-xs text-zinc-500">km/h</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">降雨天數</p>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {monthWeatherSummary.rainDays}<span className="text-xs text-zinc-500">/{monthWeatherSummary.totalDays}天</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">可預測性</p>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {monthWeatherSummary.predictability}<span className="text-xs text-zinc-500">%</span>
+                  </p>
+                </div>
+              </div>
+              {/* Data source legend — reflects current month */}
+              <div className="flex gap-3 text-[10px] w-full sm:w-auto flex-wrap items-center">
+                {monthWeatherSummary.source === "real" ? (
+                  <span className="flex items-center gap-1 text-emerald-400">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" /> 即時預報（{monthWeatherSummary.totalDays}天）
+                  </span>
+                ) : monthWeatherSummary.source === "mixed" ? (
+                  <>
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" /> 即時 {monthWeatherSummary.realCount}天
+                    </span>
+                    <span className="flex items-center gap-1 text-zinc-500">
+                      <span className="inline-block w-2 h-2 rounded-full bg-zinc-600" /> 估算 {monthWeatherSummary.totalDays - monthWeatherSummary.realCount}天
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex items-center gap-1 text-zinc-500">
+                    <span className="inline-block w-2 h-2 rounded-full bg-zinc-600" />
+                    {profilesSource === "real" ? "ERA5 統計（3年）" : "台灣季節模型"}
+                  </span>
+                )}
+                {currentGroup && (
+                  <span className="text-zinc-600 font-mono">
+                    {currentGroup.label}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 min-w-0">
+              <div>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">30日均風</p>
+                <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.wind_mean_kmh} <span className="text-xs text-zinc-500">km/h</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">風速 P90</p>
+                <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.wind_p90_kmh} <span className="text-xs text-zinc-500">km/h</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">降雨天數</p>
+                <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.rain_days_30}<span className="text-xs text-zinc-500">/30天</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">可預測性</p>
+                <p className="text-sm font-semibold text-white font-mono">{Math.round(ctx.weather_30d.predictability_score * 100)}<span className="text-xs text-zinc-500">%</span></p>
+              </div>
             </div>
-            <div>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">風速 P90</p>
-              <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.wind_p90_kmh} <span className="text-xs text-zinc-500">km/h</span></p>
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">降雨天數</p>
-              <p className="text-sm font-semibold text-white font-mono">{ctx.weather_30d.rain_days_30}<span className="text-xs text-zinc-500">/30天</span></p>
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">可預測性</p>
-              <p className="text-sm font-semibold text-white font-mono">{Math.round(ctx.weather_30d.predictability_score * 100)}<span className="text-xs text-zinc-500">%</span></p>
-            </div>
-          </div>
-          {/* Data source legend */}
-          <div className="flex gap-3 text-[10px] w-full sm:w-auto flex-wrap">
-            <span className="flex items-center gap-1 text-emerald-400"><span className="inline-block w-2 h-2 rounded-full bg-emerald-400" /> 即時預報（14天）</span>
-            {profilesSource === "real"
-              ? <span className="flex items-center gap-1 text-sky-400"><span className="inline-block w-2 h-2 rounded-full bg-sky-500" /> ERA5 統計（3年）</span>
-              : <span className="flex items-center gap-1 text-zinc-500"><span className="inline-block w-2 h-2 rounded-full bg-zinc-600" /> 台灣季節模型</span>
-            }
-          </div>
+          )}
         </div>
       )}
 
@@ -781,23 +893,43 @@ export default function ClimatePage() {
           {/* ── Right: Legends ─────────────────────────────────────────────── */}
           <div className="w-full lg:w-60 lg:shrink-0 space-y-3">
 
-            {/* 30d context */}
+            {/* Monthly context (synced with month selector) */}
             <Card className="border-zinc-700 bg-zinc-800/20">
               <CardContent className="pt-3 pb-3 space-y-2">
-                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">過去30日背景</p>
-                <div className="space-y-1.5 text-[11px]">
-                  {[
-                    ["不穩定指數", `${Math.round(ctx!.weather_30d.instability_index * 100)}%`],
-                    ["可預測性",   `${Math.round(ctx!.weather_30d.predictability_score * 100)}%`],
-                    ["陣風 P90",  `${ctx!.weather_30d.gust_p90_kmh ?? "—"} km/h`],
-                    ["大雨天數",  `${ctx!.weather_30d.heavy_rain_days_30} 天`],
-                  ].map(([label, val]) => (
-                    <div key={label} className="flex justify-between">
-                      <span className="text-zinc-500">{label}</span>
-                      <span className="text-zinc-300 font-mono">{val}</span>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                  {monthWeatherSummary?.isCurrentPeriod ? "過去30日背景" : `${currentGroup?.label ?? ""}月份統計`}
+                </p>
+                {monthWeatherSummary && (
+                  <div className="space-y-1.5 text-[11px]">
+                    {[
+                      ["不穩定指數", `${monthWeatherSummary.instability}%`],
+                      ["可預測性",   `${monthWeatherSummary.predictability}%`],
+                      ["陣風 P90",  `${monthWeatherSummary.gustP90 ?? "—"} km/h`],
+                      ["大雨天數",  `${monthWeatherSummary.heavyRainDays} 天`],
+                      ["即時資料",  `${monthWeatherSummary.realCount}/${monthWeatherSummary.totalDays} 天`],
+                    ].map(([label, val]) => (
+                      <div key={label} className="flex justify-between">
+                        <span className="text-zinc-500">{label}</span>
+                        <span className="text-zinc-300 font-mono">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!monthWeatherSummary && (
+                  <div className="space-y-1.5 text-[11px]">
+                    {[
+                      ["不穩定指數", `${Math.round(ctx!.weather_30d.instability_index * 100)}%`],
+                      ["可預測性",   `${Math.round(ctx!.weather_30d.predictability_score * 100)}%`],
+                      ["陣風 P90",  `${ctx!.weather_30d.gust_p90_kmh ?? "—"} km/h`],
+                      ["大雨天數",  `${ctx!.weather_30d.heavy_rain_days_30} 天`],
+                    ].map(([label, val]) => (
+                      <div key={label} className="flex justify-between">
+                        <span className="text-zinc-500">{label}</span>
+                        <span className="text-zinc-300 font-mono">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
