@@ -92,7 +92,10 @@ export async function GET(request: Request) {
   const t0 = Date.now()
   let res: Response
   try {
-    res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) })
+    res = await fetch(url.toString(), {
+      next: { revalidate: 1800 },
+      signal: AbortSignal.timeout(15_000),
+    })
   } catch (e) {
     return NextResponse.json({ error: "ensemble fetch failed", detail: String(e) }, { status: 502 })
   }

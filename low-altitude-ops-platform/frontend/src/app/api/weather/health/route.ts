@@ -1,16 +1,21 @@
 // ─── GET /api/weather/health ──────────────────────────────────────────────────
 //
-// Diagnostic endpoint — tests both Open-Meteo APIs and CWA.
-// Returns per-service status so you can verify your API key is working.
+// Diagnostic endpoint — tests Open-Meteo APIs and all CWA data sources.
+// Returns per-service status so you can verify API keys are working.
+//
+// CWA services tested:
+//   - F-C0032-001: County-level weather forecast (thunder detection)
+//   - F-D0047-091: Township-level forecast (WS/WD/PoP12h cross-validation)
+//   - O-A0003-001: Real-time station observation (nearest station)
 //
 // Usage:
 //   curl http://localhost:3000/api/weather/health | jq
-//   or open in browser: http://localhost:3000/api/weather/health
 
 import { NextResponse } from "next/server"
 
 const TEST_LAT = 25.0336  // Taipei
 const TEST_LNG = 121.5636
+const TEST_CITY = "臺北市"
 
 interface ServiceStatus {
   ok: boolean
@@ -59,8 +64,6 @@ async function checkForecast(apiKey: string | undefined): Promise<ServiceStatus>
 
 async function checkArchive(apiKey: string | undefined): Promise<ServiceStatus> {
   const paid = !!apiKey
-  // Paid: Historical Forecast API (IFS ~9km) — matches what context/route.ts actually uses
-  // Free: ERA5 archive
   const base = paid
     ? "https://customer-historical-forecast-api.open-meteo.com/v1/forecast"
     : "https://archive-api.open-meteo.com/v1/archive"
@@ -101,47 +104,19 @@ async function checkArchive(apiKey: string | undefined): Promise<ServiceStatus> 
   }
 }
 
-async function checkCWA(apiKey: string | undefined): Promise<ServiceStatus> {
-  if (!apiKey) {
-    return { ok: false, endpoint: "opendata.cwa.gov.tw", plan: "n/a", latency_ms: null, error: "CWA_API_KEY not set" }
-  }
-  const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001")
-  url.searchParams.set("Authorization", apiKey)
-  url.searchParams.set("locationName", "臺北市")
-  url.searchParams.set("elementName", "Wx")
-
-  const t0 = Date.now()
-  try {
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(6_000) })
-    const latency_ms = Date.now() - t0
-    if (!res.ok) {
-      return { ok: false, endpoint: "opendata.cwa.gov.tw", plan: "n/a", latency_ms, error: `HTTP ${res.status}` }
-    }
-    const data = await res.json()
-    const timeCount: number = data?.records?.location?.[0]?.weatherElement?.[0]?.time?.length ?? 0
-    return {
-      ok: timeCount > 0,
-      endpoint: "opendata.cwa.gov.tw",
-      plan: "n/a",
-      latency_ms,
-      sample: { forecast_periods: timeCount },
-    }
-  } catch (e) {
-    return { ok: false, endpoint: "opendata.cwa.gov.tw", plan: "n/a", latency_ms: Date.now() - t0, error: String(e) }
-  }
-}
-
 async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus> {
-  if (!apiKey) {
-    return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: null, error: "OPEN_METEO_API_KEY not set — ensemble requires paid plan" }
-  }
+  // Ensemble works on both free and paid tiers
+  const paid = !!apiKey
+  const base = paid
+    ? "https://customer-ensemble-api.open-meteo.com/v1/ensemble"
+    : "https://ensemble-api.open-meteo.com/v1/ensemble"
 
-  const url = new URL("https://customer-ensemble-api.open-meteo.com/v1/ensemble")
-  url.searchParams.set("apikey",    apiKey)
+  const url = new URL(base)
+  if (apiKey) url.searchParams.set("apikey", apiKey)
   url.searchParams.set("latitude",  TEST_LAT.toString())
   url.searchParams.set("longitude", TEST_LNG.toString())
   url.searchParams.set("models",    "ecmwf_ifs025")
-  url.searchParams.set("hourly",    "wind_speed_10m")  // returns 2D array [member][time]
+  url.searchParams.set("hourly",    "wind_speed_10m")
   url.searchParams.set("wind_speed_unit", "kmh")
   url.searchParams.set("timezone",  "Asia/Taipei")
   url.searchParams.set("forecast_days", "2")
@@ -152,10 +127,9 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
     const latency_ms = Date.now() - t0
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
+      return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
     }
     const data = await res.json()
-    // ecmwf_ifs025 returns separate member keys: wind_speed_10m_member01..50
     const hourly = data.hourly ?? {}
     const memberKeys: string[] = Object.keys(hourly).filter((k: string) =>
       /^wind_speed_10m_member\d+$/.test(k)
@@ -165,14 +139,110 @@ async function checkEnsemble(apiKey: string | undefined): Promise<ServiceStatus>
       ? (hourly.wind_speed_10m as unknown[]).length
       : 0
     return {
-      ok: memberCount > 0 && hourCount > 0,
-      endpoint: "customer-ensemble-api.open-meteo.com",
-      plan: "paid",
+      ok: memberCount > 0 || hourCount > 0,
+      endpoint: base,
+      plan: paid ? "paid" : "free",
       latency_ms,
       sample: { members: memberCount, hours: hourCount, model: "ecmwf_ifs025" },
     }
   } catch (e) {
-    return { ok: false, endpoint: "customer-ensemble-api.open-meteo.com", plan: "paid", latency_ms: Date.now() - t0, error: String(e) }
+    return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
+// ─── CWA Health Checks ───────────────────────────────────────────────────────
+
+async function checkCWAThunder(apiKey: string | undefined): Promise<ServiceStatus> {
+  const endpoint = "opendata.cwa.gov.tw/F-C0032-001"
+  if (!apiKey) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: null, error: "CWA_API_KEY not set" }
+  }
+  const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001")
+  url.searchParams.set("Authorization", apiKey)
+  url.searchParams.set("locationName", TEST_CITY)
+  url.searchParams.set("elementName", "Wx")
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(6_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      return { ok: false, endpoint, plan: "n/a", latency_ms, error: `HTTP ${res.status}` }
+    }
+    const data = await res.json()
+    const timeCount: number = data?.records?.location?.[0]?.weatherElement?.[0]?.time?.length ?? 0
+    return {
+      ok: timeCount > 0,
+      endpoint,
+      plan: "n/a",
+      latency_ms,
+      sample: { dataset: "F-C0032-001", forecast_periods: timeCount, purpose: "thunder_detection" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
+async function checkCWAForecast(apiKey: string | undefined): Promise<ServiceStatus> {
+  const endpoint = "opendata.cwa.gov.tw/F-D0047-091"
+  if (!apiKey) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: null, error: "CWA_API_KEY not set" }
+  }
+  const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-091")
+  url.searchParams.set("Authorization", apiKey)
+  url.searchParams.set("locationName", TEST_CITY)
+  url.searchParams.set("elementName", "WS,WD,PoP12h")
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      return { ok: false, endpoint, plan: "n/a", latency_ms, error: `HTTP ${res.status}` }
+    }
+    const data = await res.json()
+    const locations = data?.records?.Locations?.[0]?.Location ?? data?.records?.locations?.[0]?.location ?? []
+    const elCount: number = locations[0]?.weatherElement?.length ?? 0
+    const windEntries: number = locations[0]?.weatherElement?.[0]?.time?.length ?? 0
+    return {
+      ok: elCount > 0,
+      endpoint,
+      plan: "n/a",
+      latency_ms,
+      sample: { dataset: "F-D0047-091", elements: elCount, wind_entries: windEntries, purpose: "cross_validation" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
+async function checkCWAObservation(apiKey: string | undefined): Promise<ServiceStatus> {
+  const endpoint = "opendata.cwa.gov.tw/O-A0003-001"
+  if (!apiKey) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: null, error: "CWA_API_KEY not set" }
+  }
+  const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001")
+  url.searchParams.set("Authorization", apiKey)
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      return { ok: false, endpoint, plan: "n/a", latency_ms, error: `HTTP ${res.status}` }
+    }
+    const data = await res.json()
+    const stations: Array<{ StationName?: string }> = data?.records?.Station ?? []
+    const sampleStation = stations[0]?.StationName ?? null
+    return {
+      ok: stations.length > 0,
+      endpoint,
+      plan: "n/a",
+      latency_ms,
+      sample: { dataset: "O-A0003-001", station_count: stations.length, sample_station: sampleStation, purpose: "realtime_observation" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint, plan: "n/a", latency_ms: Date.now() - t0, error: String(e) }
   }
 }
 
@@ -180,31 +250,42 @@ export async function GET() {
   const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
   const cwaKey   = process.env.CWA_API_KEY || undefined
 
-  const [forecast, archive, ensemble, cwa] = await Promise.all([
+  const [forecast, archive, ensemble, cwaThunder, cwaForecast, cwaObservation] = await Promise.all([
     checkForecast(meteoKey),
     checkArchive(meteoKey),
     checkEnsemble(meteoKey),
-    checkCWA(cwaKey),
+    checkCWAThunder(cwaKey),
+    checkCWAForecast(cwaKey),
+    checkCWAObservation(cwaKey),
   ])
 
   const allOk = forecast.ok && archive.ok
 
-  const instructions = meteoKey
-    ? [
-        "Using paid Open-Meteo commercial endpoints.",
-        "Forecast: customer-api | Archive: customer-historical-forecast-api (IFS 9km, P1) | Ensemble: customer-ensemble-api (ecmwf_ifs025, 50 members).",
-      ].join(" ")
-    : [
-        "Using free Open-Meteo endpoints (rate-limited). Ensemble available on free tier (ecmwf_ifs025, lower rate limit).",
-        "To activate paid plan: add OPEN_METEO_API_KEY=<your_key> to .env.local and restart.",
-      ].join(" ")
+  const instructions = [
+    meteoKey
+      ? "Using paid Open-Meteo commercial endpoints. Forecast: customer-api | Archive: customer-historical-forecast-api (IFS 9km, P1) | Ensemble: customer-ensemble-api (ecmwf_ifs025, 50 members)."
+      : "Using free Open-Meteo endpoints (rate-limited). Ensemble available on free tier (ecmwf_ifs025, lower rate limit). To activate paid plan: add OPEN_METEO_API_KEY=<your_key> to .env.local and restart.",
+    cwaKey
+      ? "CWA enabled: thunder detection (F-C0032-001), township forecast cross-validation (F-D0047-091), real-time observation (O-A0003-001)."
+      : "CWA disabled: add CWA_API_KEY to .env.local for thunder detection, forecast cross-validation, and real-time station data.",
+  ].join(" ")
 
   return NextResponse.json(
     {
       status:   allOk ? "ok" : "degraded",
       meteo_plan: meteoKey ? "paid" : "free",
+      cwa_enabled: !!cwaKey,
       checked_at: new Date().toISOString(),
-      services: { forecast, archive, ensemble, cwa },
+      services: {
+        // Open-Meteo
+        forecast,
+        archive,
+        ensemble,
+        // CWA
+        cwa_thunder: cwaThunder,
+        cwa_forecast: cwaForecast,
+        cwa_observation: cwaObservation,
+      },
       instructions,
     },
     { status: allOk ? 200 : 207 }

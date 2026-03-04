@@ -43,6 +43,56 @@ export interface WeatherTodayInput {
   rain_mmph_forecast: number     // 1-hr rain rate (mm/h)
   thunder_risk: 0 | 1 | null
   forecast_confidence?: number   // 0..100 — ensemble member agreement (100 = all agree)
+  wind_direction_deg?: number    // Wind direction in degrees (0=N, 90=E, 180=S, 270=W)
+  cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
+}
+
+// ─── CWA Cross-Validation Types ──────────────────────────────────────────────
+
+/** Per-day CWA forecast data from F-D0047 township-level forecast */
+export interface CWAForecastDay {
+  wind_speed_kmh: number | null     // WS: max wind speed (m/s → km/h)
+  wind_direction: string | null     // WD: wind direction text (e.g. "偏北風")
+  rain_prob_12h: number | null      // PoP12h: 12-hour rain probability (%)
+  weather_desc: string | null       // Wx: weather phenomenon text
+  min_temp_c: number | null         // MinT: min temperature (°C)
+  max_temp_c: number | null         // MaxT: max temperature (°C)
+}
+
+/** Per-day divergence analysis between Open-Meteo and CWA */
+export interface CrossValidationDivergence {
+  wind_delta_kmh: number | null     // Open-Meteo wind - CWA wind (positive = OM higher)
+  rain_prob_delta: number | null    // Open-Meteo rain% - CWA rain% (positive = OM higher)
+  severity: "low" | "medium" | "high"  // Divergence severity level
+  notes: string[]                   // Human-readable divergence explanations
+}
+
+/** Combined CWA cross-validation for a single forecast day */
+export interface CWACrossValidation {
+  cwa_forecast: CWAForecastDay
+  divergence: CrossValidationDivergence
+}
+
+/** Real-time CWA observation from nearest weather station (O-A0003-001) */
+export interface CWAObservation {
+  station_name: string
+  station_id: string
+  observed_at: string               // ISO datetime
+  wind_speed_kmh: number | null     // WDSD (m/s → km/h)
+  wind_direction_deg: number | null // WDIR (degrees)
+  gust_speed_kmh: number | null     // H_FX (m/s → km/h)
+  temperature_c: number | null      // TEMP
+  humidity_pct: number | null       // HUMD (0..1 → 0..100)
+  precipitation_mm: number | null   // 24R: 24h accumulated rain (mm)
+}
+
+/** Top-level CWA cross-validation summary in API response */
+export interface CWACrossValidationMeta {
+  enabled: boolean
+  observation: CWAObservation | null
+  forecast_coverage: number          // How many forecast days have CWA data (0..14)
+  max_divergence_severity: "low" | "medium" | "high" | "none"
+  data_sources: string[]             // e.g. ["F-D0047-091", "O-A0003-001"]
 }
 
 /** Building and site characteristics */
