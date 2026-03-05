@@ -2,7 +2,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Rocket, Building2, BookOpen, FileText, X, CloudSun, SlidersHorizontal, Activity,
+  Rocket, Building2, BookOpen, FileText, X, CloudSun, SlidersHorizontal, Activity, GitBranch,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SYSTEM_VERSIONS } from "@/lib/mock-data"
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/climate", label: "Climate", sublabel: "氣候評估", icon: CloudSun },
   { href: "/admin/params", label: "Model Params", sublabel: "模型參數", icon: SlidersHorizontal },
   { href: "/monitor", label: "Monitor", sublabel: "系統監控", icon: Activity },
+  { href: "/graph", label: "Graph", sublabel: "數據流圖", icon: GitBranch },
 ]
 
 interface SidebarProps {

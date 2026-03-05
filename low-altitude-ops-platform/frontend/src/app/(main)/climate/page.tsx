@@ -3,7 +3,7 @@ import { useState, useCallback, useMemo, useEffect } from "react"
 import { Search, ChevronLeft, ChevronRight, CloudSun, Wind, Droplets, Zap, TrendingUp, Info, CheckCircle, AlertCircle, Loader } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { WeatherType, RiskLevel, WeatherTodayInput, Weather30dInput } from "@/lib/types"
+import type { WeatherType, RiskLevel, WeatherTodayInput, Weather30dInput, ForecastBiasCorrection } from "@/lib/types"
 import { inferWCode, completionForRL, getWRDecision } from "@/lib/engines/model-helpers"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -155,6 +155,8 @@ interface ForecastDay {
   rain_prob: number
   completion_prob: number
   source: "real" | "seasonal"   // data provenance badge
+  bias_corrected?: boolean      // true if bias correction was applied
+  original_wind_kmh?: number    // pre-correction value (for tooltip)
 }
 
 interface WeatherContext {
@@ -179,12 +181,17 @@ function build365Days(
   ctx: WeatherContext,
   locationSeed: number,
   profiles: MonthProfile[] = MONTH_PROFILES,
+  biasCorrection?: ForecastBiasCorrection | null,
 ): ForecastDay[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
   // Index real forecast by date string for O(1) lookup
   const realMap = new Map(ctx.forecast.map(f => [f.date, f.weather_today]))
+
+  // Bias correction: if we have enough samples in 8-14 day bucket, apply to seasonal
+  const hasBias = !!(biasCorrection && biasCorrection.buckets.lead_8_14.sample_count >= 14)
+  const windBias = hasBias ? biasCorrection.buckets.lead_8_14.wind_bias_kmh : 0
 
   const days: ForecastDay[] = []
   for (let i = 0; i < 365; i++) {
@@ -219,6 +226,12 @@ function build365Days(
       const rl = riskForW(w, profile.riskBase, r2)
       const weather_today = genWeatherTodayForW(w, seed)
 
+      // Apply bias correction to seasonal wind if available
+      const originalWind = weather_today.wind_now_kmh
+      if (hasBias && windBias !== 0) {
+        weather_today.wind_now_kmh = Math.max(0, Math.round(weather_today.wind_now_kmh - windBias))
+      }
+
       days.push({
         date: dateStr,
         weather_today,
@@ -228,6 +241,8 @@ function build365Days(
         rain_prob: weather_today.rain_prob_today_pct,
         completion_prob: completionForRL(rl, w),
         source: "seasonal",
+        bias_corrected: hasBias && windBias !== 0,
+        original_wind_kmh: hasBias && windBias !== 0 ? originalWind : undefined,
       })
     }
   }
@@ -260,6 +275,7 @@ export default function ClimatePage() {
   const [siteRisk, setSiteRisk] = useState<RiskLevel>("R1")
   const [monthOffset, setMonthOffset] = useState(0)
   const [profilesSource, setProfilesSource] = useState<ProfilesSource>(null)
+  const [biasCorrection, setBiasCorrection] = useState<ForecastBiasCorrection | null>(null)
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -307,9 +323,21 @@ export default function ClimatePage() {
         setProfilesSource("fallback")
       }
 
+      // Load bias correction from localStorage (cached by forecast-tracker)
+      let bias: ForecastBiasCorrection | null = null
+      try {
+        const { getCachedBiasCorrection } = await import("@/lib/engines/forecast-tracker")
+        const { toLocationKey } = await import("@/lib/engines/forecast-db")
+        const locKey = toLocationKey(loc.lat, loc.lng)
+        bias = getCachedBiasCorrection(locKey)
+        setBiasCorrection(bias)
+      } catch {
+        // No bias data available
+      }
+
       // Deterministic seed from lat/lng (so same location always gives same seasonal pattern)
       const locationSeed = Math.round(Math.abs(loc.lat * 1000 + loc.lng * 100)) % 9999
-      const days = build365Days(wxData, locationSeed, profiles)
+      const days = build365Days(wxData, locationSeed, profiles, bias)
       setAllDays(days)
       setMonthOffset(0)
     } catch {
@@ -714,6 +742,8 @@ export default function ClimatePage() {
                           <td className="px-3 py-2 text-center">
                             {day.source === "real"
                               ? <span className="text-[9px] text-emerald-500 font-medium">即時</span>
+                              : day.bias_corrected
+                              ? <span className="text-[9px] text-cyan-400 font-medium" title={`原始風速 ${day.original_wind_kmh} km/h → 校正後 ${day.weather_today.wind_now_kmh} km/h`}>校正</span>
                               : <span className="text-[9px] text-zinc-600">估算</span>}
                           </td>
                         </tr>
@@ -907,6 +937,9 @@ export default function ClimatePage() {
                       ["陣風 P90",  `${monthWeatherSummary.gustP90 ?? "—"} km/h`],
                       ["大雨天數",  `${monthWeatherSummary.heavyRainDays} 天`],
                       ["即時資料",  `${monthWeatherSummary.realCount}/${monthWeatherSummary.totalDays} 天`],
+                      ...(biasCorrection && biasCorrection.buckets.lead_8_14.sample_count >= 14
+                        ? [["偏差校正", `${biasCorrection.buckets.lead_8_14.wind_bias_kmh > 0 ? "+" : ""}${biasCorrection.buckets.lead_8_14.wind_bias_kmh} km/h`]]
+                        : []),
                     ].map(([label, val]) => (
                       <div key={label} className="flex justify-between">
                         <span className="text-zinc-500">{label}</span>
