@@ -12,7 +12,7 @@
 //   3. Weather Classification — ui_infer_thresholds (W1-W5 thresholds)
 //   4. Buffer Coefficients   — buffer formula knobs
 //
-// Bottom bar: Reset to v1.0 defaults | Export JSON | Apply (save to localStorage)
+// Bottom bar: Reset to v2.0 defaults | Export JSON | Apply (save to localStorage)
 
 import { useState, useCallback, useEffect } from "react"
 import { SlidersHorizontal, RefreshCw, Download, Save } from "lucide-react"
@@ -107,7 +107,8 @@ function previewScore(p: WeatherRegimeParams): {
   const instComp  = 0.45 * wts.instability_scale
   const predDisc  = -(0.55 * wts.predictability_discount)
   const raw = wts.wind * windComp + wts.rain * rainScore + wts.instability * instComp + predDisc
-  const wn  = Math.max(0, Math.min(50, raw))
+  const cap = p.weather_now_weights.weather_now_cap ?? 42
+  const wn  = Math.max(0, Math.min(cap, raw))
   const base = p.regimes["W2"].base_score
   return {
     label: `W2 假設情境 (風 ${windKmh} km/h, 雨機率 50%, 不穩定 0.45)`,
@@ -342,6 +343,9 @@ export default function AdminParamsPage() {
                       ["rain", "降雨權重"],
                       ["instability", "不穩定指數權重"],
                       ["instability_scale", "不穩定指數放大倍數"],
+                      ["instability_scale_w4", "W4 不穩定放大 (v2.0)"],
+                      ["weather_now_cap", "WeatherNow 上限 (v2.0)"],
+                      ["w4_time_multiplier", "W4 午後乘數 (v2.0)"],
                       ["predictability_discount", "預測性折扣倍數"],
                       ["thunder_add", "雷雨加成分"],
                       ["ensemble_low_conf_threshold", "低信心門檻 (%)"],
@@ -370,6 +374,7 @@ export default function AdminParamsPage() {
                       ["wind_kmh", "風速 (km/h)"],
                       ["rain_mmph", "雨量 (mm/h)"],
                       ["rain_prob_pct", "降雨機率 (%)"],
+                      ["edr_threshold", "EDR 渦散率 (v2.0)"],
                     ] as const
                   ).map(([field, label]) => (
                     <label key={field} className="flex items-center justify-between gap-2">
@@ -665,15 +670,30 @@ export default function AdminParamsPage() {
                 </table>
               </section>
 
-              {/* B_score */}
+              {/* G_score (v2.0, renamed from B_score) */}
               <section>
-                <h3 className="text-sm font-semibold text-zinc-300 mb-2">B_score 建築評分（上限 25）</h3>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">G_score 場地風險（上限 20）<span className="text-[10px] text-zinc-500 ml-2">v2.0 — 原 B_score (0–25) 重構為 4 子維度</span></h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-[10px] text-zinc-500 mb-1">建物樓層</p>
+                    <p className="text-[10px] text-zinc-500 mb-1">Structural 結構（上限 10）</p>
                     <table className="text-xs w-full">
                       <tbody className="text-zinc-400">
-                        {[["≤ 10 層", "+0"], ["11–20 層", "+4"], ["21–30 層", "+7"], ["> 30 層", "+10"]].map(([tier, pts]) => (
+                        <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-1">樓層</td></tr>
+                        {[["≤ 10 層", "+0"], ["11–20 層", "+3"], ["21–30 層", "+6"], ["> 30 層", "+8"]].map(([tier, pts]) => (
+                          <tr key={tier} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{tier}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                        <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-2">海拔</td></tr>
+                        {[["≤ 100 m", "+0"], ["101–300 m", "+1"], ["301–800 m", "+3"], ["> 800 m", "+5"]].map(([tier, pts]) => (
+                          <tr key={tier} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{tier}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                        <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-2">立面</td></tr>
+                        {[["none", "+0"], ["light", "+2"], ["medium", "+4"], ["heavy", "+6"]].map(([tier, pts]) => (
                           <tr key={tier} className="border-t border-zinc-800/40">
                             <td className="py-0.5 pr-4">{tier}</td>
                             <td className="py-0.5 font-mono text-right">{pts}</td>
@@ -683,36 +703,17 @@ export default function AdminParamsPage() {
                     </table>
                   </div>
                   <div>
-                    <p className="text-[10px] text-zinc-500 mb-1">場址海拔</p>
+                    <p className="text-[10px] text-zinc-500 mb-1">Ground Consequence 地面後果（上限 6）— SORA 2.5 iGRC</p>
                     <table className="text-xs w-full">
                       <tbody className="text-zinc-400">
-                        {[["≤ 100 m", "+0"], ["101–300 m", "+2"], ["301–800 m", "+4"], ["> 800 m", "+6"]].map(([tier, pts]) => (
+                        {[["assembly 集會區", "6"], ["high_urban 高密度都市", "5"], ["residential 住宅區", "4"], ["light 低密度", "2"], ["isolated 隔離區", "1"]].map(([tier, pts]) => (
                           <tr key={tier} className="border-t border-zinc-800/40">
                             <td className="py-0.5 pr-4">{tier}</td>
                             <td className="py-0.5 font-mono text-right">{pts}</td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-zinc-500 mb-1">立面複雜度</p>
-                    <table className="text-xs w-full">
-                      <tbody className="text-zinc-400">
-                        {[["none", "+0"], ["light", "+2"], ["medium", "+5"], ["heavy", "+8"]].map(([tier, pts]) => (
-                          <tr key={tier} className="border-t border-zinc-800/40">
-                            <td className="py-0.5 pr-4">{tier}</td>
-                            <td className="py-0.5 font-mono text-right">{pts}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-zinc-500 mb-1">環境危害（上限 8）</p>
-                    <table className="text-xs w-full">
-                      <tbody className="text-zinc-400">
-                        {[["鄰近高壓電", "+4"], ["鄰近基地台", "+2"], ["風道效應", "+2"], ["淨空 < 5 m", "+2"]].map(([item, pts]) => (
+                        <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-2">M1 緩解措施 (各 −1, 最多 −3)</td></tr>
+                        {[["M1A 降落傘", "−1"], ["M1B 技術緩解", "−1"], ["M1C 運營緩解", "−1"]].map(([item, pts]) => (
                           <tr key={item} className="border-t border-zinc-800/40">
                             <td className="py-0.5 pr-4">{item}</td>
                             <td className="py-0.5 font-mono text-right">{pts}</td>
@@ -720,34 +721,37 @@ export default function AdminParamsPage() {
                         ))}
                       </tbody>
                     </table>
+
+                    <p className="text-[10px] text-zinc-500 mb-1 mt-3">TKE 代理（上限 3）</p>
+                    <p className="text-[10px] text-zinc-600 mb-1">tke = floor_factor × wind_factor × corridor_factor</p>
+
+                    <p className="text-[10px] text-zinc-500 mb-1 mt-3">Env + Interaction（上限 4）</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-zinc-400">
+                        {[["鄰近高壓電", "+3"], ["鄰近基地台", "+1"], ["淨空 < 5 m", "+2"]].map(([item, pts]) => (
+                          <tr key={item} className="border-t border-zinc-800/40">
+                            <td className="py-0.5 pr-4">{item}</td>
+                            <td className="py-0.5 font-mono text-right">{pts}</td>
+                          </tr>
+                        ))}
+                        <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-1">env cap=3, interaction cap=2</td></tr>
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-                <div className="mt-2">
-                  <p className="text-[10px] text-zinc-500 mb-1">交互加成（上限 6）</p>
-                  <table className="text-xs w-auto">
-                    <tbody className="text-zinc-400">
-                      {[["高樓（>20F）× 風道效應", "+3"], ["高壓電 × 無屋頂緊急降落", "+2"], ["山區（>300m）× 淨空 < 5m", "+3"]].map(([item, pts]) => (
-                        <tr key={item} className="border-t border-zinc-800/40">
-                          <td className="py-0.5 pr-6">{item}</td>
-                          <td className="py-0.5 font-mono">{pts}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               </section>
 
               {/* O_score */}
               <section>
-                <h3 className="text-sm font-semibold text-zinc-300 mb-2">O_score 作業評分（上限 15）</h3>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">O_score 作業評分（上限 12）<span className="text-[10px] text-zinc-500 ml-2">v2.0 — 各因子等比縮減 ~20%</span></h3>
                 <table className="text-xs w-auto">
                   <tbody className="text-zinc-400">
                     {[
-                      ["夜間作業", "+6"], ["週末", "+2"], ["封路需求", "+4"],
-                      ["急件 ≤ 3 天", "+6"], ["急件 4–7 天", "+4"],
-                      ["高人流密度", "+4"], ["中人流密度", "+2"],
+                      ["夜間作業", "+5"], ["週末", "+2"], ["封路需求", "+3"],
+                      ["急件 ≤ 3 天", "+5"], ["急件 4–7 天", "+3"],
+                      ["高人流密度", "+3"], ["中人流密度", "+2"],
                       ["初級操作員", "+2"],
-                      ["長工期疲勞 ≥ 7 天", "+4"], ["長工期疲勞 4–6 天", "+2"],
+                      ["長工期疲勞 ≥ 7 天", "+3"], ["長工期疲勞 4–6 天", "+2"],
                     ].map(([item, pts]) => (
                       <tr key={item} className="border-t border-zinc-800/40">
                         <td className="py-0.5 pr-8">{item}</td>
@@ -760,10 +764,10 @@ export default function AdminParamsPage() {
 
               {/* E_score */}
               <section>
-                <h3 className="text-sm font-semibold text-zinc-300 mb-2">E_score 設備評分（上限 10）</h3>
+                <h3 className="text-sm font-semibold text-zinc-300 mb-2">E_score 設備評分（上限 8）<span className="text-[10px] text-zinc-500 ml-2">v2.0 — Block ×3, Warn ×1.5</span></h3>
                 <table className="text-xs w-auto mb-2">
                   <tbody className="text-zinc-400">
-                    {[["Block 狀態設備", "每件 +4"], ["Warn 狀態設備", "每件 +2"], ["OK 狀態設備", "0"]].map(([item, pts]) => (
+                    {[["Block 狀態設備", "每件 +3"], ["Warn 狀態設備", "每件 +1.5"], ["OK 狀態設備", "0"]].map(([item, pts]) => (
                       <tr key={item} className="border-t border-zinc-800/40">
                         <td className="py-0.5 pr-8">{item}</td>
                         <td className="py-0.5 font-mono">{pts}</td>
@@ -772,7 +776,7 @@ export default function AdminParamsPage() {
                   </tbody>
                 </table>
                 <div className="text-[10px] text-zinc-500 space-y-0.5">
-                  <div><span className="text-amber-400">E ≥ 6</span> + R2 + 夜間/高壓電 → CONDITIONAL <span className="text-amber-400">Tier B</span>（主管審批）</div>
+                  <div><span className="text-amber-400">E ≥ 6</span> → CONDITIONAL <span className="text-amber-400">Tier C</span>（主管+客戶確認）</div>
                   <div><span className="text-red-400">E ≥ 8</span> → 強制 CONDITIONAL <span className="text-red-400">Tier C</span>（主管 + 客戶雙方書面確認）</div>
                 </div>
               </section>
@@ -958,8 +962,9 @@ export default function AdminParamsPage() {
                 </section>
               </div>
 
-              <div className="text-xs text-zinc-600 border-t border-zinc-800 pt-3">
-                總額 = round(小計 × 樓層 × 時間 × 急件)
+              <div className="text-xs text-zinc-600 border-t border-zinc-800 pt-3 space-y-1">
+                <div>總額 = round(小計 × 樓層 × 時間 × 急件)</div>
+                <div className="text-amber-500/70">v2.0: 複合乘數上限 = {params.quote_max_multiplier ?? 4.5}× — 超過則需人工審查</div>
               </div>
             </div>
           )}
@@ -977,9 +982,9 @@ export default function AdminParamsPage() {
               <PreviewRow label="預測性折扣" value={preview.pred_disc} signed />
               <div className="border-t border-zinc-800 my-1.5" />
               <PreviewRow label="WeatherNow" value={preview.wn} highlight />
-              <PreviewRow label="+ Base(W2)=12 → R_score" value={preview.raw} highlight />
+              <PreviewRow label="+ Base(W2)=11 → R_score" value={preview.raw} highlight />
             </div>
-            <div className="mt-3 text-[10px] text-zinc-600">* B/O/E 分項未計入（假設=0）</div>
+            <div className="mt-3 text-[10px] text-zinc-600">* G/O/E 分項未計入（假設=0）</div>
           </div>
         </div>
       </div>
@@ -991,7 +996,7 @@ export default function AdminParamsPage() {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          重設為 v1.0 預設值
+          重設為 v2.0 預設值
         </button>
         <button
           onClick={exportJSON}

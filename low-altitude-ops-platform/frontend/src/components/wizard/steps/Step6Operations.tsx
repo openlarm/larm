@@ -542,12 +542,12 @@ export function Step6Operations({ mission, update, next, back }: Props) {
       {/* ════════════════════════════════════════════════════════════════════ */}
       {selected.length > 0 && (
         <div className="space-y-3 pt-4 border-t border-zinc-700/60">
-          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">B. LARM v1.1 風險評估</h3>
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">B. LARM v2.0 風險評估</h3>
 
           {riskLoading ? (
             <div className="space-y-3">
               <div className="h-52 bg-zinc-800 rounded animate-pulse" />
-              <p className="text-xs text-zinc-500">LARM v1.1 評估中…</p>
+              <p className="text-xs text-zinc-500">LARM v2.0 評估中…</p>
             </div>
           ) : riskResult && (
             <>
@@ -569,19 +569,20 @@ export function Step6Operations({ mission, update, next, back }: Props) {
                         <span>Regime 置信度</span>
                         <span className={cn("font-mono font-bold", riskResult.regime_confidence >= 0.85 ? "text-emerald-400" : riskResult.regime_confidence >= 0.70 ? "text-amber-400" : "text-red-400")}>{(riskResult.regime_confidence * 100).toFixed(0)}%</span>
                         <span>現況天氣</span>
-                        <span className="font-mono text-zinc-200">{riskResult.weather_now.toFixed(1)} / 50</span>
+                        <span className="font-mono text-zinc-200">{riskResult.weather_now.toFixed(1)} / 42</span>
                         <span>Internal Grade</span>
-                        <span className={cn("font-bold", GRADE_COLOR[riskResult.internal_grade])}>{riskResult.internal_grade}</span>
+                        <span className={cn("font-bold", GRADE_COLOR[riskResult.internal_grade] ?? "text-red-400")}>{riskResult.internal_grade}</span>
                       </div>
                       {riskResult.conditional_tier && (
                         <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold border w-fit",
                           riskResult.conditional_tier === "A" ? "bg-amber-500/10 border-amber-500/30 text-amber-300" :
-                          riskResult.conditional_tier === "B" ? "bg-orange-500/10 border-orange-500/30 text-orange-300" :
+                          riskResult.conditional_tier === "C" ? "bg-orange-500/10 border-orange-500/30 text-orange-300" :
                           "bg-red-500/10 border-red-500/30 text-red-300")}>
                           <AlertTriangle className="h-3 w-3" /> CONDITIONAL — Tier {riskResult.conditional_tier}
                           {riskResult.conditional_tier === "A" && <span className="font-normal text-zinc-400 ml-1">（即時監控）</span>}
-                          {riskResult.conditional_tier === "B" && <span className="font-normal text-zinc-400 ml-1">（主管審批）</span>}
-                          {riskResult.conditional_tier === "C" && <span className="font-normal text-zinc-400 ml-1">（雙方書面）</span>}
+                          {riskResult.conditional_tier === "C" && <span className="font-normal text-zinc-400 ml-1">（主管確認）</span>}
+                          {riskResult.conditional_tier === "D1" && <span className="font-normal text-zinc-400 ml-1">（主管審核+安全計畫）</span>}
+                          {riskResult.conditional_tier === "D2" && <span className="font-normal text-zinc-400 ml-1">（雙方確認+安全簡報）</span>}
                         </div>
                       )}
                     </div>
@@ -591,10 +592,10 @@ export function Step6Operations({ mission, update, next, back }: Props) {
                   <div className="pt-1 border-t border-zinc-700/60 space-y-2">
                     <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">分數分解</p>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-zinc-400">
-                      <div className="space-y-1"><div className="flex justify-between"><span>Base(W) · 天候背景</span><span className="font-mono text-zinc-300">{riskResult.base_w} / 25</span></div><ScoreBar value={riskResult.base_w} max={25} color="bg-sky-500" /></div>
-                      <div className="space-y-1"><div className="flex justify-between"><span>WeatherNow · 當日天氣</span><span className="font-mono text-zinc-300">{riskResult.weather_now} / 50</span></div><ScoreBar value={riskResult.weather_now} max={50} color="bg-yellow-500" /></div>
-                      <div className="space-y-1"><div className="flex justify-between"><span>B · 建物 / 場域</span><span className="font-mono text-zinc-300">{riskResult.b_score} / 25</span></div><ScoreBar value={riskResult.b_score} max={25} color="bg-orange-500" /></div>
-                      <div className="space-y-1"><div className="flex justify-between"><span>O · 作業情境</span><span className="font-mono text-zinc-300">{riskResult.o_score} / 15</span></div><ScoreBar value={riskResult.o_score} max={15} color="bg-purple-500" /></div>
+                      <div className="space-y-1"><div className="flex justify-between"><span>Base(W) · 天候背景</span><span className="font-mono text-zinc-300">{riskResult.base_w} / 22</span></div><ScoreBar value={riskResult.base_w} max={22} color="bg-sky-500" /></div>
+                      <div className="space-y-1"><div className="flex justify-between"><span>WeatherNow · 當日天氣</span><span className="font-mono text-zinc-300">{riskResult.weather_now} / 42</span></div><ScoreBar value={riskResult.weather_now} max={42} color="bg-yellow-500" /></div>
+                      <div className="space-y-1"><div className="flex justify-between"><span>G · 地面影響</span><span className="font-mono text-zinc-300">{riskResult.g_score} / 20</span></div><ScoreBar value={riskResult.g_score} max={20} color="bg-orange-500" /></div>
+                      <div className="space-y-1"><div className="flex justify-between"><span>O · 作業情境</span><span className="font-mono text-zinc-300">{riskResult.o_score} / 12</span></div><ScoreBar value={riskResult.o_score} max={12} color="bg-purple-500" /></div>
                     </div>
                   </div>
 

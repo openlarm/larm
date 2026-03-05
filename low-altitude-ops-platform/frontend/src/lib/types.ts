@@ -16,6 +16,20 @@ export type Supply = "Provided" | "SelfSupply"
 export type QualCheckResult = "pass" | "fail" | "warn"
 export type HealthStatus = "ok" | "warn" | "block"
 
+// ─── LARM v2.0 New Types ─────────────────────────────────────────────────────
+
+/** SORA 2.5 population density classification for iGRC ground consequence */
+export type PopulationDensityClass = "assembly" | "high_urban" | "residential" | "light" | "isolated"
+
+/** SORA 2.5 M1-series ground risk mitigations */
+export type SORAMitigation = "M1A" | "M1B" | "M1C"
+
+/** Equipment block categories (封鎖級) — each +3 points */
+export type EquipmentBlockCategory = "B1" | "B2" | "B3"
+
+/** Equipment warn categories (警告級) — each +1.5 points */
+export type EquipmentWarnCategory = "W1" | "W2" | "W3" | "W4" | "W5" | "W6"
+
 // ─── LARM v1.0 Input Types ────────────────────────────────────────────────────
 
 export type RegionExposure = "windward" | "leeward" | "coastal" | "rooftop_open"
@@ -44,6 +58,8 @@ export interface WeatherTodayInput {
   thunder_risk: 0 | 1 | null
   forecast_confidence?: number   // 0..100 — ensemble member agreement (100 = all agree)
   wind_direction_deg?: number    // Wind direction in degrees (0=N, 90=E, 180=S, 270=W)
+  edr?: number | null            // v2.0: Eddy Dissipation Rate (turbulence, 0–1+)
+  local_hour?: number | null     // v2.0: local hour (0–23) for W4 time-of-day multiplier
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
   jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }
@@ -109,6 +125,9 @@ export interface BuildingSiteInput {
   rooftop_condition: "good" | "limited" | "not_available" | null
   crowd_density: CrowdDensity | null
   region_exposure: RegionExposure | null
+  // v2.0: SORA 2.5 ground risk inputs
+  population_density_class?: PopulationDensityClass
+  sora_mitigations?: SORAMitigation[]
 }
 
 /** Operational context factors */
@@ -130,6 +149,9 @@ export interface LARMInput {
   operational?: OperationalContextInput
   w_override?: WeatherType             // manual regime override (UI/mock)
   equipment?: Equipment[]              // assigned equipment for E-Score computation
+  // v2.0 extensions
+  recent_typhoon_count?: number | null // 3-year recent typhoon count (W5 climate trend)
+  local_completion_adjustment?: number // local completion rate adjustment multiplier (default 1.0)
 }
 
 /** W regime classification result with confidence */
@@ -226,32 +248,38 @@ export interface WeatherDay {
 // ─── Risk ─────────────────────────────────────────────────────────────────────
 
 export interface RiskResult {
-  // ── Backward-compatible fields (same keys as before) ──────────────────────
+  // ── Backward-compatible fields ────────────────────────────────────────────
   weather_type: WeatherType       // = w_code
   risk_level: RiskLevel
-  internal_grade: "A" | "B" | "C" | "D"
+  internal_grade: "A" | "B" | "C" | "D1" | "D2"  // v2.0: D split into D1/D2
   decision: Decision
   requires_approval: boolean
   controls: string[]
   ruleset_version: string
   evaluated_at: string
 
-  // ── LARM v1.0 computed fields ─────────────────────────────────────────────
+  // ── LARM v2.0 computed fields ─────────────────────────────────────────────
   w_code: WeatherType
-  base_w: number                  // Base(W) score from regime
-  weather_now: number             // WeatherNow component (0..50)
-  b_score: number                 // Building/Site score (0..25)
-  o_score: number                 // Operational score (0..15)
+  base_w: number                  // Base(W) score from regime (0..22)
+  weather_now: number             // WeatherNow component (0..42, v1.1 was 0..50)
+  g_score: number                 // Ground/Site score (0..20, replaces B_score)
+  b_score: number                 // @deprecated alias for g_score (backward compat)
+  o_score: number                 // Operational score (0..12, v1.1 was 0..15)
+  e_score: number                 // Equipment score (0..8, v1.1 was 0..10)
   risk_score: number              // Final R_score (0..100)
-  buffer_ratio: number            // Time buffer ratio (0.05..0.40)
+  buffer_ratio: number            // Time buffer ratio (0.05..0.55, v1.1 was 0.05..0.40)
   explanations: RiskExplanation[] // Per-factor breakdown
   versions: LARMVersions
 
-  // ── LARM v1.1 extension fields ────────────────────────────────────────────
+  // ── Regime + Decision extensions ──────────────────────────────────────────
   regime_confidence: number       // W regime classification confidence (0..1)
   secondary_w: WeatherType | null // Runner-up regime
-  e_score: number                 // Equipment reliability score (0..10)
-  conditional_tier: "A" | "B" | "C" | null  // CONDITIONAL sub-tier (null if GO/NO_GO)
+  conditional_tier: "A" | "C" | "D1" | "D2" | null  // v2.0 CONDITIONAL sub-tier
+
+  // ── v2.0 new detail fields ────────────────────────────────────────────────
+  edr_adj?: number                // EDR turbulence adjustment (0..20)
+  tke_proxy?: number              // TKE proxy add (0..3)
+  ground_consequence?: number     // SORA GRC ground consequence (0..6)
 }
 
 // ─── Time Estimation ─────────────────────────────────────────────────────────
@@ -291,6 +319,9 @@ export interface PricingResult {
   quote_code: string
   valid_until: string
   pricing_version: string
+  // v2.0: multiplier cap protection
+  requires_manual_review?: boolean
+  manual_review_note?: string
 }
 
 // ─── Equipment (used by risk engine for E-score computation) ─────────────────
@@ -305,6 +336,9 @@ export interface Equipment {
   calibration_expires: string // ISO date
   last_maintenance: string // ISO date
   notes?: string
+  // v2.0: specific block/warn categories
+  block_category?: EquipmentBlockCategory
+  warn_category?: EquipmentWarnCategory
 }
 
 // ─── Mission (aggregate) ──────────────────────────────────────────────────────
@@ -374,8 +408,9 @@ export interface ForecastLogEntry {
 export interface BiasStats {
   wind_bias_kmh: number            // mean error (positive = model overestimates)
   wind_mae_kmh: number             // Mean Absolute Error
-  rain_bias_pct: number            // mean rain probability error
+  rain_bias_pct: number            // mean rain amount error (mm)
   rain_hit_rate: number            // fraction of correct rain/no-rain calls (0..1)
+  rain_prob_bias?: number          // v2.0: mean rain probability bias (forecast% − actual_occurred×100)
   sample_count: number
 }
 

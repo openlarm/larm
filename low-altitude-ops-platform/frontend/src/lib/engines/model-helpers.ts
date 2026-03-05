@@ -27,11 +27,13 @@ export function inferWCode(
 }
 
 /** Estimated mission completion probability by risk + W-code.
- *  R0:97%, R1:82%, R2:60%, R3:35%, R4:10%; −3% per W-level. */
-export function completionForRL(rl: RiskLevel, w: WeatherType): number {
+ *  R0:97%, R1:82%, R2:60%, R3:35%, R4:10%; −3% per W-level.
+ *  v2.0: localAdjustment multiplier for region-specific calibration. */
+export function completionForRL(rl: RiskLevel, w: WeatherType, localAdjustment = 1.0): number {
   const rIdx = parseInt(rl[1])
   const wIdx = parseInt(w[1])
-  return Math.max(5, Math.min(99, [97, 82, 60, 35, 10][rIdx] - wIdx * 3))
+  const base = [97, 82, 60, 35, 10][rIdx] - wIdx * 3
+  return Math.max(5, Math.min(99, Math.round(base * localAdjustment)))
 }
 
 /** Look up GO/COND/NOGO from the WR matrix in params. */
