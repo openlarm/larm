@@ -4,6 +4,7 @@ import type {
   CleaningAgent, RooftopAccess,
 } from "@/lib/types"
 import { getPricingParams, type PricingParams } from "./pricing-params"
+import { getParams } from "./weather-regime-params"
 
 // ─── Main function ────────────────────────────────────────────────────────────
 
@@ -110,7 +111,12 @@ export function generateQuote(input: PricingEngineInput, params?: PricingParams)
   const mTime   = P.time_window_multiplier[timeWindow]
   const mUrgent = urgent ? P.urgent_multiplier : 1.0
 
-  const multiplier = mFloor * mTime * mUrgent
+  const combinedMultiplier = mFloor * mTime * mUrgent
+
+  // [Bug 8] v2.0: multiplier cap protection
+  const maxMult = getParams().quote_max_multiplier
+  const requiresManualReview = combinedMultiplier > maxMult
+  const multiplier = Math.min(maxMult, combinedMultiplier)
   const total = Math.round(subtotal * multiplier)
 
   const today = new Date()
@@ -132,5 +138,10 @@ export function generateQuote(input: PricingEngineInput, params?: PricingParams)
     quote_code: quoteCode,
     valid_until: validUntil.toISOString().split("T")[0],
     pricing_version: P.version,
+    // v2.0: manual review flag when multiplier exceeds cap
+    requires_manual_review: requiresManualReview || undefined,
+    manual_review_note: requiresManualReview
+      ? `複合加乘 ${combinedMultiplier.toFixed(2)}× 超過系統上限 ${maxMult}×，請人工確認報價`
+      : undefined,
   }
 }

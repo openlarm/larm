@@ -146,11 +146,18 @@ function computeBucket(entries: ForecastLogEntry[]): BiasStats {
   const rainBias = withAccuracy.reduce((s, e) => s + e.accuracy!.rain_error_mm, 0) / n
   const rainHits = withAccuracy.filter(e => e.accuracy!.rain_hit).length
 
+  // v2.0 [Bug 5]: rain probability bias (forecast_prob − actual_occurred×100)
+  const rainProbBias = withAccuracy.reduce((s, e) => {
+    const actualRain = e.actual!.rain_sum_mm >= 1
+    return s + (e.forecast.rain_prob_pct - (actualRain ? 100 : 0))
+  }, 0) / n
+
   return {
     wind_bias_kmh: Math.round(windBias * 10) / 10,
     wind_mae_kmh: Math.round(windMAE * 10) / 10,
     rain_bias_pct: Math.round(rainBias * 10) / 10,
     rain_hit_rate: Math.round((rainHits / n) * 100) / 100,
+    rain_prob_bias: Math.round(rainProbBias * 10) / 10,
     sample_count: n,
   }
 }

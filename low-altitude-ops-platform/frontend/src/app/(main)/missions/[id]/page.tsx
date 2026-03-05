@@ -147,15 +147,15 @@ export default function MissionDetailPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-400">Weather Now</span>
-                    <span className="font-mono text-zinc-200">{mission.risk.weather_now.toFixed(1)} / 50</span>
+                    <span className="font-mono text-zinc-200">{mission.risk.weather_now.toFixed(1)} / 42</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-zinc-400">Building (B)</span>
-                    <span className="font-mono text-zinc-200">{mission.risk.b_score} / 25</span>
+                    <span className="text-zinc-400">Ground (G)</span>
+                    <span className="font-mono text-zinc-200">{mission.risk.g_score} / 20</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-400">Operational (O)</span>
-                    <span className="font-mono text-zinc-200">{mission.risk.o_score} / 15</span>
+                    <span className="font-mono text-zinc-200">{mission.risk.o_score} / 12</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-400">Buffer Ratio</span>

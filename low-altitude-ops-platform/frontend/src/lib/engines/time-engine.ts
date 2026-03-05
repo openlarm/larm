@@ -181,7 +181,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
     total_minutes: total_min,
     suggested_days,
     disruption_buffer_ratio: buffer_ratio,
-    time_model_version: "v1.1",
+    time_model_version: "v2.0",
     coefficient_snapshot: {
       height: h_coeff,
       wind: w_coeff,
