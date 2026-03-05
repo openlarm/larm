@@ -412,11 +412,30 @@ export default function MonitorPage() {
   const [recording, setRecording] = useState(false)
   const [recordResult, setRecordResult] = useState<string | null>(null)
   const [accuracyData, setAccuracyData] = useState<AccuracySummaryData | null>(null)
+  const [autoRecord, setAutoRecord] = useState(() => {
+    if (typeof window === "undefined") return true
+    const stored = localStorage.getItem("larm_auto_record")
+    return stored !== "false"           // default ON
+  })
 
   // Load accuracy data from IndexedDB on mount
   useEffect(() => {
     loadAccuracyData()
   }, [])
+
+  // ── Auto Record Today on page load ──────────────────────────────────────────
+  useEffect(() => {
+    if (!autoRecord) return
+    const today = new Date().toISOString().split("T")[0]
+    const lastDate = localStorage.getItem("larm_last_auto_record")
+    if (lastDate === today) return       // already recorded today
+    // small delay to let page render first
+    const timer = setTimeout(() => {
+      handleRecordToday(true)
+    }, 2000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRecord])
 
   async function loadAccuracyData() {
     try {
@@ -437,9 +456,9 @@ export default function MonitorPage() {
     }
   }
 
-  async function handleRecordToday() {
+  async function handleRecordToday(isAuto = false) {
     setRecording(true)
-    setRecordResult(null)
+    if (!isAuto) setRecordResult(null)
     try {
       // Default to Taipei coordinates
       const lat = 25.034
@@ -458,13 +477,26 @@ export default function MonitorPage() {
       const locKey = toLocationKey(lat, lng)
       await computeAndStoreBiasCorrection(locKey)
 
-      setRecordResult(`Recorded ${result.recorded} forecasts, backfilled ${result.backfilled} actuals`)
+      // Mark today as recorded to prevent duplicate auto-records
+      const today = new Date().toISOString().split("T")[0]
+      localStorage.setItem("larm_last_auto_record", today)
+
+      const msg = `Recorded ${result.recorded} forecasts, backfilled ${result.backfilled} actuals`
+      setRecordResult(isAuto ? `[Auto] ${msg}` : msg)
       await loadAccuracyData()
     } catch (e) {
       setRecordResult(`Error: ${String(e)}`)
     } finally {
       setRecording(false)
     }
+  }
+
+  function toggleAutoRecord() {
+    setAutoRecord(prev => {
+      const next = !prev
+      localStorage.setItem("larm_auto_record", String(next))
+      return next
+    })
   }
 
   async function handleExportCSV() {
@@ -643,7 +675,19 @@ export default function MonitorPage() {
                   CSV
                 </button>
                 <button
-                  onClick={handleRecordToday}
+                  onClick={toggleAutoRecord}
+                  className={cn(
+                    "text-[10px] px-2 py-1 rounded border transition-colors",
+                    autoRecord
+                      ? "border-cyan-500/30 text-cyan-400 bg-cyan-500/5"
+                      : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
+                  )}
+                  title="每日自動記錄預報（頁面載入時）"
+                >
+                  {autoRecord ? "Auto ON" : "Auto OFF"}
+                </button>
+                <button
+                  onClick={() => handleRecordToday(false)}
                   disabled={recording}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border font-medium transition-colors",
@@ -678,8 +722,10 @@ export default function MonitorPage() {
                 <Database className="h-8 w-8 text-zinc-700 mx-auto" />
                 <div className="text-sm text-zinc-500">No forecast data recorded yet</div>
                 <div className="text-xs text-zinc-600">
-                  Click &quot;Record Today&quot; to start capturing daily forecasts.
-                  Over time, the system will compute accuracy metrics and bias corrections.
+                  {autoRecord
+                    ? "Auto Record 已開啟，每日首次進入此頁面時自動記錄預報。"
+                    : "點擊 \"Record Today\" 開始記錄每日預報。"}
+                  {" "}累積資料後系統將計算準確度指標與偏差校正。
                 </div>
               </div>
             ) : (
