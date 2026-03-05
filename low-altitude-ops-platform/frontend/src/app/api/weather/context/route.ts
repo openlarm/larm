@@ -21,6 +21,7 @@ import type {
   Weather30dInput, WeatherTodayInput,
   CWAForecastDay, CWAObservation, CWACrossValidation,
   CWACrossValidationMeta, CrossValidationDivergence,
+  JMAForecastDay, JMACrossValidation,
 } from "@/lib/types"
 
 // ─── Open-Meteo endpoint resolver ─────────────────────────────────────────────
@@ -595,6 +596,106 @@ function computeDivergence(
   }
 }
 
+// ─── Step H: JMA Forecast via Open-Meteo ────────────────────────────────────
+// JMA MSM (5km, 78h) for Taiwan/Japan; falls back to JMA GSM (20km, 11 days).
+// Open-Meteo integrates both models via https://api.open-meteo.com/v1/jma
+
+type JMADay = { date: string; forecast: JMAForecastDay }
+
+async function fetchJMAForecast(
+  lat: number,
+  lng: number,
+  apiKey?: string,
+): Promise<JMADay[]> {
+  const base = apiKey
+    ? "https://customer-api.open-meteo.com/v1/jma"
+    : "https://api.open-meteo.com/v1/jma"
+  const url = new URL(base)
+  if (apiKey) url.searchParams.set("apikey", apiKey)
+  url.searchParams.set("latitude", lat.toFixed(4))
+  url.searchParams.set("longitude", lng.toFixed(4))
+  url.searchParams.set(
+    "daily",
+    "wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum"
+  )
+  url.searchParams.set("wind_speed_unit", "kmh")
+  url.searchParams.set("timezone", "Asia/Taipei")
+  url.searchParams.set("forecast_days", "7") // JMA MSM covers ~3 days, GSM ~11
+
+  const res = await fetch(url.toString(), {
+    next: { revalidate: 1800 },
+    signal: AbortSignal.timeout(8_000),
+  })
+  if (!res.ok) return []
+
+  const data = await res.json()
+  const daily = data.daily
+  if (!daily?.time) return []
+
+  // Determine model: MSM if available (usually < 78h), otherwise GSM
+  return (daily.time as string[]).map((date: string, i: number) => {
+    const windKmh = daily.wind_speed_10m_max?.[i]
+    const gustKmh = daily.wind_gusts_10m_max?.[i]
+    const rainSum = daily.precipitation_sum?.[i]
+
+    // MSM typically covers 3 days; beyond that it's GSM
+    const leadHours = (new Date(date).getTime() - Date.now()) / 3600000
+    const sourceModel: "jma_gsm" | "jma_msm" = leadHours <= 78 ? "jma_msm" : "jma_gsm"
+
+    return {
+      date,
+      forecast: {
+        wind_max_kmh: windKmh != null && isFinite(windKmh) ? Math.round(windKmh) : null,
+        wind_gust_kmh: gustKmh != null && isFinite(gustKmh) ? Math.round(gustKmh) : null,
+        rain_sum_mm: rainSum != null && isFinite(rainSum) ? Math.round(rainSum * 10) / 10 : null,
+        source_model: sourceModel,
+      },
+    }
+  })
+}
+
+function computeJMADivergence(
+  omWind: number,
+  omRainProb: number,
+  jma: JMAForecastDay,
+): CrossValidationDivergence {
+  const notes: string[] = []
+
+  const windDelta = jma.wind_max_kmh != null ? omWind - jma.wind_max_kmh : null
+  if (windDelta != null) {
+    const absWind = Math.abs(windDelta)
+    if (absWind > 15) {
+      notes.push(`JMA 風速差異大：OM ${omWind} vs JMA ${jma.wind_max_kmh} km/h (差 ${windDelta > 0 ? "+" : ""}${windDelta})`)
+    } else if (absWind > 8) {
+      notes.push(`JMA 風速中度差異：OM ${omWind} vs JMA ${jma.wind_max_kmh} km/h`)
+    }
+  }
+
+  // Rain: compare OM rain prob with JMA rain sum (> 1mm = rainy)
+  const jmaHasRain = jma.rain_sum_mm != null && jma.rain_sum_mm >= 1
+  const omHasRain = omRainProb >= 50
+  const rainDelta = jmaHasRain !== omHasRain
+    ? (omHasRain ? 30 : -30)   // directional disagreement signal
+    : null
+
+  if (jmaHasRain !== omHasRain) {
+    notes.push(`降雨預測不一致：OM ${omRainProb}%${jmaHasRain ? "，JMA 預測有雨" : "，JMA 預測無雨"}`)
+  }
+
+  const absWindDelta = windDelta != null ? Math.abs(windDelta) : 0
+  const absRainDelta = rainDelta != null ? Math.abs(rainDelta) : 0
+
+  let severity: "low" | "medium" | "high" = "low"
+  if (absWindDelta > 15 || absRainDelta > 40) severity = "high"
+  else if (absWindDelta > 8 || absRainDelta > 20) severity = "medium"
+
+  if (notes.length === 0) {
+    notes.push(`Open-Meteo 與 JMA (${jma.source_model.toUpperCase()}) 預報一致`)
+  }
+
+  return { wind_delta_kmh: windDelta, rain_prob_delta: rainDelta, severity, notes }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
@@ -610,11 +711,12 @@ export async function GET(request: Request) {
   const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
   const cwaKey   = process.env.CWA_API_KEY || undefined
 
-  // Phase 1: Fetch Open-Meteo sources in parallel
-  const [weather_30d, forecast, ensembleMap] = await Promise.all([
+  // Phase 1: Fetch Open-Meteo sources + JMA in parallel
+  const [weather_30d, forecast, ensembleMap, jmaForecast] = await Promise.all([
     fetchHistorical(lat, lng, meteoKey).catch(() => null),
     fetchForecast(lat, lng, meteoKey).catch(() => []),
     fetchEnsemble(lat, lng, meteoKey).catch(() => new Map<string, EnsembleDay>()),
+    fetchJMAForecast(lat, lng, meteoKey).catch(() => [] as JMADay[]),
   ])
 
   // Merge ensemble P10/P90/confidence into each forecast day
@@ -625,6 +727,25 @@ export async function GET(request: Request) {
         day.weather_today.wind_p10_kmh       = ens.p10
         day.weather_today.wind_p90_kmh       = ens.p90
         day.weather_today.forecast_confidence = ens.confidence
+      }
+    }
+  }
+
+  // Phase 1.5: JMA cross-validation
+  const jmaMap = new Map<string, JMAForecastDay>()
+  for (const jd of jmaForecast) {
+    jmaMap.set(jd.date, jd.forecast)
+  }
+  if (jmaMap.size > 0) {
+    for (const day of forecast) {
+      const jmaDay = jmaMap.get(day.date)
+      if (jmaDay) {
+        const divergence = computeJMADivergence(
+          day.weather_today.wind_now_kmh,
+          day.weather_today.rain_prob_today_pct,
+          jmaDay,
+        )
+        day.weather_today.jma_cross = { jma_forecast: jmaDay, divergence }
       }
     }
   }
@@ -705,6 +826,7 @@ export async function GET(request: Request) {
     _meta: {
       meteo_plan:    meteoKey ? "paid" : "free",
       ensemble_days: ensembleMap.size,
+      jma_days:      jmaMap.size,
       cwa_enabled:   !!cwaKey,
       cwa_sources:   cwaDataSources.length,
     },

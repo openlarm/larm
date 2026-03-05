@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react"
 import {
   Activity, CheckCircle, AlertTriangle, XCircle, RefreshCw,
   Wind, Droplets, CloudLightning, Thermometer, Radio, Satellite,
-  Clock, Zap, Globe, Server,
+  Clock, Zap, Globe, Server, TrendingDown, TrendingUp, Minus,
+  Database, Download, BarChart3, Target,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { VersionBar } from "@/components/layout/VersionBar"
@@ -29,6 +30,8 @@ interface HealthResponse {
     forecast: ServiceStatus
     archive: ServiceStatus
     ensemble: ServiceStatus
+    jma: ServiceStatus
+    seasonal: ServiceStatus
     cwa_thunder: ServiceStatus
     cwa_forecast: ServiceStatus
     cwa_observation: ServiceStatus
@@ -38,13 +41,44 @@ interface HealthResponse {
 
 type ServiceKey = keyof HealthResponse["services"]
 
+interface AccuracySummaryData {
+  stats: {
+    total_entries: number
+    locations: string[]
+    oldest_date: string | null
+    newest_date: string | null
+    entries_with_actuals: number
+  }
+  corrections: Array<{
+    location_key: string
+    updated_at: string
+    sample_count: number
+    buckets: {
+      lead_1_3: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+      lead_4_7: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+      lead_8_14: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+    }
+  }>
+  summary: {
+    overall_wind_mae: number
+    overall_rain_hit_rate: number
+    trend: "improving" | "stable" | "degrading"
+    daily_mae: Array<{ date: string; mae: number }>
+    buckets: {
+      lead_1_3: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+      lead_4_7: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+      lead_8_14: { wind_bias_kmh: number; wind_mae_kmh: number; rain_hit_rate: number; sample_count: number }
+    }
+  } | null
+}
+
 // ─── Service Metadata ────────────────────────────────────────────────────────
 
 interface ServiceMeta {
   label: string
   sublabel: string
   icon: typeof Wind
-  group: "open-meteo" | "cwa"
+  group: "open-meteo" | "cwa" | "extended"
   description: string
 }
 
@@ -69,6 +103,20 @@ const SERVICE_META: Record<ServiceKey, ServiceMeta> = {
     icon: Satellite,
     group: "open-meteo",
     description: "ECMWF IFS 50-member ensemble for P10/P50/P90 confidence",
+  },
+  jma: {
+    label: "JMA Forecast",
+    sublabel: "日本氣象廳 5km",
+    icon: Target,
+    group: "extended",
+    description: "JMA MSM (5km, 78h) + GSM (20km, 11d) high-resolution model for Taiwan cross-validation",
+  },
+  seasonal: {
+    label: "Seasonal Forecast",
+    sublabel: "1-6 個月預報",
+    icon: BarChart3,
+    group: "extended",
+    description: "ECMWF SEAS5 seasonal forecast (monthly P10/P50/P90 for wind, rain, temperature)",
   },
   cwa_thunder: {
     label: "Thunder Detection",
@@ -357,7 +405,85 @@ export default function MonitorPage() {
   }, [autoRefresh, fetchHealth])
 
   const meteoServices: ServiceKey[] = ["forecast", "archive", "ensemble"]
+  const extendedServices: ServiceKey[] = ["jma", "seasonal"]
   const cwaServices: ServiceKey[] = ["cwa_thunder", "cwa_forecast", "cwa_observation"]
+
+  // Forecast accuracy tracking state
+  const [recording, setRecording] = useState(false)
+  const [recordResult, setRecordResult] = useState<string | null>(null)
+  const [accuracyData, setAccuracyData] = useState<AccuracySummaryData | null>(null)
+
+  // Load accuracy data from IndexedDB on mount
+  useEffect(() => {
+    loadAccuracyData()
+  }, [])
+
+  async function loadAccuracyData() {
+    try {
+      const { computeAccuracySummary } = await import("@/lib/engines/forecast-tracker")
+      const { getLogStats, getAllBiasCorrections } = await import("@/lib/engines/forecast-db")
+      const stats = await getLogStats()
+      const corrections = await getAllBiasCorrections()
+      if (stats.total_entries === 0) {
+        setAccuracyData({ stats, corrections: [], summary: null })
+        return
+      }
+      // Use first location for summary
+      const locationKey = stats.locations[0]
+      const summary = await computeAccuracySummary(locationKey, 90)
+      setAccuracyData({ stats, corrections, summary })
+    } catch {
+      // IndexedDB not available or no data
+    }
+  }
+
+  async function handleRecordToday() {
+    setRecording(true)
+    setRecordResult(null)
+    try {
+      // Default to Taipei coordinates
+      const lat = 25.034
+      const lng = 121.564
+      const res = await fetch("/api/weather/forecast-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const apiData = await res.json()
+
+      const { recordForecasts, computeAndStoreBiasCorrection } = await import("@/lib/engines/forecast-tracker")
+      const { toLocationKey } = await import("@/lib/engines/forecast-db")
+      const result = await recordForecasts(lat, lng, apiData)
+      const locKey = toLocationKey(lat, lng)
+      await computeAndStoreBiasCorrection(locKey)
+
+      setRecordResult(`Recorded ${result.recorded} forecasts, backfilled ${result.backfilled} actuals`)
+      await loadAccuracyData()
+    } catch (e) {
+      setRecordResult(`Error: ${String(e)}`)
+    } finally {
+      setRecording(false)
+    }
+  }
+
+  async function handleExportCSV() {
+    try {
+      const { getAllLogEntries } = await import("@/lib/engines/forecast-db")
+      const { logEntriesToCSV } = await import("@/lib/engines/forecast-tracker")
+      const entries = await getAllLogEntries()
+      const csv = logEntriesToCSV(entries)
+      const blob = new Blob([csv], { type: "text/csv" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `forecast-log-${new Date().toISOString().split("T")[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent
+    }
+  }
 
   return (
     <div className="p-4 sm:p-8">
@@ -482,6 +608,198 @@ export default function MonitorPage() {
             </div>
           </div>
 
+          {/* Extended Models (JMA + Seasonal) */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Target className="h-4 w-4 text-violet-400" />
+              <h2 className="text-sm font-semibold text-zinc-200">Extended Models</h2>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
+                NEW
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {extendedServices.map(key => (
+                <ServiceCard key={key} serviceKey={key} status={data.services[key]} />
+              ))}
+            </div>
+          </div>
+
+          {/* Forecast Accuracy Dashboard */}
+          <div className="border border-zinc-800 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-cyan-400" />
+                <span className="text-sm font-medium text-zinc-200">Forecast Accuracy Training</span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border font-medium bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+                  BETA
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportCSV}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-zinc-700 rounded text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition-colors"
+                >
+                  <Download className="h-3 w-3" />
+                  CSV
+                </button>
+                <button
+                  onClick={handleRecordToday}
+                  disabled={recording}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border font-medium transition-colors",
+                    recording
+                      ? "border-zinc-700 text-zinc-500 cursor-wait"
+                      : "border-cyan-500/30 text-cyan-400 bg-cyan-500/5 hover:bg-cyan-500/10"
+                  )}
+                >
+                  {recording ? (
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Database className="h-3 w-3" />
+                  )}
+                  Record Today
+                </button>
+              </div>
+            </div>
+
+            {recordResult && (
+              <div className={cn(
+                "mb-3 p-2 rounded text-xs border",
+                recordResult.startsWith("Error")
+                  ? "border-red-500/20 bg-red-500/5 text-red-300"
+                  : "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
+              )}>
+                {recordResult}
+              </div>
+            )}
+
+            {!accuracyData || accuracyData.stats.total_entries === 0 ? (
+              <div className="py-8 text-center space-y-2">
+                <Database className="h-8 w-8 text-zinc-700 mx-auto" />
+                <div className="text-sm text-zinc-500">No forecast data recorded yet</div>
+                <div className="text-xs text-zinc-600">
+                  Click &quot;Record Today&quot; to start capturing daily forecasts.
+                  Over time, the system will compute accuracy metrics and bias corrections.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Stats overview */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 bg-zinc-900/50 rounded-lg">
+                    <div className="text-[10px] text-zinc-500 uppercase">Total Records</div>
+                    <div className="text-lg font-semibold text-zinc-200 mt-1">
+                      {accuracyData.stats.total_entries}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-zinc-900/50 rounded-lg">
+                    <div className="text-[10px] text-zinc-500 uppercase">With Actuals</div>
+                    <div className="text-lg font-semibold text-zinc-200 mt-1">
+                      {accuracyData.stats.entries_with_actuals}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-zinc-900/50 rounded-lg">
+                    <div className="text-[10px] text-zinc-500 uppercase">Wind MAE</div>
+                    <div className="text-lg font-semibold text-zinc-200 mt-1">
+                      {accuracyData.summary ? `${accuracyData.summary.overall_wind_mae} km/h` : "—"}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-zinc-900/50 rounded-lg">
+                    <div className="text-[10px] text-zinc-500 uppercase">Rain Hit Rate</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-lg font-semibold text-zinc-200">
+                        {accuracyData.summary ? `${Math.round(accuracyData.summary.overall_rain_hit_rate * 100)}%` : "—"}
+                      </span>
+                      {accuracyData.summary && (
+                        <span className="flex items-center gap-0.5 text-xs">
+                          {accuracyData.summary.trend === "improving" && <TrendingDown className="h-3 w-3 text-emerald-400" />}
+                          {accuracyData.summary.trend === "degrading" && <TrendingUp className="h-3 w-3 text-red-400" />}
+                          {accuracyData.summary.trend === "stable" && <Minus className="h-3 w-3 text-zinc-500" />}
+                          <span className={cn("text-[10px]",
+                            accuracyData.summary.trend === "improving" ? "text-emerald-400" :
+                            accuracyData.summary.trend === "degrading" ? "text-red-400" : "text-zinc-500"
+                          )}>
+                            {accuracyData.summary.trend}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lead Days Breakdown */}
+                {accuracyData.summary && (
+                  <div>
+                    <div className="text-xs text-zinc-400 mb-2">Lead Days Breakdown (MAE / Bias)</div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {(["lead_1_3", "lead_4_7", "lead_8_14"] as const).map(bucket => {
+                        const b = accuracyData.summary!.buckets[bucket]
+                        const label = bucket === "lead_1_3" ? "1-3 days" : bucket === "lead_4_7" ? "4-7 days" : "8-14 days"
+                        return (
+                          <div key={bucket} className="p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
+                            <div className="text-[10px] text-zinc-500 font-medium">{label}</div>
+                            <div className="mt-2 space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500">MAE</span>
+                                <span className="text-zinc-200 font-mono">{b.wind_mae_kmh} km/h</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500">Bias</span>
+                                <span className={cn("font-mono",
+                                  b.wind_bias_kmh > 0 ? "text-amber-400" : b.wind_bias_kmh < 0 ? "text-sky-400" : "text-zinc-400"
+                                )}>
+                                  {b.wind_bias_kmh > 0 ? "+" : ""}{b.wind_bias_kmh}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500">Rain Hit</span>
+                                <span className="text-zinc-200 font-mono">{Math.round(b.rain_hit_rate * 100)}%</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500">Samples</span>
+                                <span className="text-zinc-400 font-mono">{b.sample_count}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sparkline - simple bar chart of daily MAE */}
+                {accuracyData.summary && accuracyData.summary.daily_mae.length > 0 && (
+                  <div>
+                    <div className="text-xs text-zinc-400 mb-2">Daily Wind MAE Trend</div>
+                    <div className="flex items-end gap-[2px] h-16 p-2 bg-zinc-900/50 rounded-lg">
+                      {accuracyData.summary.daily_mae.slice(-30).map((d, i) => {
+                        const maxMAE = Math.max(...accuracyData.summary!.daily_mae.slice(-30).map(x => x.mae), 1)
+                        const pct = (d.mae / maxMAE) * 100
+                        return (
+                          <div
+                            key={i}
+                            className={cn(
+                              "flex-1 rounded-t-sm min-w-[3px]",
+                              d.mae < 3 ? "bg-emerald-500/60" : d.mae < 6 ? "bg-amber-500/60" : "bg-red-500/60"
+                            )}
+                            style={{ height: `${Math.max(pct, 5)}%` }}
+                            title={`${d.date}: ${d.mae} km/h`}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data range info */}
+                <div className="text-[11px] text-zinc-600 flex items-center gap-4">
+                  <span>Date range: {accuracyData.stats.oldest_date} — {accuracyData.stats.newest_date}</span>
+                  <span>Locations: {accuracyData.stats.locations.length}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Latency Chart */}
           <LatencyChart services={data.services} />
 
@@ -491,7 +809,7 @@ export default function MonitorPage() {
               <Activity className="h-4 w-4 text-zinc-400" />
               <span className="text-sm font-medium text-zinc-200">Data Flow Architecture</span>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
               {/* Open-Meteo pipeline */}
               <div className="p-3 bg-zinc-900/50 rounded-lg space-y-2">
                 <div className="text-sky-400 font-medium mb-2">Open-Meteo Pipeline</div>
@@ -509,6 +827,29 @@ export default function MonitorPage() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-zinc-800 text-zinc-500">
                   Cache: Archive 1hr | Forecast 30min | Ensemble 30min
+                </div>
+              </div>
+              {/* Extended Models pipeline */}
+              <div className="p-3 bg-zinc-900/50 rounded-lg space-y-2">
+                <div className="text-violet-400 font-medium mb-2">Extended Models</div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-violet-400" />
+                  <span>JMA MSM (5km, 78h) → Cross-Validation</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-violet-400" />
+                  <span>JMA GSM (20km, 11d) → Extended Range</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-violet-400" />
+                  <span>SEAS5 (6 months) → Seasonal Outlook</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span>Accuracy Training → Bias Correction</span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-zinc-800 text-zinc-500">
+                  Cache: JMA 30min | Seasonal 24hr | Training: local
                 </div>
               </div>
               {/* CWA pipeline */}

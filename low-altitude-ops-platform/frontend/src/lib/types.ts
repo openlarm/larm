@@ -45,6 +45,7 @@ export interface WeatherTodayInput {
   forecast_confidence?: number   // 0..100 — ensemble member agreement (100 = all agree)
   wind_direction_deg?: number    // Wind direction in degrees (0=N, 90=E, 180=S, 270=W)
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
+  jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }
 
 // ─── CWA Cross-Validation Types ──────────────────────────────────────────────
@@ -334,6 +335,101 @@ export interface Mission {
   risk?: RiskResult
   time_estimate?: TimeResult
   pricing?: PricingResult
+}
+
+// ─── Forecast Accuracy Training ──────────────────────────────────────────────
+
+/** Single-day forecast record (stored in IndexedDB) */
+export interface ForecastLogEntry {
+  id: string                       // `${date}_${lead_days}_${location_key}`
+  date: string                     // target date (YYYY-MM-DD)
+  recorded_at: string              // ISO datetime when forecast was captured
+  location_key: string             // "lat,lng" rounded to 0.01
+  lead_days: number                // forecast lead time (1=tomorrow … 14)
+  forecast: {
+    wind_max_kmh: number
+    wind_gust_kmh: number | null
+    rain_prob_pct: number
+    rain_sum_mm: number
+    wind_p10_kmh: number | null
+    wind_p90_kmh: number | null
+    confidence: number | null
+    source: "open-meteo" | "cwa" | "blended"
+  }
+  actual?: {
+    wind_max_kmh: number
+    wind_gust_kmh: number | null
+    rain_sum_mm: number
+    source: "archive" | "cwa-observation"
+  }
+  accuracy?: {
+    wind_error_kmh: number         // forecast - actual (positive = overestimate)
+    wind_abs_error_kmh: number     // |wind_error|
+    rain_error_mm: number          // forecast - actual
+    rain_hit: boolean              // whether rain/no-rain was predicted correctly (threshold ≥1mm)
+  }
+}
+
+/** Per-bucket bias statistics */
+export interface BiasStats {
+  wind_bias_kmh: number            // mean error (positive = model overestimates)
+  wind_mae_kmh: number             // Mean Absolute Error
+  rain_bias_pct: number            // mean rain probability error
+  rain_hit_rate: number            // fraction of correct rain/no-rain calls (0..1)
+  sample_count: number
+}
+
+/** Bias correction coefficients per location */
+export interface ForecastBiasCorrection {
+  location_key: string
+  updated_at: string
+  sample_count: number
+  buckets: {
+    lead_1_3: BiasStats
+    lead_4_7: BiasStats
+    lead_8_14: BiasStats
+  }
+}
+
+/** Summary for Monitor dashboard */
+export interface ForecastAccuracySummary {
+  location_key: string
+  period_days: number              // lookback window (30/60/90)
+  overall_wind_mae: number
+  overall_rain_hit_rate: number
+  trend: "improving" | "stable" | "degrading"
+  buckets: ForecastBiasCorrection["buckets"]
+  daily_mae: Array<{ date: string; mae: number }>  // for sparkline chart
+}
+
+// ─── Seasonal Forecast (Copernicus CDS via Open-Meteo) ──────────────────────
+
+/** Monthly seasonal forecast from ECMWF SEAS5 */
+export interface SeasonalForecast {
+  month: string                    // "2026-04"
+  wind_max_p10: number             // km/h
+  wind_max_p50: number
+  wind_max_p90: number
+  rain_sum_p10: number             // mm (monthly total)
+  rain_sum_p50: number
+  rain_sum_p90: number
+  temp_max_p50: number             // °C
+}
+
+// ─── JMA Cross-Validation ───────────────────────────────────────────────────
+
+/** Per-day JMA forecast data from Open-Meteo JMA API */
+export interface JMAForecastDay {
+  wind_max_kmh: number | null
+  wind_gust_kmh: number | null
+  rain_sum_mm: number | null
+  source_model: "jma_gsm" | "jma_msm"
+}
+
+/** JMA cross-validation for a single forecast day */
+export interface JMACrossValidation {
+  jma_forecast: JMAForecastDay
+  divergence: CrossValidationDivergence  // reuses existing divergence type
 }
 
 // ─── Wizard state ─────────────────────────────────────────────────────────────

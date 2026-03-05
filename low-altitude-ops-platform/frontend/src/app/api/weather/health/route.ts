@@ -252,14 +252,93 @@ async function checkCWAObservation(apiKey: string | undefined): Promise<ServiceS
   }
 }
 
+// ─── JMA Health Check ───────────────────────────────────────────────────────
+
+async function checkJMA(apiKey: string | undefined): Promise<ServiceStatus> {
+  const paid = !!apiKey
+  const base = paid
+    ? "https://customer-api.open-meteo.com/v1/jma"
+    : "https://api.open-meteo.com/v1/jma"
+
+  const url = new URL(base)
+  if (apiKey) url.searchParams.set("apikey", apiKey)
+  url.searchParams.set("latitude", TEST_LAT.toString())
+  url.searchParams.set("longitude", TEST_LNG.toString())
+  url.searchParams.set("daily", "wind_speed_10m_max,precipitation_sum")
+  url.searchParams.set("wind_speed_unit", "kmh")
+  url.searchParams.set("timezone", "Asia/Taipei")
+  url.searchParams.set("forecast_days", "3")
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
+    }
+    const data = await res.json()
+    const dates: string[] = data.daily?.time ?? []
+    return {
+      ok: dates.length > 0,
+      endpoint: base,
+      plan: paid ? "paid" : "free",
+      latency_ms,
+      sample: { dates_returned: dates.length, model: "jma_gsm+jma_msm", resolution: "5-20km", purpose: "cross_validation" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
+// ─── Seasonal Forecast Health Check ─────────────────────────────────────────
+
+async function checkSeasonal(apiKey: string | undefined): Promise<ServiceStatus> {
+  const paid = !!apiKey
+  const base = paid
+    ? "https://customer-seasonal-api.open-meteo.com/v1/seasonal"
+    : "https://seasonal-api.open-meteo.com/v1/seasonal"
+
+  const url = new URL(base)
+  if (apiKey) url.searchParams.set("apikey", apiKey)
+  url.searchParams.set("latitude", TEST_LAT.toString())
+  url.searchParams.set("longitude", TEST_LNG.toString())
+  url.searchParams.set("daily", "wind_speed_10m_max")
+  url.searchParams.set("wind_speed_unit", "kmh")
+  url.searchParams.set("timezone", "Asia/Taipei")
+
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) })
+    const latency_ms = Date.now() - t0
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms, error: `HTTP ${res.status}: ${body.slice(0, 120)}` }
+    }
+    const data = await res.json()
+    const dates: string[] = data.daily?.time ?? []
+    return {
+      ok: dates.length > 0,
+      endpoint: base,
+      plan: paid ? "paid" : "free",
+      latency_ms,
+      sample: { dates_returned: dates.length, model: "ecmwf_seas5", range: "1-6_months", purpose: "seasonal_forecast" },
+    }
+  } catch (e) {
+    return { ok: false, endpoint: base, plan: paid ? "paid" : "free", latency_ms: Date.now() - t0, error: String(e) }
+  }
+}
+
 export async function GET() {
   const meteoKey = process.env.OPEN_METEO_API_KEY || undefined
   const cwaKey   = process.env.CWA_API_KEY || undefined
 
-  const [forecast, archive, ensemble, cwaThunder, cwaForecast, cwaObservation] = await Promise.all([
+  const [forecast, archive, ensemble, jma, seasonal, cwaThunder, cwaForecast, cwaObservation] = await Promise.all([
     checkForecast(meteoKey),
     checkArchive(meteoKey),
     checkEnsemble(meteoKey),
+    checkJMA(meteoKey),
+    checkSeasonal(meteoKey),
     checkCWAThunder(cwaKey),
     checkCWAForecast(cwaKey),
     checkCWAObservation(cwaKey),
@@ -274,6 +353,8 @@ export async function GET() {
     cwaKey
       ? "CWA enabled: thunder detection (F-C0032-001), township forecast cross-validation (F-D0047-091), real-time observation (O-A0003-001)."
       : "CWA disabled: add CWA_API_KEY to .env.local for thunder detection, forecast cross-validation, and real-time station data.",
+    "JMA: JMA MSM (5km, 78h) + GSM (20km, 11d) for Taiwan cross-validation.",
+    "Seasonal: ECMWF SEAS5 via Open-Meteo (1-6 month outlook).",
   ].join(" ")
 
   return NextResponse.json(
@@ -283,10 +364,13 @@ export async function GET() {
       cwa_enabled: !!cwaKey,
       checked_at: new Date().toISOString(),
       services: {
-        // Open-Meteo
+        // Open-Meteo core
         forecast,
         archive,
         ensemble,
+        // Additional models
+        jma,
+        seasonal,
         // CWA
         cwa_thunder: cwaThunder,
         cwa_forecast: cwaForecast,
