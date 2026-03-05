@@ -188,28 +188,34 @@ async function checkCWAForecast(apiKey: string | undefined): Promise<ServiceStat
   if (!apiKey) {
     return { ok: false, endpoint, plan: "n/a", latency_ms: null, error: "CWA_API_KEY not set" }
   }
+  // F-D0047-091 is township-level — query without locationName filter,
+  // then verify the county-grouped response has data.
   const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-091")
   url.searchParams.set("Authorization", apiKey)
-  url.searchParams.set("locationName", TEST_CITY)
   url.searchParams.set("elementName", "WS,WD,PoP12h")
 
   const t0 = Date.now()
   try {
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) })
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000) })
     const latency_ms = Date.now() - t0
     if (!res.ok) {
       return { ok: false, endpoint, plan: "n/a", latency_ms, error: `HTTP ${res.status}` }
     }
     const data = await res.json()
-    const locations = data?.records?.Locations?.[0]?.Location ?? data?.records?.locations?.[0]?.location ?? []
-    const elCount: number = locations[0]?.weatherElement?.length ?? 0
-    const windEntries: number = locations[0]?.weatherElement?.[0]?.time?.length ?? 0
+    // Response: records.Locations[] = county groups, each with Location[] = townships
+    interface LocGroup { locationsName?: string; Location?: Array<{ locationName?: string; weatherElement?: unknown[] }> }
+    const groups: LocGroup[] = data?.records?.Locations ?? []
+    const countyCount = groups.length
+    // Find test county (臺北市) or use first
+    const testCounty = groups.find(g => g.locationsName === TEST_CITY) ?? groups[0]
+    const townshipCount = testCounty?.Location?.length ?? 0
+    const elCount = testCounty?.Location?.[0]?.weatherElement?.length ?? 0
     return {
-      ok: elCount > 0,
+      ok: countyCount > 0 && townshipCount > 0 && elCount > 0,
       endpoint,
       plan: "n/a",
       latency_ms,
-      sample: { dataset: "F-D0047-091", elements: elCount, wind_entries: windEntries, purpose: "cross_validation" },
+      sample: { dataset: "F-D0047-091", counties: countyCount, townships: townshipCount, elements: elCount, purpose: "cross_validation" },
     }
   } catch (e) {
     return { ok: false, endpoint, plan: "n/a", latency_ms: Date.now() - t0, error: String(e) }

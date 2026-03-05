@@ -319,8 +319,10 @@ async function fetchCWAThunder(city: string, apiKey: string): Promise<Map<string
 
 // ─── Step E: CWA Township Forecast (F-D0047-091) ────────────────────────────
 // Fetches WS, WD, PoP12h, Wx, MinT, MaxT for cross-validation with Open-Meteo.
-// F-D0047-091 covers all townships in Taiwan (鄉鎮天氣預報-全臺灣).
-// Falls back to F-D0047-089 (county-level) if township lookup fails.
+// F-D0047-091 is a township-level (鄉鎮) dataset where:
+//   records.Locations[] = counties (locationsName = "臺北市")
+//   records.Locations[].Location[] = townships (locationName = "中正區")
+// We match by county name (city param) then pick the first township.
 
 interface CWATimeEntry {
   startTime: string
@@ -342,6 +344,12 @@ interface CWALocationData {
   weatherElement: CWAWeatherElement[]
 }
 
+interface CWALocationsGroup {
+  locationsName: string
+  dataid: string
+  Location: CWALocationData[]
+}
+
 // Parse CWA wind speed text: "3" → m/s, convert to km/h. Handles "< 1" style.
 function parseCWAWindSpeed(val: string): number | null {
   const cleaned = val.replace(/[<>≤≥]/g, "").trim()
@@ -354,25 +362,34 @@ async function fetchCWAForecast(
   city: string,
   apiKey: string,
 ): Promise<Map<string, CWAForecastDay>> {
-  // Use F-D0047-091 (全臺灣鄉鎮市區預報) with city as locationName
+  // F-D0047-091: query without locationName to get county-grouped data,
+  // then match by county name (locationsName) in the response.
   const url = new URL("https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-091")
   url.searchParams.set("Authorization", apiKey)
-  url.searchParams.set("locationName", normalizeCityName(city))
   url.searchParams.set("elementName", "WS,WD,PoP12h,Wx,MinT,MaxT")
 
   const res = await fetch(url.toString(), {
     next: { revalidate: 1800 },
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok) return new Map()
 
   const data = await res.json()
-  const locations: CWALocationData[] =
-    data?.records?.Locations?.[0]?.Location ?? data?.records?.locations?.[0]?.location ?? []
 
+  // F-D0047 response: records.Locations[] = array of county groups
+  const locationsGroups: CWALocationsGroup[] = data?.records?.Locations ?? []
+  if (locationsGroups.length === 0) return new Map()
+
+  // Find the matching county by name (e.g. "臺北市")
+  const normalizedCity = normalizeCityName(city)
+  const matchingCounty = locationsGroups.find(
+    g => g.locationsName === normalizedCity
+  ) ?? locationsGroups[0]  // fallback to first county if no match
+
+  const locations: CWALocationData[] = matchingCounty?.Location ?? []
   if (locations.length === 0) return new Map()
 
-  // Use first matching location
+  // Use first township in the matched county
   const loc = locations[0]
   const elements = loc.weatherElement ?? []
 
