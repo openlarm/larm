@@ -1,6 +1,8 @@
 // LARM v2.0 — Weather Regime Parameters
 // v1.0 retained for backward compatibility; v2.0 is active default
 
+import { type PricingParams, PRICING_PARAMS_DEFAULT } from "./pricing-params"
+
 export type WCode = "W0" | "W1" | "W2" | "W3" | "W4" | "W5"
 export type RegionKey = "windward" | "leeward" | "coastal" | "rooftop_open"
 
@@ -115,6 +117,7 @@ export interface WeatherRegimeParams {
   w5_typhoon_trend_threshold: number   // default 3.6 (avg annual typhoons)
   w5_typhoon_trend_bonus: number       // default 2
   r4_nogo_threshold: number            // default 92 (R4 score above this = hard NO-GO)
+  pricing: PricingParams               // embedded pricing parameters
 }
 
 // ─── v1.0 Params (legacy) ───────────────────────────────────────────────────
@@ -199,6 +202,7 @@ const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 0,
   r4_nogo_threshold: 86,
+  pricing: PRICING_PARAMS_DEFAULT,
 }
 
 // ─── v2.0 Params (active) ───────────────────────────────────────────────────
@@ -302,6 +306,7 @@ const WEATHER_REGIME_PARAMS_V2: WeatherRegimeParams = {
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 2,
   r4_nogo_threshold: 92,                       // [Bug 2] R4 86–92 = COND-D2, >92 = NO-GO
+  pricing: PRICING_PARAMS_DEFAULT,
 }
 
 // ─── Params Registry (versioned) ──────────────────────────────────────────────
@@ -313,8 +318,23 @@ export const PARAM_REGISTRY: Record<string, WeatherRegimeParams> = {
 
 export const ACTIVE_PARAMS_VERSION = "v2.0"
 
+const LS_KEY = "larm_params_override"
+
 export function getParams(version: string = ACTIVE_PARAMS_VERSION): WeatherRegimeParams {
-  return PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
+  const base = PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
+  if (typeof window === "undefined") return base
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return base
+    const override = JSON.parse(raw) as Partial<WeatherRegimeParams>
+    return {
+      ...base,
+      ...override,
+      pricing: { ...base.pricing, ...(override.pricing ?? {}) },
+    }
+  } catch {
+    return base
+  }
 }
 
 // Keep the named export for backward compatibility

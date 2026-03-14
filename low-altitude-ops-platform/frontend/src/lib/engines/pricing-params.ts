@@ -125,18 +125,41 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
   version: "v1.0",
 }
 
-// ─── LocalStorage key ────────────────────────────────────────────────────────
+// ─── Migration: move legacy pricing_params_override into larm_params_override ─
 
-const LS_KEY = "pricing_params_override"
+const LEGACY_LS_KEY = "pricing_params_override"
+const LARM_LS_KEY = "larm_params_override"
+
+function migrateLegacyPricingOverride(): void {
+  if (typeof window === "undefined") return
+  try {
+    const oldRaw = localStorage.getItem(LEGACY_LS_KEY)
+    if (!oldRaw) return
+    const oldPricing = JSON.parse(oldRaw) as Partial<PricingParams>
+    const larmRaw = localStorage.getItem(LARM_LS_KEY)
+    const larmOverride = larmRaw ? JSON.parse(larmRaw) : {}
+    // Only migrate if larm override doesn't already have pricing
+    if (!larmOverride.pricing) {
+      larmOverride.pricing = oldPricing
+      localStorage.setItem(LARM_LS_KEY, JSON.stringify(larmOverride))
+    }
+    localStorage.removeItem(LEGACY_LS_KEY)
+  } catch {
+    // silently ignore migration errors
+  }
+}
 
 // ─── Reader ──────────────────────────────────────────────────────────────────
 
 export function getPricingParams(): PricingParams {
   if (typeof window === "undefined") return PRICING_PARAMS_DEFAULT
+  migrateLegacyPricingOverride()
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = localStorage.getItem(LARM_LS_KEY)
     if (!raw) return PRICING_PARAMS_DEFAULT
-    return { ...PRICING_PARAMS_DEFAULT, ...JSON.parse(raw) }
+    const larm = JSON.parse(raw)
+    if (!larm.pricing) return PRICING_PARAMS_DEFAULT
+    return { ...PRICING_PARAMS_DEFAULT, ...larm.pricing }
   } catch {
     return PRICING_PARAMS_DEFAULT
   }
