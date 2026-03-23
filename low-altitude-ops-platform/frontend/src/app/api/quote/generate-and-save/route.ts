@@ -49,23 +49,16 @@ export async function POST(request: Request) {
     const pdfUrl = urlData.publicUrl
 
     // ── Save quote record to DB ────────────────────────────────────────────
-    const numBuildings = body.formData.numBuildings ?? 1
-    const totalArea =
-      body.areaEstimate.project_total_m2 ??
-      body.areaEstimate.total_area_m2 * numBuildings
-
     const { error: dbError } = await supabase.from("quotes").upsert(
       {
         quote_code: quoteCode,
-        pdf_path: pdfPath,
+        form_data: body.formData,
+        area_estimate: body.areaEstimate,
+        building_name: body.buildingName ?? null,
+        pricing: body.pricing,
+        time_result: body.timeResult,
         pdf_url: pdfUrl,
-        total_ntd: body.pricing.total,
-        suggested_days: body.timeResult.suggested_days,
-        building_type: body.formData.buildingType,
-        floors: body.formData.floors,
-        total_area_m2: totalArea,
-        address: body.formData.address ?? null,
-        valid_until: body.pricing.valid_until,
+        expires_at: body.pricing.valid_until,
       },
       { onConflict: "quote_code" },
     )

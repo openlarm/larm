@@ -87,7 +87,7 @@ async function handleTextMessage(replyToken: string, text: string) {
     // Look up quote in DB
     const { data: quote, error } = await supabase
       .from("quotes")
-      .select("quote_code, total_ntd, suggested_days, valid_until, pdf_url")
+      .select("quote_code, pricing, time_result, expires_at, pdf_url")
       .eq("quote_code", quoteCode)
       .single()
 
@@ -110,12 +110,15 @@ async function handleTextMessage(replyToken: string, text: string) {
     }
 
     // Reply with quote Flex Message + PDF download link
+    const pricing = quote.pricing as { total: number; valid_until: string }
+    const timeResult = quote.time_result as { suggested_days: number }
+
     await replyQuotePdf(replyToken, {
       quoteCode: quote.quote_code as string,
-      totalNtd: quote.total_ntd as number,
-      suggestedDays: quote.suggested_days as number,
+      totalNtd: pricing.total,
+      suggestedDays: timeResult.suggested_days,
       pdfUrl: quote.pdf_url as string,
-      validUntil: quote.valid_until as string,
+      validUntil: (quote.expires_at as string) ?? pricing.valid_until,
     })
   } catch (err) {
     console.error(`Failed to handle quote ${quoteCode}:`, err)
