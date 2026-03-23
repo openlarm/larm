@@ -84,10 +84,9 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
   contamination_cap: 15,
 
   cleaning_agent_surcharge: {
-    water: 0,
-    neutral: 3,
-    acid: 10,
-    alkali: 10,
+    soft: -1,
+    standard: 1,
+    deep: 3,
   },
 
   facade_surcharges: {

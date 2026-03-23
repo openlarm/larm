@@ -24,6 +24,8 @@ interface Props {
   onDrawModeEnd?: () => void
   /** When provided the marker becomes draggable and map clicks also reposition it */
   onPositionChange?: (lat: number, lng: number) => void
+  /** Exposes the map container DOM element for screenshot capture */
+  mapContainerRef?: (el: HTMLDivElement | null) => void
 }
 
 const SATELLITE_TILE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -70,6 +72,7 @@ export function QuoteMap({
   lat, lng, airspace,
   drawMode, drawLabel, persistedShapes,
   onPolygonDraw, onDrawModeEnd, onPositionChange,
+  mapContainerRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<unknown>(null)
@@ -373,6 +376,6 @@ export function QuoteMap({
   }, [persistedShapes])
 
   return (
-    <div ref={containerRef} className="w-full h-[220px] sm:h-[300px] rounded-lg border border-zinc-700 overflow-hidden" />
+    <div ref={(el) => { (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el; mapContainerRef?.(el) }} className="w-full h-[220px] sm:h-[300px] rounded-lg border border-zinc-700 overflow-hidden" />
   )
 }

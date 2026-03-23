@@ -23,6 +23,8 @@ interface Props {
   setAreaEstimate: (a: AreaEstimate) => void
   onNext: () => void
   onBack: () => void
+  /** Callback ref for map container — used for screenshot capture */
+  mapContainerRef?: (el: HTMLDivElement | null) => void
 }
 
 // Local type for a completed drawn polygon
@@ -44,6 +46,7 @@ const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 export function QuoteStep2({
   formData, updateForm, buildingPerimeter, buildingPolygon,
   buildingDimensions, areaEstimate, setAreaEstimate, onNext, onBack,
+  mapContainerRef,
 }: Props) {
   const floors = formData.floors ?? 10
   const numFacades = formData.numFacades ?? 4
@@ -192,18 +195,16 @@ export function QuoteStep2({
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              清潔劑種類
+              清潔方式
               <span className="text-xs font-normal text-zinc-400 ml-1">（整案）</span>
             </label>
             <select
-              value={formData.cleaningAgent ?? "water"}
+              value={formData.cleaningAgent ?? "standard"}
               onChange={e => updateForm({ cleaningAgent: e.target.value as CleaningAgent })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
               {CLEANING_AGENT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {o.label}{o.surcharge > 0 ? `（+${o.surcharge} NTD/㎡）` : "（無加價）"}
-                </option>
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -218,9 +219,9 @@ export function QuoteStep2({
               onChange={e => updateForm({ rooftopAccess: e.target.value as RooftopAccess })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              <option value="Good">良好（女兒牆佳，無加價）</option>
-              <option value="Limited">受限（女兒牆深/寬，+12 NTD/㎡）</option>
-              <option value="NotAvailable">不可使用（+12 NTD/㎡）</option>
+              <option value="Good">良好（女兒牆佳）</option>
+              <option value="Limited">受限（女兒牆深/寬）</option>
+              <option value="NotAvailable">不可使用</option>
             </select>
           </div>
 
@@ -388,6 +389,7 @@ export function QuoteStep2({
                 persistedShapes={persistedShapes}
                 onPolygonDraw={handlePolygonDraw}
                 onDrawModeEnd={handleDrawModeEnd}
+                mapContainerRef={mapContainerRef}
               />
             </>
           )}

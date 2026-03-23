@@ -174,9 +174,9 @@ export function Step3Building({ mission, update, next, back, buildingPolygons, o
               <Select value={rooftop} onValueChange={v => setRooftop(v as RooftopAccess)}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
-                  {(["Good","Limited","NotAvailable"] as RooftopAccess[]).map(r => (
-                    <SelectItem key={r} value={r} className="text-white">{r}</SelectItem>
-                  ))}
+                  <SelectItem value="Good" className="text-white">良好（女兒牆佳）</SelectItem>
+                  <SelectItem value="Limited" className="text-white">受限（女兒牆深/寬）</SelectItem>
+                  <SelectItem value="NotAvailable" className="text-white">不可使用</SelectItem>
                 </SelectContent>
               </Select>
             </div>
