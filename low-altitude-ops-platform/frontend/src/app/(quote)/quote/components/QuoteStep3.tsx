@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Image from "next/image"
 import type { AirspaceResult, PricingResult, TimeResult, Contamination } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
@@ -49,69 +50,81 @@ export function QuoteStep3({
   pricing, setPricing, timeResult, setTimeResult,
   onBack, onReset,
 }: Props) {
-  // ── ALL hooks must be declared before any early returns ───────────────────
-  const handlePrint = useCallback(() => {
-    // Save quote record to store
-    if (pricing && timeResult) {
+  // ── LINE send state ───────────────────────────────────────────────────────
+  const [lineSending, setLineSending] = useState(false)
+  const [lineSent, setLineSent] = useState(false)
+  const [lineError, setLineError] = useState<string | null>(null)
+
+  const handleGetQuoteViaLine = useCallback(async () => {
+    if (!pricing || !timeResult) return
+    setLineSending(true)
+    setLineError(null)
+
+    try {
       const numBuildings = formData.numBuildings ?? 1
       const totalArea = areaEstimate.project_total_m2 ?? (areaEstimate.total_area_m2 * numBuildings)
+
+      // Save locally first
       saveQuote({
-        quote_code:      pricing.quote_code,
-        client_name:     localInfo.clientName  || formData.clientName,
-        address:         localInfo.address     || formData.address,
-        building_name:   localInfo.buildingName || buildingName || undefined,
-        floors:          formData.floors,
-        total_area_m2:   totalArea,
-        total_ntd:       pricing.total,
-        suggested_days:  timeResult.suggested_days,
+        quote_code:    pricing.quote_code,
+        client_name:   formData.clientName,
+        address:       formData.address,
+        building_name: buildingName || undefined,
+        floors:        formData.floors,
+        total_area_m2: totalArea,
+        total_ntd:     pricing.total,
+        suggested_days: timeResult.suggested_days,
       })
-    }
 
-    const styleEl = document.createElement("style")
-    styleEl.id = "__quote-print-style__"
-    // Use visibility (not display:none) so that descendants can override
-    styleEl.textContent = `
-      @media print {
-        body * { visibility: hidden !important; }
-        #quote-print-area,
-        #quote-print-area * { visibility: visible !important; }
-        #quote-print-area {
-          position: fixed !important;
-          inset: 0 !important;
-          overflow: auto !important;
-          padding: 16px !important;
-          background: white !important;
-          z-index: 9999 !important;
-        }
+      // Generate PDF & save to server
+      const res = await fetch("/api/quote/generate-and-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pricing,
+          timeResult,
+          formData: {
+            clientName: formData.clientName,
+            address: formData.address,
+            buildingType: formData.buildingType,
+            floors: formData.floors,
+            numBuildings: formData.numBuildings,
+            serviceType: formData.serviceType,
+            timeSlot: formData.timeSlot,
+            expectedDate: formData.expectedDate,
+            urgent: formData.urgent,
+          },
+          areaEstimate: {
+            source: areaEstimate.source,
+            total_area_m2: areaEstimate.total_area_m2,
+            project_total_m2: areaEstimate.project_total_m2,
+            num_facades: areaEstimate.num_facades,
+          },
+          buildingName,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "伺服器錯誤" }))
+        throw new Error((err as { error?: string }).error ?? "伺服器錯誤")
       }
-    `
-    document.head.appendChild(styleEl)
-    window.print()
-    window.addEventListener("afterprint", () => { styleEl.remove() }, { once: true })
+
+      const { quoteCode } = (await res.json()) as { quoteCode: string }
+
+      // Open LINE with pre-filled message
+      const lineMessage = encodeURIComponent(`我要報價單 ${quoteCode}`)
+      window.open(
+        `https://line.me/R/oaMessage/@058xfgns/?${lineMessage}`,
+        "_blank",
+      )
+
+      setLineSent(true)
+    } catch (err) {
+      setLineError(err instanceof Error ? err.message : "發送失敗，請重試")
+    } finally {
+      setLineSending(false)
+    }
   }, [pricing, timeResult, formData, areaEstimate, buildingName])
-
-  // ── Customer info state ────────────────────────────────────────────────────
-  const [localInfo, setLocalInfo] = useState({
-    clientName:    formData.clientName    ?? "",
-    buildingName:  buildingName           ?? "",
-    address:       formData.address       ?? "",
-    contactPerson: formData.contactPerson ?? "",
-    phone:         formData.phone         ?? "",
-    email:         formData.email         ?? "",
-  })
-  const [infoConfirmed, setInfoConfirmed] = useState(false)
-  const [infoErrors, setInfoErrors] = useState<Record<string, string>>({})
-
-  const handleConfirmInfo = useCallback(() => {
-    const errors: Record<string, string> = {}
-    if (!localInfo.clientName.trim())    errors.clientName    = "必填"
-    if (!localInfo.address.trim())       errors.address       = "必填"
-    if (!localInfo.contactPerson.trim()) errors.contactPerson = "必填"
-    if (!localInfo.phone.trim())         errors.phone         = "必填"
-    if (!localInfo.email.trim())         errors.email         = "必填"
-    if (Object.keys(errors).length > 0) { setInfoErrors(errors); return }
-    setInfoConfirmed(true)
-  }, [localInfo])
 
   useEffect(() => {
     const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
@@ -208,14 +221,11 @@ export function QuoteStep3({
         {/* Info grid */}
         <div className="px-4 sm:px-6 py-4 bg-zinc-50 border-b border-zinc-200">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            <InfoRow label="客戶" value={infoConfirmed ? localInfo.clientName : formData.clientName} />
-            <InfoRow label="地址" value={infoConfirmed ? localInfo.address : formData.address} />
-            {(infoConfirmed ? localInfo.buildingName : buildingName) && (
-              <InfoRow label="建物名稱" value={(infoConfirmed ? localInfo.buildingName : buildingName)!} />
+            <InfoRow label="客戶" value={formData.clientName} />
+            <InfoRow label="地址" value={formData.address} />
+            {buildingName && (
+              <InfoRow label="建物名稱" value={buildingName} />
             )}
-            {infoConfirmed && localInfo.contactPerson && <InfoRow label="聯絡人"  value={localInfo.contactPerson} />}
-            {infoConfirmed && localInfo.phone         && <InfoRow label="電話"    value={localInfo.phone} />}
-            {infoConfirmed && localInfo.email         && <InfoRow label="信箱"    value={localInfo.email} />}
             <InfoRow
               label="建物"
               value={`${BUILDING_LABELS[formData.buildingType] ?? formData.buildingType} ${formData.floors}F（${(formData.floors * 3.5).toFixed(1)}m）`}
@@ -394,67 +404,109 @@ export function QuoteStep3({
         </div>
       </div>
 
-      {/* Customer info confirmation — required before PDF download */}
-      <div className={`no-print border rounded-xl overflow-hidden transition-colors ${infoConfirmed ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
-        {infoConfirmed ? (
-          <div className="px-6 py-4 flex items-center gap-3">
-            <span className="text-emerald-600 text-lg">✅</span>
-            <div className="flex-1 text-sm text-emerald-800">
-              <p className="font-semibold">客戶資料已確認</p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                {localInfo.contactPerson}・{localInfo.phone}・{localInfo.email}
-              </p>
-            </div>
+      {/* LINE CTA — get quote via LINE */}
+      <div className="no-print border-2 border-[#06C755] rounded-xl overflow-hidden">
+        {lineSent ? (
+          <div className="px-6 py-5 bg-green-50 text-center space-y-3">
+            <div className="text-3xl">✅</div>
+            <p className="text-sm font-semibold text-green-800">
+              報價單已生成，LINE 已開啟！
+            </p>
+            <p className="text-xs text-green-700">
+              請在 LINE 中送出訊息，即可立即收到報價單 PDF。
+            </p>
+            <p className="text-xs text-zinc-500 mt-2">
+              報價編號：<span className="font-mono font-medium">{pricing.quote_code}</span>
+            </p>
             <button
-              onClick={() => setInfoConfirmed(false)}
-              className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+              onClick={() => setLineSent(false)}
+              className="text-xs text-green-600 hover:text-green-800 underline mt-2"
             >
-              修改
+              重新發送
             </button>
           </div>
         ) : (
-          <div className="px-6 py-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-amber-600">📋</span>
-              <p className="text-sm font-semibold text-amber-800">請填寫客戶資料後方可下載 PDF</p>
+          <div className="px-6 py-6 space-y-5">
+            {/* Title */}
+            <div className="text-center space-y-1">
+              <p className="text-base font-semibold text-zinc-900">
+                透過 LINE 取得完整報價單 PDF
+              </p>
+              <p className="text-xs text-zinc-500">
+                點擊下方按鈕，系統將自動生成報價單並透過 LINE 官方帳號發送給您
+              </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-              {[
-                { key: "clientName",    label: "客戶名稱", placeholder: "例：遠雄建設",         type: "text"  },
-                { key: "buildingName",  label: "建物名稱", placeholder: "例：信義之星",          type: "text"  },
-                { key: "address",       label: "建物地址", placeholder: "台北市信義區…",         type: "text"  },
-                { key: "contactPerson", label: "聯絡人",   placeholder: "例：王大明",             type: "text"  },
-                { key: "phone",         label: "電話號碼", placeholder: "例：0912-345-678",       type: "tel"   },
-                { key: "email",         label: "信箱",     placeholder: "example@company.com.tw", type: "email" },
-              ].map(({ key, label, placeholder, type }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-amber-800 mb-1">
-                    {label}
-                    {key !== "buildingName" && <span className="text-red-500 ml-0.5">*</span>}
-                  </label>
-                  <input
-                    type={type}
-                    value={localInfo[key as keyof typeof localInfo]}
-                    onChange={e => {
-                      setLocalInfo(prev => ({ ...prev, [key]: e.target.value }))
-                      if (infoErrors[key]) setInfoErrors(prev => { const n = { ...prev }; delete n[key]; return n })
-                    }}
-                    placeholder={placeholder}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-amber-400 bg-white ${
-                      infoErrors[key] ? "border-red-400" : "border-amber-200"
-                    }`}
-                  />
-                  {infoErrors[key] && <p className="text-red-500 text-xs mt-0.5">{infoErrors[key]}</p>}
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end">
+
+            {/* Main CTA button */}
+            <div className="flex justify-center">
               <button
-                onClick={handleConfirmInfo}
-                className="px-5 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 font-medium transition-colors"
+                onClick={handleGetQuoteViaLine}
+                disabled={lineSending}
+                className="flex items-center gap-3 px-8 py-3.5 rounded-xl font-semibold text-white text-base transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait"
+                style={{ backgroundColor: "#06C755" }}
               >
-                確認客戶資料
+                {lineSending ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    生成報價單中...
+                  </>
+                ) : (
+                  <>
+                    {/* LINE icon */}
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314" />
+                    </svg>
+                    透過 LINE 取得報價單
+                  </>
+                )}
               </button>
+            </div>
+
+            {/* Error */}
+            {lineError && (
+              <div className="text-center">
+                <p className="text-sm text-red-600">{lineError}</p>
+                <button
+                  onClick={handleGetQuoteViaLine}
+                  className="text-xs text-red-500 hover:text-red-700 underline mt-1"
+                >
+                  重試
+                </button>
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-zinc-200" />
+              <span className="text-xs text-zinc-400">或掃描 QR Code 加好友</span>
+              <div className="flex-1 h-px bg-zinc-200" />
+            </div>
+
+            {/* QR Code + LINE ID */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-32 h-32 bg-white border border-zinc-200 rounded-lg p-1 flex items-center justify-center">
+                <Image
+                  src="/images/line-qr.svg"
+                  alt="LINE QR Code @058xfgns"
+                  width={120}
+                  height={120}
+                  className="rounded"
+                />
+              </div>
+              <p className="text-xs text-zinc-500">
+                LINE ID：<span className="font-mono font-medium">@058xfgns</span>
+              </p>
+              <a
+                href="https://line.me/ti/p/@058xfgns"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[#06C755] hover:underline font-medium"
+              >
+                點此加入好友
+              </a>
             </div>
           </div>
         )}
@@ -467,18 +519,6 @@ export function QuoteStep3({
           className="px-5 py-3 sm:py-2.5 border border-zinc-300 text-zinc-700 rounded-lg hover:bg-zinc-50 transition-colors"
         >
           上一步
-        </button>
-        <button
-          onClick={handlePrint}
-          disabled={!infoConfirmed}
-          title={!infoConfirmed ? "請先填寫並確認客戶資料" : ""}
-          className={`px-5 py-3 sm:py-2.5 rounded-lg font-medium transition-colors ${
-            infoConfirmed
-              ? "bg-emerald-600 text-white hover:bg-emerald-700"
-              : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
-          }`}
-        >
-          下載 PDF
         </button>
         <button
           onClick={onReset}
@@ -545,45 +585,3 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function buildPlainText(
-  form: QuoteFormData,
-  airspace: AirspaceResult | null,
-  area: AreaEstimate,
-  pricing: PricingResult,
-  time: TimeResult,
-): string {
-  const lines = [
-    `=== GDS 低空作業 快速報價單 ===`,
-    `報價編號：${pricing.quote_code}`,
-    `報價日期：${new Date().toISOString().split("T")[0]}`,
-    `有效至：${pricing.valid_until}`,
-    ``,
-    `客戶：${form.clientName}`,
-    `地址：${form.address}`,
-    `建物：${form.floors}F（${(form.floors * 3.5).toFixed(1)}m）${(form.numBuildings ?? 1) > 1 ? `，共 ${form.numBuildings} 棟` : ""}`,
-    `空域：${!airspace || airspace.status === "OK" ? "可直接作業" : airspace.status === "NeedPermit" ? "需申請許可" : "禁飛區"}`,
-    `施作面積：${(area.total_area_m2 * (form.numBuildings ?? 1)).toLocaleString()} ㎡（${SOURCE_LABELS[area.source]}${(form.numBuildings ?? 1) > 1 ? `，${form.numBuildings} 棟合計` : ""}）`,
-    ``,
-    `--- 費用明細 ---`,
-    ...pricing.line_items.map(li => `${li.label}  ${li.subtotal.toLocaleString()} NTD`),
-    `小計：${pricing.subtotal.toLocaleString()} NTD`,
-    `調整倍率：× ${pricing.multiplier.toFixed(2)}`,
-    ``,
-    `報價總額：NTD ${pricing.total.toLocaleString()}`,
-    `預估工期：${time.suggested_days} 天`,
-    ...(form.expectedDate ? (() => {
-      const w = getWeatherRisk(form.expectedDate)
-      const total = time.suggested_days + w.bufferDays
-      return [
-        ``,
-        `--- 天氣風險評估（${w.season}，${["低風險","中度風險","高風險"][["low","medium","high"].indexOf(w.level)]}）---`,
-        ...w.concerns.map(c => `• ${c}`),
-        w.bufferDays > 0 ? `建議含緩衝工期：${time.suggested_days} + ${w.bufferDays} = ${total} 天` : "",
-        w.advice,
-      ].filter(Boolean)
-    })() : []),
-    ``,
-    `⚠️ 本報價為快速估算，正式報價需現場勘查確認。`,
-  ]
-  return lines.join("\n")
-}
