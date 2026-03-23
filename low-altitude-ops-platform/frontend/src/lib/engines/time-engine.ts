@@ -67,7 +67,7 @@ function getWindCoeffTable(missionType: MissionType): { max: number; coeff: numb
 }
 
 const COMPLEXITY_COEFF: Record<Complexity, number> = {
-  none: 1.00, light: 0.98, medium: 0.9, heavy: 0.70,
+  light: 0.98, medium: 0.9, heavy: 0.70,
 }
 
 const CONTAMINATION_COEFF: Record<Contamination, number> = {
@@ -126,8 +126,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
 
   const dominant_complexity: Complexity =
     facades.some(f => f.complexity === "heavy") ? "heavy" :
-    facades.some(f => f.complexity === "medium") ? "medium" :
-    facades.some(f => f.complexity === "light") ? "light" : "none"
+    facades.some(f => f.complexity === "medium") ? "medium" : "light"
 
   const baseline = getBaseline(missionType, buildingType)
 

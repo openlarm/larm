@@ -94,8 +94,7 @@ export const CLEANING_AGENT_OPTIONS: { value: CleaningAgent; label: string; surc
 ]
 
 export const COMPLEXITY_OPTIONS: { value: Complexity; label: string; desc: string }[] = [
-  { value: "none",   label: "無",   desc: "平整外牆" },
-  { value: "light",  label: "輕微", desc: "少量凸出" },
+  { value: "light",  label: "輕微", desc: "少量凸出 / 平整外牆" },
   { value: "medium", label: "中等", desc: "窗框、線條較多" },
   { value: "heavy",  label: "複雜", desc: "大量裝飾/格柵" },
 ]

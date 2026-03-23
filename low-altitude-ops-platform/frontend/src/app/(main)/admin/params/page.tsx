@@ -670,7 +670,7 @@ export default function AdminParamsPage() {
                           </tr>
                         ))}
                         <tr><td colSpan={2} className="text-[10px] text-zinc-600 pt-2">立面</td></tr>
-                        {[["none", "+0"], ["light", "+2"], ["medium", "+4"], ["heavy", "+6"]].map(([tier, pts]) => (
+                        {[["light", "+2"], ["medium", "+4"], ["heavy", "+6"]].map(([tier, pts]) => (
                           <tr key={tier} className="border-t border-zinc-800/40">
                             <td className="py-0.5 pr-4">{tier}</td>
                             <td className="py-0.5 font-mono text-right">{pts}</td>
@@ -789,7 +789,7 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">立面複雜度加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {([["none", "無複雜度"], ["light", "輕度"], ["medium", "中度"], ["heavy", "重度"]] as const).map(([key, label]) => (
+                      {([["light", "輕度"], ["medium", "中度"], ["heavy", "重度"]] as const).map(([key, label]) => (
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
