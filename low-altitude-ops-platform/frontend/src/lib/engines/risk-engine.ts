@@ -168,7 +168,7 @@ function computeGScore(
   const floors = b.building_floors ?? (b.building_height_m ? Math.round(b.building_height_m / 3.2) : 0)
   const heightScore = floors > 30 ? 8 : floors > 20 ? 6 : floors > 10 ? 3 : 0
   const altScore = b.site_altitude_m > 800 ? 5 : b.site_altitude_m > 300 ? 3 : b.site_altitude_m > 100 ? 1 : 0
-  const complexityMap: Record<Complexity, number> = { none: 0, light: 2, medium: 4, heavy: 6 }
+  const complexityMap: Record<Complexity, number> = { light: 2, medium: 4, heavy: 6 }
   const complexityScore = complexityMap[b.facade_complexity] ?? 0
   const structural = Math.min(cfg.structural_cap, heightScore + altScore + complexityScore)
 
@@ -208,7 +208,7 @@ function computeGScore(
   // Explanations
   expl.push({ factor: "建物樓層", value: `${floors}F`, score: heightScore, note: "≤10:0 / ≤20:+3 / ≤30:+6 / >30:+8" })
   expl.push({ factor: "場址海拔", value: `${b.site_altitude_m}m`, score: altScore, note: "≤100:0 / ≤300:+1 / ≤800:+3 / >800:+5" })
-  expl.push({ factor: "立面複雜度", value: b.facade_complexity, score: complexityScore, note: "none:0 / light:+2 / medium:+4 / heavy:+6" })
+  expl.push({ factor: "立面複雜度", value: b.facade_complexity, score: complexityScore, note: "light:+2 / medium:+4 / heavy:+6" })
   if (groundConsequence > 0) {
     expl.push({ factor: "地面後果(SORA GRC)", value: popDensity, score: groundConsequence, note: `人口密度=${popDensity}, M1減免=${m1Reduction}（上限${cfg.ground_consequence_cap}）` })
   }
@@ -502,8 +502,7 @@ export function buildingSiteFromMission(mission: Partial<Mission>): BuildingSite
 
   const dominant: import("@/lib/types").Complexity =
     facades.some(f => f.complexity === "heavy")  ? "heavy"  :
-    facades.some(f => f.complexity === "medium") ? "medium" :
-    facades.some(f => f.complexity === "light")  ? "light"  : "none"
+    facades.some(f => f.complexity === "medium") ? "medium" : "light"
 
   const rooftop_condition =
     bld?.rooftop_access === "Good"         ? "good"          :

@@ -126,8 +126,7 @@ export function estimateTime(input: TimeEngineInput): TimeResult {
 
   const dominant_complexity: Complexity =
     facades.some(f => f.complexity === "heavy") ? "heavy" :
-    facades.some(f => f.complexity === "medium") ? "medium" :
-    facades.some(f => f.complexity === "light") ? "light" : "none"
+    facades.some(f => f.complexity === "medium") ? "medium" : "light"
 
   const baseline = getBaseline(missionType, buildingType)
 

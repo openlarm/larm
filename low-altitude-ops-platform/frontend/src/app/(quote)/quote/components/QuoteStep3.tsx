@@ -274,7 +274,7 @@ export function QuoteStep3({
                     ).join("、")}
                   </div>
                   <div className="text-zinc-500">
-                    {f.complexity === "none" ? "無複雜" : f.complexity === "light" ? "輕微" :
+                    {f.complexity === "light" ? "輕微" :
                      f.complexity === "medium" ? "中等" : "複雜"}
                   </div>
                   {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}

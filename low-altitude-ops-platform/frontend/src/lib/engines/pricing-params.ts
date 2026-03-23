@@ -68,7 +68,6 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
   },
 
   complexity_surcharge: {
-    none: 0,
     light: 4,
     medium: 6,
     heavy: 8,
@@ -107,9 +106,9 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
 
   floor_multiplier: [
     { max_floor: 10,  multiplier: 1.0 },
-    { max_floor: 20,  multiplier: 1.3 },
-    { max_floor: 30,  multiplier: 2.0 },
-    { max_floor: 9999, multiplier: 3.0 },
+    { max_floor: 20,  multiplier: 1.1 },
+    { max_floor: 30,  multiplier: 1.3 },
+    { max_floor: 9999, multiplier: 1.5 },
   ],
 
   time_window_multiplier: {
