@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import Image from "next/image"
 import type { AirspaceResult, PricingResult, TimeResult, Contamination } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
@@ -478,36 +477,6 @@ export function QuoteStep3({
               </div>
             )}
 
-            {/* Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-zinc-200" />
-              <span className="text-xs text-zinc-400">或掃描 QR Code 加好友</span>
-              <div className="flex-1 h-px bg-zinc-200" />
-            </div>
-
-            {/* QR Code + LINE ID */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-32 h-32 bg-white border border-zinc-200 rounded-lg p-1 flex items-center justify-center">
-                <Image
-                  src="/images/line-qr.svg"
-                  alt="LINE QR Code @058xfgns"
-                  width={120}
-                  height={120}
-                  className="rounded"
-                />
-              </div>
-              <p className="text-xs text-zinc-500">
-                LINE ID：<span className="font-mono font-medium">@058xfgns</span>
-              </p>
-              <a
-                href="https://line.me/ti/p/@058xfgns"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-[#06C755] hover:underline font-medium"
-              >
-                點此加入好友
-              </a>
-            </div>
           </div>
         )}
       </div>
