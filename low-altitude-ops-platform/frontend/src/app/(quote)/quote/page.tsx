@@ -39,10 +39,11 @@ export default function QuotePage() {
     setFormData(prev => ({ ...prev, ...patch }))
   }, [])
 
-  const goNext = () => setStep(s => Math.min(s + 1, 2))
-  const goBack = () => setStep(s => Math.max(s - 1, 0))
+  const goNext = () => { setStep(s => Math.min(s + 1, 2)); window.scrollTo({ top: 0, behavior: "smooth" }) }
+  const goBack = () => { setStep(s => Math.max(s - 1, 0)); window.scrollTo({ top: 0, behavior: "smooth" }) }
   const reset = () => {
     setStep(0)
+    window.scrollTo({ top: 0, behavior: "smooth" })
     setFormData(INITIAL_FORM)
     setAirspace(null)
     setBuildingPerimeter(null)
