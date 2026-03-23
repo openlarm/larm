@@ -42,7 +42,7 @@ const FACE_DISPLAY = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 export function QuoteStep2({
-  formData, updateForm, buildingPerimeter,
+  formData, updateForm, buildingPerimeter, buildingPolygon,
   buildingDimensions, areaEstimate, setAreaEstimate, onNext, onBack,
 }: Props) {
   const floors = formData.floors ?? 10
@@ -57,6 +57,16 @@ export function QuoteStep2({
   const [drawTarget, setDrawTarget] = useState(0)
   const drawTargetRef = useRef(drawTarget)
   useEffect(() => { drawTargetRef.current = drawTarget }, [drawTarget])
+
+  // Auto-derive numFacades from polygon vertices (N vertices = N sides)
+  useEffect(() => {
+    const drawnPoly = drawnPolygons[0]
+    if (drawnPoly && drawnPoly.vertices.length >= 3) {
+      updateForm({ numFacades: drawnPoly.vertices.length })
+    } else if (buildingPolygon && buildingPolygon.length >= 3) {
+      updateForm({ numFacades: buildingPolygon.length })
+    }
+  }, [drawnPolygons, buildingPolygon]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep facade inputs in sync with numFacades × numBuildings
   useEffect(() => {
@@ -168,16 +178,6 @@ export function QuoteStep2({
               min={1} max={100}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">施作面數</label>
-            <select value={numFacades}
-              onChange={e => updateForm({ numFacades: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} 面</option>)}
-            </select>
           </div>
 
           <div>
