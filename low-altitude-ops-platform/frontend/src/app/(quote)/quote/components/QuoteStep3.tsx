@@ -34,9 +34,9 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const FLOOR_MULTIPLIER_LABEL: Record<string, string> = {
   "1":   "無加價",
-  "1.3": "11-20F 加價",
-  "2":   "21-30F 加價",
-  "3":   ">30F 加價",
+  "1.1": "11-20F 加價",
+  "1.3": "21-30F 加價",
+  "1.5": ">30F 加價",
 }
 
 const BUILDING_LABELS: Record<string, string> = {
@@ -405,6 +405,14 @@ export function QuoteStep3({
 
       {/* LINE CTA — get quote via LINE */}
       <div className="no-print border-2 border-[#06C755] rounded-xl overflow-hidden">
+        {/* First-time customer discount highlight */}
+        <div className="relative bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-400 px-6 py-4 text-center">
+          <div className="absolute inset-0 bg-[repeating-linear-gradient(120deg,transparent,transparent_8px,rgba(255,255,255,0.1)_8px,rgba(255,255,255,0.1)_16px)]" />
+          <p className="relative text-lg font-extrabold text-amber-900 tracking-wide">
+            首次合作客戶最低享九折優惠！
+          </p>
+        </div>
+
         {lineSent ? (
           <div className="px-6 py-5 bg-green-50 text-center space-y-3">
             <div className="text-3xl">✅</div>
