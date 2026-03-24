@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import type { AirspaceResult, PricingResult, TimeResult, Contamination } from "@/lib/types"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import type { AirspaceResult, PricingResult, TimeResult, Contamination, FacadeData } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
@@ -169,6 +169,22 @@ export function QuoteStep3({
     }))
   }, [formData, areaEstimate, setPricing, setTimeResult])
 
+  // Compute per-facade geometry for display (width, height, area)
+  const facadeGeometry = useMemo(() => {
+    const hasPerFacade = formData.facadeInputs && formData.facadeInputs.length > 0
+    const facades: FacadeData[] = hasPerFacade
+      ? buildFacadesFromInputs(formData.facadeInputs!, areaEstimate, formData.buildingType)
+      : buildFacades(areaEstimate, formData.buildingType)
+    const height = areaEstimate.building_height_m
+    return facades.map((f) => ({
+      id: f.id,
+      label: f.label,
+      height_m: height,
+      width_m: height > 0 ? Math.round((f.area_m2 / height) * 10) / 10 : 0,
+      area_m2: f.area_m2,
+    }))
+  }, [formData, areaEstimate])
+
   if (!pricing || !timeResult) {
     return <div className="text-center py-12 text-zinc-500">計算中...</div>
   }
@@ -258,48 +274,58 @@ export function QuoteStep3({
           </div>
         </div>
 
-        {/* Per-facade summary */}
+        {/* Per-facade summary with dimensions */}
         {formData.facadeInputs && formData.facadeInputs.length > 0 && (
           <div className="px-4 sm:px-6 py-4 border-b border-zinc-200">
             <h4 className="text-sm font-semibold text-zinc-600 mb-3">各立面概況</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {formData.facadeInputs.map(f => (
-                <div key={f.id} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-zinc-800 mb-1">{f.buildingLabel ? `棟${f.buildingLabel} ${f.label}` : f.label}</div>
-                  <div className="text-zinc-500">
-                    {f.dirtTypes.map(d =>
-                      d === "dust" ? "灰塵" : d === "scale" ? "水垢" :
-                      d === "mold" ? "黑黴" : d === "bird" ? "鳥屎" :
-                      d === "exhaust" ? "排煙汙垢" : "機械油汙"
-                    ).join("、")}
-                  </div>
-                  <div className="text-zinc-500">
-                    {f.complexity === "light" ? "輕微" :
-                     f.complexity === "medium" ? "中等" : "複雜"}
-                  </div>
-                  {f.hasRecesses && <div className="text-amber-600">有內縮/露台</div>}
-                  {f.isHighRisk && <div className="text-red-600">高風險環境</div>}
-                  {f.hasAdjacentTrees && (
-                    <div className="text-green-700">
-                      鄰樹 {f.treeFloors > 0 ? `${f.treeFloors}F` : ""}
-                      {f.treeFloors > 0 ? (f.cleanTreeFloors ? "（含清洗）" : "（不計入清洗）") : ""}
-                    </div>
-                  )}
-                  {f.waterSupply === "SelfSupply" && <div className="text-orange-600">自備用水</div>}
-                  {f.powerSupply === "SelfSupply"
-                    ? <div className="text-orange-600">自備用電</div>
-                    : f.powerVoltage?.length
-                      ? <div className="text-green-700">⚡ {f.powerVoltage.join(" / ")}</div>
-                      : null
-                  }
-                  {f.supplyPhotos.length > 0 && (
-                    <div className="text-blue-600">{f.supplyPhotos.length} 張水電照</div>
-                  )}
-                  {f.photos.length > 0 && (
-                    <div className="text-blue-600">{f.photos.length} 張立面照</div>
-                  )}
-                </div>
-              ))}
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-xs min-w-[480px]">
+                <thead>
+                  <tr className="text-zinc-500 border-b">
+                    <th className="text-left py-2 font-medium">立面</th>
+                    <th className="text-right py-2 font-medium">高度</th>
+                    <th className="text-right py-2 font-medium">寬度</th>
+                    <th className="text-right py-2 font-medium">面積</th>
+                    <th className="text-left py-2 pl-3 font-medium">狀況</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formData.facadeInputs.map((f, idx) => {
+                    const geo = facadeGeometry[idx]
+                    return (
+                      <tr key={f.id} className="border-b border-zinc-100">
+                        <td className="py-2 font-semibold text-zinc-800">
+                          {f.buildingLabel ? `${f.buildingLabel}棟-${f.label}` : f.label}
+                        </td>
+                        <td className="text-right py-2 text-zinc-600">
+                          {geo ? `${geo.height_m}m` : "—"}
+                        </td>
+                        <td className="text-right py-2 text-zinc-600">
+                          {geo ? `${geo.width_m}m` : "—"}
+                        </td>
+                        <td className="text-right py-2 text-zinc-700 font-medium">
+                          {geo ? `${geo.area_m2.toLocaleString()} ㎡` : "—"}
+                        </td>
+                        <td className="py-2 pl-3 text-zinc-500">
+                          <div className="flex flex-wrap gap-1">
+                            <span>{f.complexity === "light" ? "輕微" : f.complexity === "medium" ? "中等" : "複雜"}</span>
+                            {f.hasRecesses && <span className="text-amber-600">· 內縮</span>}
+                            {f.isHighRisk && <span className="text-red-600">· 高風險</span>}
+                            {f.hasAdjacentTrees && (
+                              <span className="text-green-700">
+                                · 鄰樹{f.treeFloors > 0 ? ` ${f.treeFloors}F` : ""}
+                                {f.treeFloors > 0 && !f.cleanTreeFloors ? "（不清洗）" : ""}
+                              </span>
+                            )}
+                            {f.waterSupply === "SelfSupply" && <span className="text-orange-600">· 自備水</span>}
+                            {f.powerSupply === "SelfSupply" && <span className="text-orange-600">· 自備電</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
