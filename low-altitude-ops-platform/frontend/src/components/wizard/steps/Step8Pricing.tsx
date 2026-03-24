@@ -22,7 +22,7 @@ export function Step8Pricing({ mission, update, next, back }: Props) {
         floors: mission.building?.height_floors ?? 10,
         facades: mission.facades ?? [],
         contamination: ["scale"] as Contamination[],
-        cleaningAgent: "water",
+        cleaningAgent: "standard",
         rooftopAccess: mission.building?.rooftop_access ?? "Good",
         timeWindow: "day",
         waterSupply: mission.building?.water_supply ?? "Provided",

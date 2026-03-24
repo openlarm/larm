@@ -139,7 +139,7 @@ export function QuoteStep3({
     const waterSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "water") : "Provided"
     const powerSupply = hasPerFacade ? aggregateSupply(formData.facadeInputs!, "power") : "Provided"
     const rooftopAccess = formData.rooftopAccess ?? "Good"
-    const cleaningAgent = formData.cleaningAgent ?? "water"
+    const cleaningAgent = formData.cleaningAgent ?? "standard"
 
     setPricing(generateQuote({
       buildingType: formData.buildingType,
@@ -282,7 +282,7 @@ export function QuoteStep3({
                   {f.hasAdjacentTrees && (
                     <div className="text-green-700">
                       鄰樹 {f.treeFloors > 0 ? `${f.treeFloors}F` : ""}
-                      {f.treeFloors > 0 ? (f.cleanTreeFloors ? "（含清洗+10）" : "（不計入清洗）") : ""}
+                      {f.treeFloors > 0 ? (f.cleanTreeFloors ? "（含清洗）" : "（不計入清洗）") : ""}
                     </div>
                   )}
                   {f.waterSupply === "SelfSupply" && <div className="text-orange-600">自備用水</div>}

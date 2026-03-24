@@ -88,9 +88,10 @@ export const DIRT_TYPE_OPTIONS: { value: DirtType; label: string; emoji: string;
   { value: "grease",  label: "機械油汙",  emoji: "⚫", surcharge: 12 },
 ]
 
-export const CLEANING_AGENT_OPTIONS: { value: CleaningAgent; label: string; surcharge: number }[] = [
-  { value: "water",   label: "清水",       surcharge: 0 },
-  { value: "neutral", label: "中性清潔劑", surcharge: 3 },
+export const CLEANING_AGENT_OPTIONS: { value: CleaningAgent; label: string }[] = [
+  { value: "soft",     label: "柔洗（快速噴洗）" },
+  { value: "standard", label: "淨洗（高壓水洗）" },
+  { value: "deep",     label: "精洗（中性清潔劑）" },
 ]
 
 export const COMPLEXITY_OPTIONS: { value: Complexity; label: string; desc: string }[] = [

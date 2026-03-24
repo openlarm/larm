@@ -286,7 +286,6 @@ function FacadeCard({
             <input type="checkbox" checked={facade.hasAdjacentTrees} onChange={onToggleAdjacentTrees}
               className={`w-4 h-4 ${t.checkGreen}`} />
             <span className={`text-sm ${t.label}`}>鄰樹</span>
-            <span className={`text-xs ${t.subLabel}`}>（+5 NTD/㎡）</span>
           </label>
           {facade.hasAdjacentTrees && (
             <div className={`ml-6 space-y-2 border-l-2 pl-3 ${t.treeBorder}`}>
@@ -311,7 +310,7 @@ function FacadeCard({
                     className={`w-3.5 h-3.5 ${t.checkGreen}`}
                   />
                   <span className={`text-xs ${t.label}`}>
-                    清洗樹遮樓層（+10 NTD/㎡）
+                    清洗樹遮樓層
                   </span>
                   {!facade.cleanTreeFloors && (
                     <span className={`text-xs ${t.warnText}`}>不計入清洗範圍</span>

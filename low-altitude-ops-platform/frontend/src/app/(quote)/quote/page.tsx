@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import type { AirspaceResult, PricingResult, TimeResult } from "@/lib/types"
 import type { QuoteFormData, AreaEstimate, BuildingDimensions } from "./components/quote-defaults"
 import { buildDefaultFacadeInputs } from "./components/quote-defaults"
@@ -17,10 +17,14 @@ const INITIAL_FORM: Partial<QuoteFormData> = {
   numBuildings: 1,
   numFacades: 4,
   timeSlot: "day",
-  cleaningAgent: "water",
+  cleaningAgent: "standard",
   rooftopAccess: "Good",
   urgent: false,
   facadeInputs: buildDefaultFacadeInputs(4, 1),
+}
+
+function generateSessionId(): string {
+  return `QS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 }
 
 export default function QuotePage() {
@@ -35,14 +39,71 @@ export default function QuotePage() {
   const [pricing, setPricing] = useState<PricingResult | null>(null)
   const [timeResult, setTimeResult] = useState<TimeResult | null>(null)
 
+  // ── Session & draft save ─────────────────────────────────────────────────
+  const [sessionId] = useState(generateSessionId)
+  const mapContainerRef = useRef<HTMLDivElement | null>(null)
+  const mapContainerCb = useCallback((el: HTMLDivElement | null) => { mapContainerRef.current = el }, [])
+
+  // Refs so saveDraft always reads latest values without re-creating the callback
+  const formDataRef = useRef(formData)
+  const areaEstimateRef = useRef(areaEstimate)
+  const buildingPolygonRef = useRef(buildingPolygon)
+  const buildingNameRef = useRef(buildingName)
+  useEffect(() => { formDataRef.current = formData }, [formData])
+  useEffect(() => { areaEstimateRef.current = areaEstimate }, [areaEstimate])
+  useEffect(() => { buildingPolygonRef.current = buildingPolygon }, [buildingPolygon])
+  useEffect(() => { buildingNameRef.current = buildingName }, [buildingName])
+
+  const saveDraft = useCallback(async (nextStep: number) => {
+    try {
+      let mapScreenshotBase64: string | null = null
+
+      // Capture map screenshot if map container exists
+      if (mapContainerRef.current) {
+        try {
+          const { toPng } = await import("html-to-image")
+          const dataUrl = await toPng(mapContainerRef.current, { cacheBust: true, quality: 0.8 })
+          mapScreenshotBase64 = dataUrl.replace(/^data:image\/png;base64,/, "")
+        } catch {
+          // Screenshot capture can fail on cross-origin tiles; non-critical
+        }
+      }
+
+      await fetch("/api/quote/save-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          step: nextStep,
+          form_data: formDataRef.current,
+          area_estimate: areaEstimateRef.current,
+          building_polygon: buildingPolygonRef.current,
+          building_name: buildingNameRef.current,
+          map_screenshot_base64: mapScreenshotBase64,
+        }),
+      })
+    } catch {
+      // Draft save is best-effort; don't block the wizard
+    }
+  }, [sessionId])
+
   const updateForm = useCallback((patch: Partial<QuoteFormData>) => {
     setFormData(prev => ({ ...prev, ...patch }))
   }, [])
 
-  const goNext = () => setStep(s => Math.min(s + 1, 2))
-  const goBack = () => setStep(s => Math.max(s - 1, 0))
+  const goNext = () => {
+    const nextStep = Math.min(step + 1, 2)
+    setStep(nextStep)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+    saveDraft(nextStep)
+  }
+  const goBack = () => {
+    setStep(s => Math.max(s - 1, 0))
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
   const reset = () => {
     setStep(0)
+    window.scrollTo({ top: 0, behavior: "smooth" })
     setFormData(INITIAL_FORM)
     setAirspace(null)
     setBuildingPerimeter(null)
@@ -104,6 +165,7 @@ export default function QuotePage() {
           setAreaEstimate={setAreaEstimate}
           onNext={goNext}
           onBack={goBack}
+          mapContainerRef={mapContainerCb}
         />
       )}
       {step === 2 && (

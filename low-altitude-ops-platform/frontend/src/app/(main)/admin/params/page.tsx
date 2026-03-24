@@ -827,14 +827,14 @@ export default function AdminParamsPage() {
                 </section>
 
                 <section>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">清潔劑加價（NTD / ㎡）</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-1">清潔方式加價（NTD / ㎡）</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {([["water", "清水"], ["neutral", "中性劑"], ["acid", "酸性劑"], ["alkali", "鹼性劑"]] as const).map(([key, label]) => (
+                      {([["soft", "柔洗"], ["standard", "淨洗"], ["deep", "精洗"]] as const).map(([key, label]) => (
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.cleaning_agent_surcharge[key]} min={0} max={99} step={1}
+                            <NumInput value={params.pricing.cleaning_agent_surcharge[key]} min={-99} max={99} step={1}
                               onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, cleaning_agent_surcharge: { ...p.pricing.cleaning_agent_surcharge, [key]: v } } }))} />
                           </td>
                         </tr>

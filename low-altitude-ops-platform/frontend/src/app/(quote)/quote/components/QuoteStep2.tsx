@@ -23,6 +23,8 @@ interface Props {
   setAreaEstimate: (a: AreaEstimate) => void
   onNext: () => void
   onBack: () => void
+  /** Callback ref for map container — used for screenshot capture */
+  mapContainerRef?: (el: HTMLDivElement | null) => void
 }
 
 // Local type for a completed drawn polygon
@@ -42,8 +44,9 @@ const FACE_DISPLAY = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 export function QuoteStep2({
-  formData, updateForm, buildingPerimeter,
+  formData, updateForm, buildingPerimeter, buildingPolygon,
   buildingDimensions, areaEstimate, setAreaEstimate, onNext, onBack,
+  mapContainerRef,
 }: Props) {
   const floors = formData.floors ?? 10
   const numFacades = formData.numFacades ?? 4
@@ -57,6 +60,16 @@ export function QuoteStep2({
   const [drawTarget, setDrawTarget] = useState(0)
   const drawTargetRef = useRef(drawTarget)
   useEffect(() => { drawTargetRef.current = drawTarget }, [drawTarget])
+
+  // Auto-derive numFacades from polygon vertices (N vertices = N sides)
+  useEffect(() => {
+    const drawnPoly = drawnPolygons[0]
+    if (drawnPoly && drawnPoly.vertices.length >= 3) {
+      updateForm({ numFacades: drawnPoly.vertices.length })
+    } else if (buildingPolygon && buildingPolygon.length >= 3) {
+      updateForm({ numFacades: buildingPolygon.length })
+    }
+  }, [drawnPolygons, buildingPolygon]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep facade inputs in sync with numFacades × numBuildings
   useEffect(() => {
@@ -171,16 +184,6 @@ export function QuoteStep2({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">施作面數</label>
-            <select value={numFacades}
-              onChange={e => updateForm({ numFacades: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} 面</option>)}
-            </select>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">施工時段</label>
             <select value={formData.timeSlot ?? "day"}
               onChange={e => updateForm({ timeSlot: e.target.value as QuoteFormData["timeSlot"] })}
@@ -192,18 +195,16 @@ export function QuoteStep2({
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              清潔劑種類
+              清潔方式
               <span className="text-xs font-normal text-zinc-400 ml-1">（整案）</span>
             </label>
             <select
-              value={formData.cleaningAgent ?? "water"}
+              value={formData.cleaningAgent ?? "standard"}
               onChange={e => updateForm({ cleaningAgent: e.target.value as CleaningAgent })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
               {CLEANING_AGENT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {o.label}{o.surcharge > 0 ? `（+${o.surcharge} NTD/㎡）` : "（無加價）"}
-                </option>
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -218,9 +219,9 @@ export function QuoteStep2({
               onChange={e => updateForm({ rooftopAccess: e.target.value as RooftopAccess })}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              <option value="Good">良好（女兒牆佳，無加價）</option>
-              <option value="Limited">受限（女兒牆深/寬，+12 NTD/㎡）</option>
-              <option value="NotAvailable">不可使用（+12 NTD/㎡）</option>
+              <option value="Good">良好（女兒牆佳）</option>
+              <option value="Limited">受限（女兒牆深/寬）</option>
+              <option value="NotAvailable">不可使用</option>
             </select>
           </div>
 
@@ -388,6 +389,7 @@ export function QuoteStep2({
                 persistedShapes={persistedShapes}
                 onPolygonDraw={handlePolygonDraw}
                 onDrawModeEnd={handleDrawModeEnd}
+                mapContainerRef={mapContainerRef}
               />
             </>
           )}
