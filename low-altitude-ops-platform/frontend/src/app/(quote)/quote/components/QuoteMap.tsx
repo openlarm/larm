@@ -6,6 +6,8 @@ import type { AirspaceResult } from "@/lib/types"
 export interface PersistedShape {
   vertices: [number, number][]   // [lat, lng] polygon vertices
   label: string
+  /** Numbered face labels for each edge (e.g. ["1面", "2面", ...]) */
+  edgeLabels?: string[]
 }
 
 interface Props {
@@ -371,6 +373,26 @@ export function QuoteMap({
           color: "#16a34a", weight: 2, fillColor: "#22c55e", fillOpacity: 0.2,
         }).bindTooltip(shape.label, { permanent: true, direction: "center" }).addTo(m)
         persistedLayersRef.current.push(layer)
+
+        // Add numbered face labels at each edge midpoint
+        if (shape.edgeLabels?.length) {
+          for (let ei = 0; ei < shape.vertices.length; ei++) {
+            const v1 = shape.vertices[ei]
+            const v2 = shape.vertices[(ei + 1) % shape.vertices.length]
+            const midLat = (v1[0] + v2[0]) / 2
+            const midLng = (v1[1] + v2[1]) / 2
+            const edgeLabel = shape.edgeLabels[ei] ?? `${ei + 1}面`
+            const edgeMarker = L.marker([midLat, midLng] as [number, number], {
+              icon: L.divIcon({
+                className: "",
+                html: `<div style="background:#2563eb;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.3)">${edgeLabel}</div>`,
+                iconSize: [0, 0],
+              }),
+              interactive: false,
+            }).addTo(m)
+            persistedLayersRef.current.push(edgeMarker)
+          }
+        }
       }
     })
   }, [persistedShapes])

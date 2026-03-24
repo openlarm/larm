@@ -60,7 +60,15 @@ export function QuoteStep2({
   const drawTargetRef = useRef(drawTarget)
   useEffect(() => { drawTargetRef.current = drawTarget }, [drawTarget])
 
-  // Auto-derive numFacades from polygon vertices (N vertices = N sides)
+  // Per-building face counts from polygon vertices
+  const perBuildingNumFacades: number[] = Array.from({ length: numBuildings }, (_, b) => {
+    const poly = drawnPolygons[b]
+    if (poly && poly.vertices.length >= 3) return poly.vertices.length
+    if (b === 0 && buildingPolygon && buildingPolygon.length >= 3) return buildingPolygon.length
+    return numFacades
+  })
+
+  // Auto-derive numFacades from polygon vertices (single-building or first building)
   useEffect(() => {
     const drawnPoly = drawnPolygons[0]
     if (drawnPoly && drawnPoly.vertices.length >= 3) {
@@ -68,17 +76,36 @@ export function QuoteStep2({
     } else if (buildingPolygon && buildingPolygon.length >= 3) {
       updateForm({ numFacades: buildingPolygon.length })
     }
-  }, [drawnPolygons, buildingPolygon]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Update per-building face counts
+    if (numBuildings > 1) {
+      const counts = Array.from({ length: numBuildings }, (_, b) => {
+        const poly = drawnPolygons[b]
+        if (poly && poly.vertices.length >= 3) return poly.vertices.length
+        return numFacades
+      })
+      updateForm({ numFacadesPerBuilding: counts })
+    }
+  }, [drawnPolygons, buildingPolygon, numBuildings]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep facade inputs in sync with numFacades × numBuildings
+  // Keep facade inputs in sync with per-building face counts
   useEffect(() => {
-    const totalFacades = numFacades * numBuildings
+    const totalFacades = numBuildings > 1
+      ? perBuildingNumFacades.reduce((s, n) => s + n, 0)
+      : numFacades * numBuildings
     const existing = formData.facadeInputs ?? []
     if (existing.length !== totalFacades) {
-      const defaults = buildDefaultFacadeInputs(numFacades, numBuildings)
-      updateForm({ facadeInputs: defaults.map((d, i) => existing[i] ?? d) })
+      const defaults = buildDefaultFacadeInputs(
+        numFacades, numBuildings,
+        numBuildings > 1 ? perBuildingNumFacades : undefined,
+      )
+      // Preserve existing facade data by matching buildingIndex + facade position
+      const merged = defaults.map((d) => {
+        const match = existing.find(e => e.buildingIndex === d.buildingIndex && e.label === d.label)
+        return match ? { ...match, id: d.id, buildingLabel: d.buildingLabel } : d
+      })
+      updateForm({ facadeInputs: merged })
     }
-  }, [numFacades, numBuildings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [numFacades, numBuildings, drawnPolygons]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Recalculate area estimate whenever inputs change
   useEffect(() => {
@@ -86,7 +113,7 @@ export function QuoteStep2({
     if (numBuildings > 1 && hasDrawn) {
       setAreaEstimate(estimateFromMultiPerimeters(
         drawnPolygons.map(p => p?.perimeter_m ?? null),
-        numBuildings, floors, numFacades,
+        numBuildings, floors, numFacades, perBuildingNumFacades,
       ))
     } else if (drawnPolygons[0]) {
       setAreaEstimate(estimateFromPerimeter(drawnPolygons[0].perimeter_m, floors, numFacades, "manual-draw"))
@@ -130,12 +157,20 @@ export function QuoteStep2({
     updateForm({ facadeInputs: facades })
   }, [updateForm])
 
-  // Build persisted shapes for map display
-  const persistedShapes: PersistedShape[] = drawnPolygons
-    .map((p, i) => p
-      ? { vertices: p.vertices, label: numBuildings > 1 ? `棟${BUILDING_LABELS[i] ?? i + 1}` : "已繪範圍" }
-      : null)
-    .filter((s): s is PersistedShape => s !== null)
+  // Build persisted shapes for map display (with per-edge face labels)
+  const persistedShapes: PersistedShape[] = []
+  drawnPolygons.forEach((p, i) => {
+    if (!p) return
+    const bLabel = numBuildings > 1 ? (BUILDING_LABELS[i] ?? String(i + 1)) : ""
+    const edgeLabels = p.vertices.map((_, ei) =>
+      bLabel ? `${bLabel}棟-${ei + 1}面` : `${ei + 1}面`
+    )
+    persistedShapes.push({
+      vertices: p.vertices,
+      label: numBuildings > 1 ? `棟${bLabel}` : "已繪範圍",
+      edgeLabels,
+    })
+  })
 
   const drawLabel = numBuildings > 1 && drawMode
     ? `棟${BUILDING_LABELS[drawTarget] ?? drawTarget + 1}`
@@ -184,14 +219,22 @@ export function QuoteStep2({
 
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              每棟立面數量
-              <span className="text-xs font-normal text-zinc-400 ml-1">（繪製建物範圍時自動偵測）</span>
+              立面數量
+              <span className="text-xs font-normal text-zinc-400 ml-1">（依建物範圍自動偵測）</span>
             </label>
-            <input type="number" value={numFacades}
-              onChange={e => updateForm({ numFacades: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)) })}
-              min={1} max={20}
-              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            {numBuildings > 1 ? (
+              <div className="flex flex-wrap gap-2">
+                {perBuildingNumFacades.map((count, b) => (
+                  <span key={b} className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-blue-800">
+                    {BUILDING_LABELS[b] ?? b + 1}棟 = {count}面
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-lg text-sm text-zinc-700 font-medium">
+                {numFacades} 面
+              </div>
+            )}
           </div>
 
           <div>
