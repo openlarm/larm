@@ -219,10 +219,9 @@ function FacadeCard({
     <div className={`border rounded-xl p-4 space-y-4 ${t.card}`}>
       {/* Header */}
       <div className="flex items-center gap-2">
-        <span className={`w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center ${t.badgeBg}`}>
-          {facade.label}
+        <span className={`px-2 h-7 rounded-lg text-sm font-bold flex items-center justify-center ${t.badgeBg}`}>
+          {facade.buildingLabel ? `${facade.buildingLabel}棟-${facade.label}` : facade.label}
         </span>
-        <span className={`text-sm font-semibold ${t.label}`}>{facade.label}</span>
         {width_m != null && (
           <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${t.badgeWidth}`}>
             實測 {width_m} m

@@ -157,7 +157,20 @@ export function getPricingParams(): PricingParams {
     if (!raw) return PRICING_PARAMS_DEFAULT
     const larm = JSON.parse(raw)
     if (!larm.pricing) return PRICING_PARAMS_DEFAULT
-    return { ...PRICING_PARAMS_DEFAULT, ...larm.pricing }
+    const p = larm.pricing as Partial<PricingParams>
+    // Deep-merge nested Records so partial overrides don't erase defaults
+    return {
+      ...PRICING_PARAMS_DEFAULT,
+      ...p,
+      base_price: { ...PRICING_PARAMS_DEFAULT.base_price, ...p.base_price },
+      complexity_surcharge: { ...PRICING_PARAMS_DEFAULT.complexity_surcharge, ...p.complexity_surcharge },
+      contamination_surcharge: { ...PRICING_PARAMS_DEFAULT.contamination_surcharge, ...p.contamination_surcharge },
+      cleaning_agent_surcharge: { ...PRICING_PARAMS_DEFAULT.cleaning_agent_surcharge, ...p.cleaning_agent_surcharge },
+      facade_surcharges: { ...PRICING_PARAMS_DEFAULT.facade_surcharges, ...p.facade_surcharges },
+      supply_surcharges: { ...PRICING_PARAMS_DEFAULT.supply_surcharges, ...p.supply_surcharges },
+      time_window_multiplier: { ...PRICING_PARAMS_DEFAULT.time_window_multiplier, ...p.time_window_multiplier },
+      floor_multiplier: p.floor_multiplier ?? PRICING_PARAMS_DEFAULT.floor_multiplier,
+    }
   } catch {
     return PRICING_PARAMS_DEFAULT
   }

@@ -28,30 +28,30 @@ export function generateQuote(input: PricingEngineInput, params?: PricingParams)
     timeWindow, waterSupply, powerSupply, rooftopAccess, urgent,
   } = input
 
-  const basePrice = P.base_price[buildingType]
+  const basePrice = P.base_price[buildingType] ?? 0
 
   // ── Section C: project-wide unit price adders (same for every face) ──────
   const contaminationSurcharge = Math.min(
-    contamination.reduce((sum, c) => sum + P.contamination_surcharge[c], 0),
-    P.contamination_cap,
+    contamination.reduce((sum, c) => sum + (P.contamination_surcharge[c] ?? 0), 0),
+    P.contamination_cap ?? 15,
   )
-  const cleaningAgentSurcharge = P.cleaning_agent_surcharge[cleaningAgent]
+  const cleaningAgentSurcharge = P.cleaning_agent_surcharge[cleaningAgent] ?? 0
   const projectWideSurcharge = contaminationSurcharge + cleaningAgentSurcharge
 
   // ── Section B: building-level per-face adders (same value for every face) ─
-  const waterSurcharge   = waterSupply   === "SelfSupply" ? P.supply_surcharges.water_self  : 0
-  const powerSurcharge   = powerSupply   === "SelfSupply" ? P.supply_surcharges.power_self  : 0
-  const rooftopSurcharge = rooftopAccess !== "Good"       ? P.supply_surcharges.rooftop_not_good : 0
+  const waterSurcharge   = waterSupply   === "SelfSupply" ? (P.supply_surcharges.water_self  ?? 0) : 0
+  const powerSurcharge   = powerSupply   === "SelfSupply" ? (P.supply_surcharges.power_self  ?? 0) : 0
+  const rooftopSurcharge = rooftopAccess !== "Good"       ? (P.supply_surcharges.rooftop_not_good ?? 0) : 0
 
   const lineItems: PricingLineItem[] = []
   let subtotal = 0
 
   for (const facade of facades) {
-    const complexitySurcharge = P.complexity_surcharge[facade.complexity]
-    const roadSurcharge       = facade.road_closure    ? P.facade_surcharges.road_closure    : 0
-    const tightSurcharge      = facade.tight_perimeter ? P.facade_surcharges.tight_perimeter : 0
-    const riskEnvSurcharge    = facade.high_risk_env   ? P.facade_surcharges.high_risk_env   : 0
-    const treeSurcharge       = facade.adjacent_trees  ? P.facade_surcharges.adjacent_trees  : 0
+    const complexitySurcharge = P.complexity_surcharge[facade.complexity] ?? 0
+    const roadSurcharge       = facade.road_closure    ? (P.facade_surcharges.road_closure    ?? 0) : 0
+    const tightSurcharge      = facade.tight_perimeter ? (P.facade_surcharges.tight_perimeter ?? 0) : 0
+    const riskEnvSurcharge    = facade.high_risk_env   ? (P.facade_surcharges.high_risk_env   ?? 0) : 0
+    const treeSurcharge       = facade.adjacent_trees  ? (P.facade_surcharges.adjacent_trees  ?? 0) : 0
 
     const unitPrice =
       basePrice +

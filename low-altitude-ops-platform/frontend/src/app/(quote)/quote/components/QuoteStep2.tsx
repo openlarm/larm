@@ -40,7 +40,6 @@ const SOURCE_LABELS: Record<string, string> = {
   default: "智慧預設值",
 }
 
-const FACE_DISPLAY = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 export function QuoteStep2({
@@ -179,6 +178,18 @@ export function QuoteStep2({
             <input type="number" value={floors}
               onChange={e => updateForm({ floors: Math.max(1, parseInt(e.target.value) || 1) })}
               min={1} max={100}
+              className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-1">
+              每棟立面數量
+              <span className="text-xs font-normal text-zinc-400 ml-1">（繪製建物範圍時自動偵測）</span>
+            </label>
+            <input type="number" value={numFacades}
+              onChange={e => updateForm({ numFacades: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)) })}
+              min={1} max={20}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
@@ -421,7 +432,7 @@ export function QuoteStep2({
                   <div className="flex gap-2 flex-wrap">
                     {areaEstimate.facadeWidths_m.map((w, i) => (
                       <span key={i} className="text-xs bg-blue-100 px-2 py-0.5 rounded">
-                        {FACE_DISPLAY[i] ?? `立面${i + 1}`}：{w} m
+                        {i + 1}面：{w} m
                       </span>
                     ))}
                   </div>

@@ -328,8 +328,12 @@ export function estimateFromMultiRects(
 
 // ─── Default facade inputs ───────────────────────────────────────────────────
 
-const FACE_LABELS = ["正面", "左側", "右側", "背面"]
 const BUILDING_LABELS = ["A", "B", "C", "D", "E", "F"]
+
+/** Generate numbered face label: "1面", "2面", ... */
+function faceLabel(index: number): string {
+  return `${index + 1}面`
+}
 
 export function buildDefaultFacadeInputs(numFacades: number, numBuildings: number = 1): QuoteFacadeInput[] {
   const result: QuoteFacadeInput[] = []
@@ -340,7 +344,7 @@ export function buildDefaultFacadeInputs(numFacades: number, numBuildings: numbe
         id: `${b}-${i}`,
         buildingIndex: b,
         buildingLabel,
-        label: FACE_LABELS[i] ?? String(i + 1),
+        label: faceLabel(i),
         dirtTypes: ["dust"] as DirtType[],
         complexity: "light" as Complexity,
         hasRecesses: false,
@@ -435,7 +439,7 @@ export function buildFacades(
   const material = DEFAULT_MATERIAL[buildingType]
   return Array.from({ length: estimate.num_facades }, (_, i) => ({
     id: String(i + 1),
-    label: FACE_LABELS[i] ?? String(i + 1),
+    label: faceLabel(i),
     area_m2: estimate.facade_area_m2,
     material,
     complexity: "light" as Complexity,
