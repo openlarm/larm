@@ -331,10 +331,10 @@ export function QuoteStep3({
                     {grp.area.toLocaleString()} ㎡
                   </td>
                   <td className="text-right py-2 text-zinc-500 text-xs">
-                    {grp.area > 0 ? `${Math.round(grp.subtotal / grp.area)} NTD/㎡` : "—"}
+                    {grp.area > 0 && Number.isFinite(grp.subtotal) ? `${Math.round(grp.subtotal / grp.area)} NTD/㎡` : "—"}
                   </td>
                   <td className="text-right py-2 font-medium">
-                    {grp.subtotal.toLocaleString()} NTD
+                    {Number.isFinite(grp.subtotal) ? `${grp.subtotal.toLocaleString()} NTD` : "— NTD"}
                   </td>
                 </tr>
               ))}
