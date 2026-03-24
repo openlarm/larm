@@ -152,7 +152,8 @@ export interface QuoteFormData {
   buildingType: BuildingType
   floors: number
   numBuildings: number          // how many buildings on the same project site
-  numFacades: number            // facades per building
+  numFacades: number            // facades per building (default / single-building)
+  numFacadesPerBuilding?: number[]  // per-building face counts (from polygon vertices)
   timeSlot: TimeSlot
   cleaningAgent: CleaningAgent  // project-wide cleaning agent type
   rooftopAccess: RooftopAccess  // building-level rooftop condition
@@ -198,6 +199,8 @@ export interface AreaEstimate {
   facade_area_m2: number          // average per-facade area (one building)
   total_area_m2: number           // one building total
   num_facades: number
+  /** Per-building face counts when buildings have different polygon shapes */
+  perBuildingNumFacades?: number[]
   facadeWidths_m?: number[]       // per-facade widths for one building (MBR)
   /** Per-building facade widths when buildings differ in size [buildingIdx][facadeIdx] */
   perBuildingFacadeWidths?: number[][]
@@ -335,11 +338,16 @@ function faceLabel(index: number): string {
   return `${index + 1}面`
 }
 
-export function buildDefaultFacadeInputs(numFacades: number, numBuildings: number = 1): QuoteFacadeInput[] {
+export function buildDefaultFacadeInputs(
+  numFacades: number,
+  numBuildings: number = 1,
+  perBuildingNumFacades?: number[],
+): QuoteFacadeInput[] {
   const result: QuoteFacadeInput[] = []
   for (let b = 0; b < numBuildings; b++) {
     const buildingLabel = numBuildings > 1 ? (BUILDING_LABELS[b] ?? String(b + 1)) : ""
-    for (let i = 0; i < numFacades; i++) {
+    const facadeCount = perBuildingNumFacades?.[b] ?? numFacades
+    for (let i = 0; i < facadeCount; i++) {
       result.push({
         id: `${b}-${i}`,
         buildingIndex: b,
@@ -401,15 +409,17 @@ export function buildFacadesFromInputs(
 ): FacadeData[] {
   const material = DEFAULT_MATERIAL[buildingType]
   const height = estimate.building_height_m
-  const facadesPerBuilding = estimate.num_facades
-  return facadeInputs.map((input, globalIndex) => {
+  // Track per-building facade index for variable face counts
+  const buildingFacadeCounter: Record<number, number> = {}
+  return facadeInputs.map((input) => {
     const buildingIdx = input.buildingIndex
-    const facadeIdxInBuilding = globalIndex % facadesPerBuilding
+    const facadeIdxInBuilding = buildingFacadeCounter[buildingIdx] ?? 0
+    buildingFacadeCounter[buildingIdx] = facadeIdxInBuilding + 1
     // Per-building widths (multi-rect draw) take priority over shared MBR widths
     const width_m =
       estimate.perBuildingFacadeWidths?.[buildingIdx]?.[facadeIdxInBuilding] ??
       estimate.facadeWidths_m?.[facadeIdxInBuilding] ??
-      (estimate.facade_area_m2 / height)
+      (height > 0 ? estimate.facade_area_m2 / height : 0)
     const area_m2 = Math.round(width_m * height)
     const displayLabel = input.buildingLabel ? `棟${input.buildingLabel}-${input.label}` : input.label
     const tree_area_m2 = input.hasAdjacentTrees && input.treeFloors > 0
@@ -504,21 +514,25 @@ export function calcLatLngPerimeter(vertices: [number, number][]): number {
   return total
 }
 
-/** Estimate from multi-building drawn polygons (each with its own perimeter) */
+/** Estimate from multi-building drawn polygons (each with its own perimeter & face count) */
 export function estimateFromMultiPerimeters(
   perimeters_m: (number | null)[],
   numBuildings: number,
   floors: number,
   numFacades: number,
+  perBuildingNumFacades?: number[],
 ): AreaEstimate {
   const height = floors * FLOOR_HEIGHT_M
   const fallback = perimeters_m.find(p => p != null) ?? 80
   const perBuildingFacadeWidths: number[][] = []
+  const resolvedPerBuildingNumFacades: number[] = []
   let totalProjectArea = 0
 
   for (let b = 0; b < numBuildings; b++) {
     const perim = perimeters_m[b] ?? fallback
-    const widths = Array.from({ length: numFacades }, () => Math.round(perim / numFacades))
+    const bFacades = perBuildingNumFacades?.[b] ?? numFacades
+    resolvedPerBuildingNumFacades.push(bFacades)
+    const widths = Array.from({ length: bFacades }, () => Math.round(perim / bFacades))
     perBuildingFacadeWidths.push(widths)
     totalProjectArea += perim * height
   }
@@ -537,6 +551,7 @@ export function estimateFromMultiPerimeters(
     facade_area_m2: Math.round(avgWidth * height),
     total_area_m2: Math.round(avgPerim * height),
     num_facades: numFacades,
+    perBuildingNumFacades: resolvedPerBuildingNumFacades,
     perBuildingFacadeWidths,
     project_total_m2: Math.round(totalProjectArea),
   }

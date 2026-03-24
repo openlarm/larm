@@ -50,28 +50,30 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, d
     update(index, { powerSupply: supply, powerVoltage: voltages })
   }
 
-  // Compute how many facades each building gets
-  const numFacadesPerBuilding = numBuildings > 1
-    ? Math.ceil(facades.length / numBuildings)
-    : facades.length
+  // Group facades by buildingIndex (supports variable face counts per building)
+  const facadesByBuilding: Map<number, { facades: QuoteFacadeInput[]; globalIndices: number[] }> = new Map()
+  facades.forEach((f, i) => {
+    const group = facadesByBuilding.get(f.buildingIndex) ?? { facades: [], globalIndices: [] }
+    group.facades.push(f)
+    group.globalIndices.push(i)
+    facadesByBuilding.set(f.buildingIndex, group)
+  })
+  const buildingKeys = Array.from(facadesByBuilding.keys()).sort((a, b) => a - b)
 
   // Build building labels list (one per building)
-  const buildingTabLabels: string[] = Array.from({ length: numBuildings }, (_, b) => {
+  const buildingTabLabels: string[] = buildingKeys.map(bIdx => {
     if (numBuildings === 1) return ""
-    const startIdx = b * numFacadesPerBuilding
-    const labelFromFacade = facades[startIdx]?.buildingLabel
-    // Prefer facade's own buildingLabel if non-empty, else fall back to alphabet
+    const group = facadesByBuilding.get(bIdx)!
+    const labelFromFacade = group.facades[0]?.buildingLabel
     return (labelFromFacade && labelFromFacade.trim() !== "")
       ? labelFromFacade
-      : (BUILDING_LABELS[b] ?? String(b + 1))
+      : (BUILDING_LABELS[bIdx] ?? String(bIdx + 1))
   })
 
   // Facades for the currently active building
-  const activeBuildingStart = activeTab * numFacadesPerBuilding
-  const activeBuildingFacades = facades.slice(
-    activeBuildingStart,
-    Math.min(activeBuildingStart + numFacadesPerBuilding, facades.length),
-  )
+  const activeKey = buildingKeys[activeTab] ?? 0
+  const activeGroup = facadesByBuilding.get(activeKey) ?? { facades: [], globalIndices: [] }
+  const activeBuildingFacades = activeGroup.facades
 
   // ── Theme tokens ──────────────────────────────────────────────────────────
   const t = dark ? {
@@ -103,6 +105,9 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, d
               }`}
             >
               棟 {label}
+              <span className="text-xs opacity-70 ml-1">
+                ({(facadesByBuilding.get(buildingKeys[idx])?.facades.length ?? 0)}面)
+              </span>
             </button>
           ))}
         </div>
@@ -111,7 +116,7 @@ export function QuoteFacadeEditor({ facades, facadeWidths_m, numBuildings = 1, d
       {/* Facades for active building */}
       <div className="space-y-4">
         {activeBuildingFacades.map((facade, j) => {
-          const globalIndex = activeBuildingStart + j
+          const globalIndex = activeGroup.globalIndices[j]
           return (
             <FacadeCard
               key={facade.id}
