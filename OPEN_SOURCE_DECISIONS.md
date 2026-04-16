@@ -18,7 +18,7 @@
 | 4 | 區域架構 | **v0.1 就拆 `@larm/regions-taiwan`** |
 | 5 | 學術路線 | **自己寫 + 發 arXiv preprint** |
 | 6 | 文件站技術棧 | **Nextra** |
-| 7 | 品牌命名 | **完全重新命名，具體名稱之後再挑** |
+| 7 | 品牌命名 | **模型保留 LARM，組織用 `@openlarm`**（npm scope / github org / 域名） |
 
 ---
 
@@ -158,40 +158,65 @@ www.[new-name].dev      ← Landing page（可併入 docs 或獨立）
 
 ---
 
-## 7. 品牌命名：重新命名
+## 7. 品牌命名：`LARM` 模型名 + `@openlarm` 組織名
 
-**決定**：放棄「LARM」作為專案/套件/域名識別，具體名稱**之後再挑**。
+**決定**：採取「模型 / 組織分離」策略（類似 COCO dataset ↔ cocodataset.org）。
 
-**發現的衝突**：
-- `larm.dev` — 已被商用 uptime monitoring SaaS 占用（2026 仍在運營，EU 主機，$19–49/月）
-- `larm.io` — 待售 $1,199
-- GitHub `@larm` — 2015 建立的低活躍個人帳號占用
-- Trademark Class 42 風險：larm.dev 若申請 → 我們的無人機 SaaS 可能衝突
-- 瑞典/挪威語 "larm" = 警報/噪音（對安全工具反而語意契合，但北歐市場有品牌混淆風險）
-- 無任何衝突的部分：USPTO 無人機/航空風險領域無 LARM 商標
+- **模型 / spec / 公式識別**：仍稱 **LARM**（Low Altitude Risk Model）
+- **npm scope / GitHub org / 域名**：使用 **`openlarm`**
 
-**模型本身仍稱 LARM**（類似 COCO dataset 模式）：
-- 規格文件可保留 `LARM-v1.1.md` 命名
-- 模型概念 / acronym 保留
-- 只更換 npm scope / github org / 域名 → 用全新名稱
+### 命名一致性對照
 
-**候選名稱初擬**（待後續確認可用性）：
-- `uasrisk` — 業界術語（UAS = Unmanned Aircraft System）
-- `skyrm` — 短、清晰（sky + risk model）
-- `dronecast` — 類比 weathercast，暗示預報
-- `airrm` — 短、中性
-- `opensky-risk` — 呼應開源 + 空域
-- `aeroguard` — 防護形象
-- `larm-spec` — 保留 LARM 識別的折衷方案（npm `@larm-spec/core`）
+| 場景 | 用什麼 |
+|---|---|
+| 模型公式、R-score 方程 | **LARM** |
+| Spec 文件檔名 | `LARM-v1.1.md`、`LARM-Specification` |
+| 論文標題 | "LARM: A Deterministic Low-Altitude Risk Model..." |
+| 學術引用 | "the LARM model (openlarm.org)" |
+| 套件命名 | `@openlarm/core`、`@openlarm/regions-taiwan` |
+| GitHub org | `github.com/openlarm` |
+| 主要域名 | `openlarm.org` |
+| 技術文件站 | `docs.openlarm.dev`（或併入 openlarm.org） |
 
-**後續工作**：
-1. 每個候選名做可用性檢查（domain / npm / github / trademark）
-2. 找台灣/英語圈 native speaker 各 1–2 位做「唸起來順不順」測試
-3. 選定後 1 週內註冊所有 handle
+### 為什麼原本的 `larm` 不行（供記錄）
 
-**短期做法**：
-- 實作階段暫用 placeholder（程式碼 import 寫死、之後 find-replace 即可）
-- `CLAUDE.md` 和 spec 文件可以暫時繼續用 LARM（反正模型名不變）
+- `larm.dev` 被商用 uptime monitoring SaaS 占用（2026 仍在運營，EU 主機，$19–49/月）
+- `larm.io` 待售 $1,199
+- GitHub `@larm` 為 2015 建立的低活躍個人帳號，但 handle 已被占用
+- Trademark Class 42（軟體服務）存在實質衝突風險
+- 瑞典/挪威語 "larm" = 警報/噪音（對安全工具反而語意契合，但北歐市場品牌混淆）
+
+### 為什麼 `@openlarm` 勝出（2026-04-16 驗證）
+
+- npm `openlarm` 套件 → 404 ✅ 可用
+- npm scope `@openlarm/core` → 404 ✅ 可用
+- GitHub `openlarm` org → 404 ✅ 可用
+- `openlarm.dev` / `.org` / `.io` / `.com` → 全部 ECONNREFUSED（強烈可用訊號）
+- Google trademark 搜尋 → 0 衝突
+- 「open-」前綴明確表達開源承諾（對應 OpenAI、OpenStreetMap、OpenTelemetry 慣例）
+- 與 larm.dev SaaS 有足夠品牌區隔，Class 42 衝突機率大幅降低
+- 「openlarm」專指本專案，SEO 絕佳（幾乎無競爭字詞）
+
+### 建議的套件結構
+
+```
+@openlarm/core                ← 模型引擎、型別、region-agnostic 計算
+@openlarm/regions-taiwan      ← 台灣氣候校準參數集
+@openlarm/cli                 ← CLI 工具（P1 或 P2）
+@openlarm/playground          ← 互動 Playground（P1 或 P2）
+@openlarm/regions-japan       ← 未來
+```
+
+### 後續工作
+
+1. **立即**（Batch A 前）：註冊 GitHub org `openlarm`（免費）
+2. **v0.1 前**：註冊域名 `openlarm.org`（建議；年費 ~$15）；`.dev` 可同時買作 docs 子域（~$12/年）
+3. **v0.1 發佈**：第一次 `npm publish @openlarm/core` 自動註冊 scope
+4. **.com 建議**：若預算允許，可防禦性註冊 `openlarm.com`（~$12/年），避免被搶註
+
+### 對 Batch A 的解鎖
+
+`package.json` 的 `name` 現在可以定案為 `@openlarm/core`（原本懸而未決）；README 範本可以定案用 `openlarm` 作 org 名。
 
 ---
 
@@ -208,7 +233,7 @@ www.[new-name].dev      ← Landing page（可併入 docs 或獨立）
 6. `CHANGELOG.md`（Keep a Changelog 格式）
 7. `MODEL_CHANGELOG.md`（單獨記錄模型參數變動）
 8. `.github/workflows/ci.yml`（build + typecheck + lint）
-9. `frontend/package.json` 改：`private:false` + 加 `license` 欄位（name 待命名確定再改）
+9. `frontend/package.json` 改：`private:false` + `license:"Apache-2.0"`（app 本體不發 npm，僅文件化）；`@openlarm/core` 的 package.json 在抽取時另建
 10. vitest 設定 + 10 個 golden tests
 
 ### Batch A' — 依賴前面的決策（6 檔）
@@ -232,20 +257,20 @@ www.[new-name].dev      ← Landing page（可併入 docs 或獨立）
 
 ### Batch C — 平行工作
 - arXiv preprint 草稿（可在 Batch A 進行時平行）
-- 命名候選篩選（進 Batch B 前要定案）
 - Model Governance Committee 章程具體條款
 - 驗證資料集蒐集（arXiv 論文需要）
+- 註冊 `openlarm` GitHub org + `openlarm.org` / `.dev` 域名
 
 ---
 
 ## 懸而未決的事項（下一輪要繼續討論）
 
-1. **最終命名**：用哪個候選？何時註冊？
-2. **律師諮詢管道**：台灣律所？哪一家？預算？
-3. **CCLA 簽署流程**：初期只有自己，但架構要先設好
-4. **Model Governance 成員招募**：何時開始找第二人？（業界、學界都可）
-5. **arXiv 驗證資料集**：有多少歷史任務資料可用？需不需要先做資料清理？
-6. **Playground 的技術實作**：要用現有 `(quote)/quote/` 拆出來，還是全新做？
+1. **律師諮詢管道**：台灣律所？哪一家？預算？
+2. **CCLA 簽署流程**：初期只有自己，但架構要先設好
+3. **Model Governance 成員招募**：何時開始找第二人？（業界、學界都可）
+4. **arXiv 驗證資料集**：有多少歷史任務資料可用？需不需要先做資料清理？
+5. **Playground 的技術實作**：要用現有 `(quote)/quote/` 拆出來，還是全新做？
+6. **域名方案**：只註冊 `openlarm.org` 還是三組全買（`.org` + `.dev` + `.com`）防禦性註冊？
 
 ---
 
