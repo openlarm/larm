@@ -7,7 +7,7 @@ import type {
   Weather30dInput, WeatherTodayInput, BuildingSiteInput, OperationalContextInput,
   LARMInput, RiskResult, RiskExplanation, LARMVersions,
   RegionExposure, WeatherRegimeResult, Equipment,
-  PopulationDensityClass, SORAMitigation,
+  PopulationDensityClass,
 } from "@/lib/types"
 import { getParams, ACTIVE_PARAMS_VERSION } from "./weather-regime-params"
 
@@ -132,7 +132,7 @@ function computeWeatherNow(
     timeMultiplier = wts.w4_time_multiplier
   }
 
-  let wn = Math.max(0, Math.min(cap, raw * regionWeight * timeMultiplier))
+  const wn = Math.max(0, Math.min(cap, raw * regionWeight * timeMultiplier))
 
   // Explanations
   const windNote = lowConfidence
