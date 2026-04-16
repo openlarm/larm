@@ -44,14 +44,34 @@ affecting model outputs.
 - `src/lib/engines/risk-engine.ts` — drop unused `SORAMitigation`
   import surfaced by `@typescript-eslint/no-unused-vars`.
 
+### Added (Batch A' — governance & legal scaffolding)
+
+- `CONTRIBUTING.md` — DCO + CCLA dual-track workflow, dev setup, PR
+  rules including special-handling for model-changing PRs and hard-stop
+  changes (unanimous Model Governance approval required).
+- `GOVERNANCE.md` — full three-tier model: Code TSC, Model Governance
+  Committee, Spec Editors. Each with scope, decision rule, membership
+  criteria, conflict-of-interest clause, and amendment procedure.
+- `MAINTAINERS.md` — current committee members (founder seats all three
+  tiers initially; explicit invitation to diversify).
+- `.github/CODEOWNERS` — routes review requests by governance tier;
+  includes commented-out team mentions for post-org-registration.
+- `CORPORATE_CLA.md` — provisional Corporate CLA based on Apache CCLA
+  v2.0; explicitly marked draft pending lawyer review.
+- `LEGAL/DISCLAIMER.md` — authoritative draft of the safety notice,
+  liability limitations, and jurisdictional notes; both READMEs now
+  point here instead of marking it "upcoming".
+
 ### Pending (tracked for the v0.1 milestone)
 
-- `CONTRIBUTING.md`, `GOVERNANCE.md`, `MAINTAINERS.md`,
-  `CORPORATE_CLA.md`, `LEGAL/DISCLAIMER.md`, `.github/CODEOWNERS`.
 - Extraction of `@openlarm/core` and `@openlarm/regions-taiwan` packages
   from the Next.js monorepo.
 - Normative `spec/LARM-v2.0.md`.
 - arXiv preprint draft.
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- Re-promote downgraded React 19 lint rules after refactoring the
+  affected wizard / admin components.
+- Final lawyer review of `CORPORATE_CLA.md` and `LEGAL/DISCLAIMER.md`.
 
 ## [0.0.0] — bootstrap (pre-open-source)
 

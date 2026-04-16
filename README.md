@@ -19,7 +19,7 @@
 > - ✅ **操作者**對所有飛行決策承擔全部責任
 >
 > 本聲明最終措辭將於 v0.1 正式發佈前由執業律師定稿。
-> See `LEGAL/DISCLAIMER.md` (upcoming) for the authoritative statement.
+> See [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) for the authoritative draft.
 
 ---
 
@@ -127,8 +127,11 @@ console.log(result.risk_level, result.decision, result.buffer_ratio)
 
 歡迎貢獻！在送出 PR 前請閱讀：
 
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md)（upcoming）— DCO + CCLA 流程
-- [`GOVERNANCE.md`](./GOVERNANCE.md)（upcoming）— 三層治理結構
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — DCO + CCLA 流程
+- [`GOVERNANCE.md`](./GOVERNANCE.md) — 三層治理結構
+- [`MAINTAINERS.md`](./MAINTAINERS.md) — 委員會成員列表
+- [`CORPORATE_CLA.md`](./CORPORATE_CLA.md) — 企業 CLA 範本（pending lawyer）
+- [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) — 完整免責聲明草稿
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)（upcoming）— Contributor Covenant 2.1
 
 ### 治理模式預告

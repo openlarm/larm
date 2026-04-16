@@ -20,7 +20,7 @@
 > - ✅ Operators bear **full responsibility** for all flight decisions
 >
 > Final wording is pending review by a licensed attorney before the v0.1 release.
-> See `LEGAL/DISCLAIMER.md` (upcoming) for the authoritative statement.
+> See [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) for the authoritative draft.
 
 ---
 
@@ -133,8 +133,11 @@ LARM v2.0 specification.
 
 Contributions welcome. Before opening a PR, please read:
 
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) (upcoming) — DCO + CCLA workflow
-- [`GOVERNANCE.md`](./GOVERNANCE.md) (upcoming) — Three-tier governance
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — DCO + CCLA workflow
+- [`GOVERNANCE.md`](./GOVERNANCE.md) — Three-tier governance
+- [`MAINTAINERS.md`](./MAINTAINERS.md) — Committee membership
+- [`CORPORATE_CLA.md`](./CORPORATE_CLA.md) — Corporate CLA template (pending lawyer)
+- [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) — Full disclaimer draft
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) (upcoming) — Contributor Covenant 2.1
 
 ### Governance preview
