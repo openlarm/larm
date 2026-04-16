@@ -1,0 +1,56 @@
+# LARM CODEOWNERS
+#
+# This file routes review requests to the appropriate governance
+# committee per GOVERNANCE.md. GitHub auto-requests review from any
+# matching owner when a PR modifies a file under that pattern.
+#
+# Ordering matters: the LAST matching pattern wins for any given file.
+# Place model-governed and spec-governed paths AFTER the broad code
+# defaults so they take precedence.
+#
+# Until the @openlarm GitHub organisation and its teams exist, every
+# committee resolves to the founder. After the org is created, replace
+# the @mkkb2156 mentions with team mentions:
+#   Code TSC          -> @openlarm/code-tsc
+#   Model Governance  -> @openlarm/model-governance
+#   Spec Editors      -> @openlarm/spec-editors
+# Tracked in OPEN_SOURCE_DECISIONS.md §7 (post-org-registration).
+
+# ─── Default: Code TSC owns everything not specifically reassigned ───────────
+
+*                                                                  @mkkb2156
+
+# ─── Model Governance — anything that can change evaluateRisk() output ──────
+
+/low-altitude-ops-platform/frontend/src/lib/engines/risk-engine.ts          @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/weather-regime-params.ts @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/model-helpers.ts        @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/__tests__/              @mkkb2156
+/MODEL_CHANGELOG.md                                                @mkkb2156
+
+# Future region adapter packages (one entry per package once they exist).
+# /packages/regions-taiwan/                                        @mkkb2156
+# /packages/regions-japan/                                         @mkkb2156
+
+# ─── Spec Editors — normative wording ────────────────────────────────────────
+
+# /spec/                                                           @mkkb2156
+# /rfcs/                                                           @mkkb2156
+
+# ─── Governance, legal, and contributor-facing docs ─────────────────────────
+
+# All three committees co-own these (any one can approve, but changes
+# to GOVERNANCE itself require the high-bar amendment procedure).
+/GOVERNANCE.md                                                     @mkkb2156
+/MAINTAINERS.md                                                    @mkkb2156
+/CONTRIBUTING.md                                                   @mkkb2156
+/CODE_OF_CONDUCT.md                                                @mkkb2156
+/LICENSE                                                           @mkkb2156
+/NOTICE                                                            @mkkb2156
+/SECURITY.md                                                       @mkkb2156
+/CORPORATE_CLA.md                                                  @mkkb2156
+/LEGAL/                                                            @mkkb2156
+
+# ─── CI / release infrastructure (Code TSC alone) ───────────────────────────
+
+/.github/                                                          @mkkb2156
