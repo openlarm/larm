@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-004",
+  "name": "rain_rate_without_high_probability",
+  "description": "Heavy rain rate (15 mm/h) alone with probability ≤ 60% MUST NOT cite the conjunction-based rain hard-stop. Verifier checks that IF decision is NO_GO, the rain-rate-AND-probability phrasing does not appear in controls.",
+  "spec_section": "§7.1",
+  "tags": ["hard-stop", "rain", "boundary", "negative"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 50,
+      "rain_mmph_forecast": 15,
+      "thunder_risk": 0,
+      "forecast_confidence": 80
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "conditional_assertion": {
+      "if": { "decision": "NO_GO" },
+      "then": { "controls_must_not_match_regex": "大雨.*且降雨概率" }
+    }
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

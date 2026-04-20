@@ -1,0 +1,49 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-008",
+  "name": "output_bounds_stressful_legal_input",
+  "description": "Stressful but legal (non-hard-stop) input must still satisfy invariants: risk_score ∈ [0, 100] and buffer_ratio ∈ [0.05, 0.55].",
+  "spec_section": "§6.1, §9",
+  "tags": ["bounds", "invariant", "safety-critical"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 38,
+      "gust_p90_kmh": null,
+      "rain_days_30": 14,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 30,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 55,
+      "rain_mmph_forecast": 8,
+      "thunder_risk": 0,
+      "forecast_confidence": 40,
+      "edr": 0.4
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 1,
+      "near_base_station": 0,
+      "wind_channel_effect": 1,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "risk_score_range": [0, 100],
+    "buffer_ratio_range": [0.05, 0.55]
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}
