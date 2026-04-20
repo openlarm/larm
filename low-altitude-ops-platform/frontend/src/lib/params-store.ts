@@ -71,8 +71,14 @@ export function clearParamOverride(): void {
  * Merge any client-side override with engine defaults and return the full
  * WeatherRegimeParams. Safe to call from server components: returns pure
  * defaults when localStorage is unavailable.
+ *
+ * Also triggers the legacy `pricing_params_override` migration on the first
+ * call per session (idempotent; no-op when the legacy key is absent). This
+ * ensures users who set pricing overrides in pre-unification builds do not
+ * silently lose them when the app updates.
  */
 export function getParamsWithOverride(version?: string): WeatherRegimeParams {
+  migrateLegacyPricingOverride()
   return resolveParams(version, loadParamOverride() ?? undefined)
 }
 

@@ -98,6 +98,18 @@ describe("params-store", () => {
     expect(loaded?.pricing?.urgent_multiplier).toBe(1.5)
   })
 
+  it("getParamsWithOverride transparently runs the legacy migration on first read", () => {
+    // Simulates an existing user whose browser still holds the old flat key
+    // from a pre-unification build. After any client-side read, the legacy
+    // key must be migrated to the canonical location — otherwise their
+    // override silently disappears.
+    const legacyFlat = { urgent_multiplier: 1.6 }
+    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacyFlat))
+    const merged = getParamsWithOverride()
+    expect(localStorage.getItem(LEGACY_PRICING_KEY)).toBeNull()
+    expect(merged.pricing.urgent_multiplier).toBe(1.6)
+  })
+
   it("is safe to call during SSR (no localStorage)", () => {
     const original = (globalThis as unknown as { localStorage?: Storage }).localStorage
     delete (globalThis as unknown as { localStorage?: Storage }).localStorage
