@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { inferWCode, completionForRL, getWRDecision, simpleRiskFromW } from "@/lib/engines/model-helpers"
 import { evaluateRisk, buildingSiteFromMission, operationalContextFromMission } from "@/lib/engines/risk-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
+import { getParamsWithOverride } from "@/lib/params-store"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
 
@@ -228,7 +229,10 @@ export function Step6Operations({ mission, update, next, back }: Props) {
       const w30 = realWeather?.weather_30d ?? MOCK_WEATHER_30D[scenarioKey]
       const building = buildingSiteFromMission(mission)
       const operational = operationalContextFromMission(mission, timeWindow)
-      const r = evaluateRisk({ weather_30d: w30, weather_today: w.weather_today, building, operational, equipment: [] })
+      const r = evaluateRisk(
+        { weather_30d: w30, weather_today: w.weather_today, building, operational, equipment: [] },
+        { params: getParamsWithOverride() },
+      )
       setRiskResult(r)
 
       const t = estimateTime({
