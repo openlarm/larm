@@ -60,24 +60,42 @@ describe("params-store", () => {
     expect(getParamsWithOverride().r4_nogo_threshold).toBe(77)
   })
 
-  it("migrateLegacyPricingOverride copies old key into new key and clears old", () => {
-    const legacy = { pricing: { urgent_multiplier: 1.8 } }
-    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacy))
+  it("migrateLegacyPricingOverride wraps flat legacy payload under pricing key and clears old", () => {
+    // Legacy shape: flat Partial<PricingParams>, no top-level `pricing` wrapper.
+    const legacyFlat = { urgent_multiplier: 1.8 }
+    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacyFlat))
     migrateLegacyPricingOverride()
     expect(localStorage.getItem(LEGACY_PRICING_KEY)).toBeNull()
-    expect(loadParamOverride()).toEqual({ pricing: { urgent_multiplier: 1.8 } })
+    const loaded = loadParamOverride()
+    expect(loaded?.pricing?.urgent_multiplier).toBe(1.8)
   })
 
-  it("migrateLegacyPricingOverride preserves existing larm override (merges)", () => {
-    const legacyPricing = { pricing: { urgent_multiplier: 1.8 } }
-    const existingLarm = { r4_nogo_threshold: 80 }
-    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacyPricing))
+  it("migrateLegacyPricingOverride discards legacy when larm override already has pricing (legacy loses)", () => {
+    // Matches prior behaviour in pricing-params.ts:140: if larmOverride.pricing
+    // already set, the newer value wins; legacy is dropped (but still removed).
+    const legacyFlat = { urgent_multiplier: 1.8 }
+    const existingLarm = {
+      r4_nogo_threshold: 80,
+      pricing: { urgent_multiplier: 1.2 },
+    }
+    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacyFlat))
     localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(existingLarm))
     migrateLegacyPricingOverride()
-    expect(loadParamOverride()).toEqual({
-      r4_nogo_threshold: 80,
-      pricing: { urgent_multiplier: 1.8 },
-    })
+    expect(localStorage.getItem(LEGACY_PRICING_KEY)).toBeNull()
+    const loaded = loadParamOverride()
+    expect(loaded?.r4_nogo_threshold).toBe(80)
+    expect(loaded?.pricing?.urgent_multiplier).toBe(1.2)  // newer wins
+  })
+
+  it("migrateLegacyPricingOverride folds legacy into existing larm override without pricing", () => {
+    const legacyFlat = { urgent_multiplier: 1.5 }
+    const existingLarm = { r4_nogo_threshold: 80 }  // no pricing sub-object
+    localStorage.setItem(LEGACY_PRICING_KEY, JSON.stringify(legacyFlat))
+    localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(existingLarm))
+    migrateLegacyPricingOverride()
+    const loaded = loadParamOverride()
+    expect(loaded?.r4_nogo_threshold).toBe(80)
+    expect(loaded?.pricing?.urgent_multiplier).toBe(1.5)
   })
 
   it("is safe to call during SSR (no localStorage)", () => {

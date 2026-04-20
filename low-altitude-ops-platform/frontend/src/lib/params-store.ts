@@ -17,6 +17,18 @@ import {
 export const LARM_OVERRIDE_KEY = "larm_params_override"
 export const LEGACY_PRICING_KEY = "pricing_params_override"
 
+/**
+ * Silent in tests (vitest's NODE_ENV==="test") and production builds;
+ * active in development. Lets malformed overrides, quota-exceeded saves,
+ * and broken migrations surface in the dev console instead of vanishing.
+ */
+function warn(op: string, err: unknown): void {
+  if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console
+    console.warn(`[params-store] ${op} failed:`, err)
+  }
+}
+
 function hasStorage(): boolean {
   try {
     return typeof localStorage !== "undefined"
@@ -31,7 +43,8 @@ export function loadParamOverride(): Partial<WeatherRegimeParams> | null {
     const raw = localStorage.getItem(LARM_OVERRIDE_KEY)
     if (!raw) return null
     return JSON.parse(raw) as Partial<WeatherRegimeParams>
-  } catch {
+  } catch (err) {
+    warn("loadParamOverride", err)
     return null
   }
 }
@@ -40,8 +53,8 @@ export function saveParamOverride(override: Partial<WeatherRegimeParams>): void 
   if (!hasStorage()) return
   try {
     localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(override))
-  } catch {
-    // Quota exceeded or storage disabled — silent, same as prior behaviour.
+  } catch (err) {
+    warn("saveParamOverride", err)
   }
 }
 
@@ -49,8 +62,8 @@ export function clearParamOverride(): void {
   if (!hasStorage()) return
   try {
     localStorage.removeItem(LARM_OVERRIDE_KEY)
-  } catch {
-    // ignore
+  } catch (err) {
+    warn("clearParamOverride", err)
   }
 }
 
@@ -65,24 +78,31 @@ export function getParamsWithOverride(version?: string): WeatherRegimeParams {
 
 /**
  * One-shot migration for the "pricing_params_override" key that pre-dated
- * the unified override. Idempotent.
+ * the unified override. The legacy value is a flat `Partial<PricingParams>`
+ * written by earlier builds of the admin-params UI. This migration wraps it
+ * under the canonical `pricing` sub-key of `larm_params_override`. Idempotent.
+ *
+ * Collision semantics: if `larm_params_override` already has a `pricing`
+ * sub-object, the legacy value is discarded — the newer explicit setting
+ * wins. This matches the original migration in `pricing-params.ts` that
+ * this helper replaces.
  */
 export function migrateLegacyPricingOverride(): void {
   if (!hasStorage()) return
   try {
     const oldRaw = localStorage.getItem(LEGACY_PRICING_KEY)
     if (!oldRaw) return
-    const oldValue = JSON.parse(oldRaw) as { pricing?: unknown }
-    if (oldValue && typeof oldValue === "object" && "pricing" in oldValue) {
-      const existingRaw = localStorage.getItem(LARM_OVERRIDE_KEY)
-      const existing = existingRaw
-        ? (JSON.parse(existingRaw) as Partial<WeatherRegimeParams>)
-        : {}
-      const merged = { ...existing, pricing: oldValue.pricing } as Partial<WeatherRegimeParams>
+    const oldPricing = JSON.parse(oldRaw) as Partial<WeatherRegimeParams["pricing"]>
+    const existing = loadParamOverride() ?? {}
+    if (!existing.pricing) {
+      const merged: Partial<WeatherRegimeParams> = {
+        ...existing,
+        pricing: oldPricing as WeatherRegimeParams["pricing"],
+      }
       localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(merged))
     }
     localStorage.removeItem(LEGACY_PRICING_KEY)
-  } catch {
-    // Best-effort migration. If it fails, leave both keys alone.
+  } catch (err) {
+    warn("migrateLegacyPricingOverride", err)
   }
 }
