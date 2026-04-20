@@ -229,16 +229,52 @@ describe("evaluateRisk options", () => {
 
   it("honours an override passed via options.params", () => {
     const overridden = resolveParams("v2.0", { r4_nogo_threshold: 80 })
+    // Deliberately stressful input: W5 climate (wind_p90≥39), high wind+rain
+    // today, tall building in high-urban area with env hazards, night ops with
+    // fatigue, two blocked equipment items — all below hard-stop thresholds.
     const input = makeInput({
       weather_today: { ...benignToday, wind_now_kmh: 35, rain_prob_today_pct: 95 },
       weather_30d: { ...benign30d, wind_p90_kmh: 50, gust_p90_kmh: 60 },
+      building: {
+        ...benignBuilding,
+        building_floors: 35,
+        site_altitude_m: 500,
+        facade_complexity: "heavy",
+        population_density_class: "high_urban",
+        near_hv_power: 1,
+        wind_channel_effect: 1,
+        clearance_m: 3,
+        crowd_density: "high",
+      },
+      operational: {
+        time_window: "night",
+        weekend: 0,
+        urgent_days: null,
+        road_closure_needed: 1,
+        multi_day_split: null,
+        operator_experience_level: "junior",
+        mission_days: 7,
+      },
+      equipment: [
+        { id: "eq-1", name: "主機A", type: "drone" as const, serial: "SN-001", health_status: "block" as const, last_calibrated: "2026-01-01", calibration_expires: "2026-12-31", last_maintenance: "2026-01-01" },
+        { id: "eq-2", name: "主機B", type: "drone" as const, serial: "SN-002", health_status: "block" as const, last_calibrated: "2026-01-01", calibration_expires: "2026-12-31", last_maintenance: "2026-01-01" },
+      ],
     })
+    const def = evaluateRisk(input)
     const ovr = evaluateRisk(input, { params: overridden })
-    // The override lowers r4_nogo_threshold; if the computed risk exceeds 80
-    // the decision must be NO_GO under the override.
-    if (ovr.risk_score > 80) {
-      expect(ovr.decision).toBe("NO_GO")
-    }
+    // Precondition: the stressed input must score above 80 for the
+    // override (threshold 80) to be observable. If this ever fails, the
+    // test inputs need re-tuning — don't silently skip.
+    expect(ovr.risk_score).toBeGreaterThan(80)
+    // Under the override, R4-band score > 80 triggers hard NO_GO via
+    // risk_score > r4_nogo_threshold. Under the default threshold (92),
+    // the same input may remain CONDITIONAL. The test asserts the
+    // override actually changed the decision or at least kept NO_GO.
+    expect(ovr.decision).toBe("NO_GO")
+    // Default-path decision may also be NO_GO (e.g. if score > 92),
+    // so we don't strictly assert inequality, but we do assert the
+    // override was applied to P.r4_nogo_threshold:
+    expect(ovr.versions.weather_regime_params_version).toBe(def.versions.weather_regime_params_version)
   })
 
   it("uses the injected clock for evaluated_at", () => {

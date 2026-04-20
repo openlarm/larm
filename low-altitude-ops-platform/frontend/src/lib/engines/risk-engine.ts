@@ -13,6 +13,16 @@ import { getParams, resolveParams, ACTIVE_PARAMS_VERSION, type WeatherRegimePara
 
 // ─── Options type ─────────────────────────────────────────────────────────────
 
+/**
+ * Options for `evaluateRisk()`. All fields are optional; passing `{}` or
+ * omitting the argument preserves the pre-refactor behaviour (reads the
+ * admin override from localStorage via `getParams()`, uses `new Date()`
+ * for `evaluated_at`).
+ *
+ * Explicitly supply `params` to turn `evaluateRisk` into a pure
+ * transformation of input + params; supply `clock` for deterministic
+ * timestamps in tests.
+ */
 export interface EvaluateRiskOptions {
   /** Explicit merged params. If omitted, resolveParams() defaults are used. */
   params?: WeatherRegimeParams
@@ -26,6 +36,14 @@ const defaultClock: () => Date = () => new Date()
 
 // ─── Step A: Climate Regime Classification (with confidence) ──────────────────
 
+/**
+ * @deprecated Legacy regime classifier that reads params via
+ * `getParams(paramsVersion)`. Kept only while unmigrated callers exist;
+ * the main `evaluateRisk` path uses `classifyWeatherRegimeWithParams`
+ * below. Do NOT edit this function in isolation — any behaviour change
+ * must be mirrored in `classifyWeatherRegimeWithParams` until Task 8
+ * deletes this copy. See docs/superpowers/plans/2026-04-20-engines-decoupling-p0.md.
+ */
 function classifyWeatherRegime(
   w30: Weather30dInput,
   today: WeatherTodayInput,
@@ -65,6 +83,7 @@ function classifyWeatherRegime(
   return { w_code: primary, confidence, secondary_w: secondary, adjusted_base: adjustedBase }
 }
 
+/** Pure-params variant of `classifyWeatherRegime`; kept in parallel until Task 8. */
 function classifyWeatherRegimeWithParams(
   w30: Weather30dInput,
   today: WeatherTodayInput,
@@ -467,8 +486,12 @@ export function evaluateRisk(
   input: LARMInput,
   options: EvaluateRiskOptions = {},
 ): RiskResult {
+  // Fallback path preserves pre-refactor behaviour: getParams() reads the
+  // admin override from localStorage on the client. Task 8 strips that
+  // lookup out of getParams() after every caller has migrated to passing
+  // `options.params` explicitly.
   const P: WeatherRegimeParams = options.params
-    ?? resolveParams(options.paramsVersion ?? ACTIVE_PARAMS_VERSION)
+    ?? getParams(options.paramsVersion)
   const clock = options.clock ?? defaultClock
   const { weather_30d, weather_today, building, operational, w_override, equipment = [] } = input
   const ops: OperationalContextInput = operational ?? {
