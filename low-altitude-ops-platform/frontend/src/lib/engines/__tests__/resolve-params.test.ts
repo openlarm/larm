@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
   resolveParams,
   WEATHER_REGIME_PARAMS_V2,
@@ -39,9 +39,28 @@ describe("resolveParams (pure)", () => {
   })
 
   it("does not touch localStorage or window", () => {
-    // Sanity: calling resolveParams should not throw in a fresh context
-    // even when we blank out window (verified by running in vitest's default
-    // happy-dom/jsdom + explicitly calling through).
-    expect(() => resolveParams("v2.0")).not.toThrow()
+    // In the node test environment Storage/localStorage may not exist.
+    // Inject a spy on globalThis.localStorage so we can assert it is
+    // never called, regardless of the test runner environment.
+    const getItemMock = vi.fn()
+    const fakeStorage = { getItem: getItemMock } as unknown as Storage
+    const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeStorage,
+      configurable: true,
+      writable: true,
+    })
+    try {
+      resolveParams("v2.0")
+      resolveParams("v1.0", { r4_nogo_threshold: 90 })
+      expect(getItemMock).not.toHaveBeenCalled()
+    } finally {
+      if (originalLocalStorage) {
+        Object.defineProperty(globalThis, "localStorage", originalLocalStorage)
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (globalThis as any).localStorage
+      }
+    }
   })
 })

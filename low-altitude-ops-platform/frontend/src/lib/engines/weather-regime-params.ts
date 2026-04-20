@@ -321,10 +321,19 @@ export const ACTIVE_PARAMS_VERSION = "v2.0"
 const LS_KEY = "larm_params_override"
 
 /**
- * Pure parameter resolver. Takes a version key and an optional shallow
- * override and returns a merged `WeatherRegimeParams`. Does NOT read
+ * Pure parameter resolver. Takes a version key and an optional override
+ * and returns a merged `WeatherRegimeParams`. Does NOT read
  * `localStorage`, `window`, or any other browser-only global. Safe to
  * call from server components, tests, and future package extractions.
+ *
+ * Merge semantics:
+ * - Top-level fields in `override` replace the base field wholesale.
+ *   To override a nested object field (e.g. `regimes`, `wr_matrix`,
+ *   `thresholds`, `weather_now_weights`), you MUST supply the full
+ *   sub-object — any fields you omit will be wiped.
+ * - `pricing` is the one exception: it is shallow-merged into the base
+ *   pricing defaults, so callers can patch a single pricing field
+ *   without redeclaring the whole `PricingParams` shape.
  */
 export function resolveParams(
   version: string = ACTIVE_PARAMS_VERSION,
