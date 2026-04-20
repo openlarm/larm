@@ -318,8 +318,6 @@ export const PARAM_REGISTRY: Record<string, WeatherRegimeParams> = {
 
 export const ACTIVE_PARAMS_VERSION = "v2.0"
 
-const LS_KEY = "larm_params_override"
-
 /**
  * Pure parameter resolver. Takes a version key and an optional override
  * and returns a merged `WeatherRegimeParams`. Does NOT read
@@ -348,21 +346,13 @@ export function resolveParams(
   }
 }
 
+/**
+ * @deprecated Call `resolveParams()` directly. Retained as a thin pure
+ * wrapper so existing imports compile. Returns defaults only — the
+ * localStorage override path moved to `src/lib/params-store.ts`.
+ */
 export function getParams(version: string = ACTIVE_PARAMS_VERSION): WeatherRegimeParams {
-  const base = PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
-  if (typeof window === "undefined") return base
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (!raw) return base
-    const override = JSON.parse(raw) as Partial<WeatherRegimeParams>
-    return {
-      ...base,
-      ...override,
-      pricing: { ...base.pricing, ...(override.pricing ?? {}) },
-    }
-  } catch {
-    return base
-  }
+  return resolveParams(version)
 }
 
 // Keep the named export for backward compatibility

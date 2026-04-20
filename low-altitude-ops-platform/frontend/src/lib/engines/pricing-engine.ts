@@ -4,7 +4,7 @@ import type {
   CleaningAgent, RooftopAccess,
 } from "../types"
 import { getPricingParams, type PricingParams } from "./pricing-params"
-import { getParams, type WeatherRegimeParams } from "./weather-regime-params"
+import { resolveParams, type WeatherRegimeParams } from "./weather-regime-params"
 
 export interface GenerateQuoteOptions {
   /** Explicit WeatherRegimeParams; only consulted for `quote_max_multiplier`. */
@@ -41,10 +41,7 @@ export function generateQuote(
   options: GenerateQuoteOptions = {},
 ): PricingResult {
   const P = options.pricingParams ?? getPricingParams()
-  // Fallback path preserves pre-refactor behaviour: getParams() reads
-  // admin overrides from localStorage on the client. Task 8 will strip
-  // that lookup once callers migrate to passing options.params.
-  const W = options.params ?? getParams()
+  const W = options.params ?? resolveParams()
   const clock = options.clock ?? defaultClock
   const idGen = options.idGenerator ?? defaultIdGenerator
   const {

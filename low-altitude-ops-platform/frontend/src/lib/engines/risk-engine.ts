@@ -9,15 +9,14 @@ import type {
   RegionExposure, WeatherRegimeResult, Equipment,
   PopulationDensityClass,
 } from "../types"
-import { getParams, resolveParams, ACTIVE_PARAMS_VERSION, type WeatherRegimeParams } from "./weather-regime-params"
+import { resolveParams, ACTIVE_PARAMS_VERSION, type WeatherRegimeParams } from "./weather-regime-params"
 
 // ─── Options type ─────────────────────────────────────────────────────────────
 
 /**
- * Options for `evaluateRisk()`. All fields are optional; passing `{}` or
- * omitting the argument preserves the pre-refactor behaviour (reads the
- * admin override from localStorage via `getParams()`, uses `new Date()`
- * for `evaluated_at`).
+ * Options for `evaluateRisk()`. All fields are optional; passing `{}`
+ * or omitting the argument uses `resolveParams()` defaults and
+ * `new Date()` for `evaluated_at`.
  *
  * Explicitly supply `params` to turn `evaluateRisk` into a pure
  * transformation of input + params; supply `clock` for deterministic
@@ -36,54 +35,6 @@ const defaultClock: () => Date = () => new Date()
 
 // ─── Step A: Climate Regime Classification (with confidence) ──────────────────
 
-/**
- * @deprecated Legacy regime classifier that reads params via
- * `getParams(paramsVersion)`. Kept only while unmigrated callers exist;
- * the main `evaluateRisk` path uses `classifyWeatherRegimeWithParams`
- * below. Do NOT edit this function in isolation — any behaviour change
- * must be mirrored in `classifyWeatherRegimeWithParams` until Task 8
- * deletes this copy. See docs/superpowers/plans/2026-04-20-engines-decoupling-p0.md.
- */
-function classifyWeatherRegime(
-  w30: Weather30dInput,
-  today: WeatherTodayInput,
-  override?: WeatherType,
-  paramsVersion?: string,
-  recentTyphoonCount?: number | null,
-): WeatherRegimeResult & { adjusted_base: number } {
-  const P = getParams(paramsVersion)
-  if (override) {
-    return { w_code: override, confidence: 1.0, secondary_w: null, adjusted_base: P.regimes[override].base_score }
-  }
-
-  const { wind_p90_kmh, gust_p90_kmh, rain_days_30, heavy_rain_days_30, instability_index, predictability_score } = w30
-
-  const matches: WeatherType[] = []
-
-  if (wind_p90_kmh >= 39 || (gust_p90_kmh != null && gust_p90_kmh >= 50)) matches.push("W5")
-  if (rain_days_30 >= 15 && heavy_rain_days_30 >= 3) matches.push("W3")
-  if (instability_index >= 0.70 && heavy_rain_days_30 >= 2) matches.push("W4")
-  if (wind_p90_kmh >= 33 && predictability_score >= 0.60) matches.push("W1")
-  if (rain_days_30 >= 8 && rain_days_30 <= 14 && predictability_score < 0.55) matches.push("W2")
-
-  const primary: WeatherType = matches[0] ?? "W0"
-  const secondary: WeatherType | null = matches[1] ?? null
-
-  const confidence = matches.length <= 1 ? 1.0 :
-    matches.length === 2 ? 0.78 :
-    matches.length === 3 ? 0.62 : 0.50
-
-  // v2.0: W5 climate trend correction
-  let adjustedBase = P.regimes[primary].base_score
-  if (primary === "W5" && recentTyphoonCount != null && recentTyphoonCount > P.w5_typhoon_trend_threshold) {
-    adjustedBase += P.w5_typhoon_trend_bonus
-  }
-
-  void today // reserved for future use
-  return { w_code: primary, confidence, secondary_w: secondary, adjusted_base: adjustedBase }
-}
-
-/** Pure-params variant of `classifyWeatherRegime`; kept in parallel until Task 8. */
 function classifyWeatherRegimeWithParams(
   w30: Weather30dInput,
   today: WeatherTodayInput,
@@ -116,14 +67,14 @@ function classifyWeatherRegimeWithParams(
 
 // ─── Step B.1: WeatherNow Component (0..42) ───────────────────────────────────
 
-function getWindScore(kmh: number, P: ReturnType<typeof getParams>): number {
+function getWindScore(kmh: number, P: WeatherRegimeParams): number {
   for (const row of P.thresholds.wind_score_table) {
     if (kmh >= row.min_kmh && kmh <= row.max_kmh) return row.score
   }
   return 80
 }
 
-function getRainScore(prob: number, mmph: number, P: ReturnType<typeof getParams>): number {
+function getRainScore(prob: number, mmph: number, P: WeatherRegimeParams): number {
   const r = P.thresholds.rain_score_rules
   if (prob < r.rule_0.rain_prob_lt_pct && mmph < r.rule_0.rain_mmph_lt) return 0
   if (prob > r.rule_3.rain_prob_gt_pct || mmph > r.rule_3.or_mmph_gt)   return r.rule_3.score
@@ -138,7 +89,7 @@ function getRainScore(prob: number, mmph: number, P: ReturnType<typeof getParams
   return 0
 }
 
-function computeEDRAdj(edr: number | null | undefined, P: ReturnType<typeof getParams>): number {
+function computeEDRAdj(edr: number | null | undefined, P: WeatherRegimeParams): number {
   if (edr == null) return 0
   let adj = 0
   for (const t of P.edr_thresholds) {
@@ -153,7 +104,7 @@ function computeWeatherNow(
   w_code: WeatherType,
   region_exposure: RegionExposure | null | undefined,
   expl: RiskExplanation[],
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
 ): { score: number; edr_adj: number } {
   const wts = P.weather_now_weights
   const cap = wts.weather_now_cap
@@ -222,7 +173,7 @@ function computeGScore(
   b: BuildingSiteInput,
   currentWindKmh: number,
   expl: RiskExplanation[],
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
 ): { total: number; ground_consequence: number; tke_proxy: number } {
   const cfg = P.g_score_config
 
@@ -300,7 +251,7 @@ function computeOperationalScore(
   ops: OperationalContextInput,
   crowd_density: CrowdDensity | null,
   expl: RiskExplanation[],
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
 ): number {
   const parts: string[] = []
   let score = 0
@@ -332,7 +283,7 @@ function computeOperationalScore(
 function computeEquipmentScore(
   equipment: Equipment[],
   expl: RiskExplanation[],
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
 ): number {
   if (equipment.length === 0) return 0
 
@@ -359,7 +310,7 @@ function computeEquipmentScore(
 
 // ─── Score → R_level ──────────────────────────────────────────────────────────
 
-function mapToRLevel(score: number, P: ReturnType<typeof getParams>): RiskLevel {
+function mapToRLevel(score: number, P: WeatherRegimeParams): RiskLevel {
   for (const row of P.thresholds.mapping_r_level) {
     if (score >= row.min && score <= row.max) return row.r_level as RiskLevel
   }
@@ -382,7 +333,7 @@ function computeGating(
   ops: OperationalContextInput,
   w_code: WeatherType,
   e_score: number,
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
 ): { decision: Decision; requires_approval: boolean; controls: string[]; conditional_tier: "A" | "C" | "D1" | "D2" | null } {
   const hs = P.thresholds.hard_stop
 
@@ -467,7 +418,7 @@ function computeBufferRatio(
   risk_score: number,
   w_code: WeatherType,
   confidence: number,
-  P: ReturnType<typeof getParams>,
+  P: WeatherRegimeParams,
   forecast_confidence?: number,
 ): number {
   const bc = P.buffer_coefficients
@@ -486,12 +437,8 @@ export function evaluateRisk(
   input: LARMInput,
   options: EvaluateRiskOptions = {},
 ): RiskResult {
-  // Fallback path preserves pre-refactor behaviour: getParams() reads the
-  // admin override from localStorage on the client. Task 8 strips that
-  // lookup out of getParams() after every caller has migrated to passing
-  // `options.params` explicitly.
   const P: WeatherRegimeParams = options.params
-    ?? getParams(options.paramsVersion)
+    ?? resolveParams(options.paramsVersion ?? ACTIVE_PARAMS_VERSION)
   const clock = options.clock ?? defaultClock
   const { weather_30d, weather_today, building, operational, w_override, equipment = [] } = input
   const ops: OperationalContextInput = operational ?? {

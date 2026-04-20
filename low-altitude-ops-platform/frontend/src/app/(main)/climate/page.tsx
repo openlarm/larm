@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import type { WeatherType, RiskLevel, WeatherTodayInput, Weather30dInput, ForecastBiasCorrection } from "@/lib/types"
 import { inferWCode, completionForRL, getWRDecision } from "@/lib/engines/model-helpers"
+import type { WeatherRegimeParams } from "@/lib/engines/weather-regime-params"
+import { getParamsWithOverride } from "@/lib/params-store"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -180,6 +182,7 @@ interface HealthStatus {
 function build365Days(
   ctx: WeatherContext,
   locationSeed: number,
+  P: WeatherRegimeParams,
   profiles: MonthProfile[] = MONTH_PROFILES,
   biasCorrection?: ForecastBiasCorrection | null,
 ): ForecastDay[] {
@@ -204,7 +207,7 @@ function build365Days(
     const realToday = realMap.get(dateStr)
     if (realToday) {
       // Real forecast data
-      const wt = inferWCode(realToday, ctx.weather_30d)
+      const wt = inferWCode(realToday, ctx.weather_30d, P)
       const rl = simpleRiskFromW(wt)
       days.push({
         date: dateStr,
@@ -337,7 +340,7 @@ export default function ClimatePage() {
 
       // Deterministic seed from lat/lng (so same location always gives same seasonal pattern)
       const locationSeed = Math.round(Math.abs(loc.lat * 1000 + loc.lng * 100)) % 9999
-      const days = build365Days(wxData, locationSeed, profiles, bias)
+      const days = build365Days(wxData, locationSeed, getParamsWithOverride(), profiles, bias)
       setAllDays(days)
       setMonthOffset(0)
     } catch {
@@ -369,7 +372,8 @@ export default function ClimatePage() {
   const visibleDays = currentGroup?.days ?? []
 
   const selectedDay = selectedDate ? allDays.find(d => d.date === selectedDate) ?? null : null
-  const wrDecision = selectedDay ? getWRDecision(selectedDay.weather_type, siteRisk) : null
+  const climateParams = getParamsWithOverride()
+  const wrDecision = selectedDay ? getWRDecision(selectedDay.weather_type, siteRisk, climateParams) : null
 
   // ── Monthly stats ──────────────────────────────────────────────────────────
 
@@ -1002,7 +1006,7 @@ export default function ClimatePage() {
                         <tr key={w}>
                           <td className={cn("font-mono font-bold pr-1 py-0.5", wDef?.color ?? "text-zinc-400")}>{w}</td>
                           {(["R0","R1","R2","R3","R4"] as RiskLevel[]).map(r => {
-                            const cell = MATRIX_CELL[getWRDecision(w, r)]
+                            const cell = MATRIX_CELL[getWRDecision(w, r, climateParams)]
                             const isActive = selectedDay?.weather_type === w && siteRisk === r
                             return (
                               <td key={r} className="py-0.5 px-0.5 text-center">

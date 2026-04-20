@@ -139,6 +139,7 @@ function RScoreGauge({ score }: { score: number }) {
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export function Step6Operations({ mission, update, next, back }: Props) {
+  const P = getParamsWithOverride()
   const scenarioKey = mission.airspace?.status === "NeedPermit" ? "W1-R2" : "W0-R0"
 
   // ── Weather data ─────────────────────────────────────────────────────────
@@ -167,12 +168,12 @@ export function Step6Operations({ mission, update, next, back }: Props) {
     return mockDays.map((day): WeatherDay => {
       const realToday = forecastMap.get(day.date)
       if (!realToday) return day
-      const wt = inferWCode(realToday, realWeather.weather_30d)
+      const wt = inferWCode(realToday, realWeather.weather_30d, P)
       const rl = simpleRiskFromW(wt)
       return { ...day, weather_type: wt, risk_level: rl, wind_ms: Math.round(realToday.wind_now_kmh / 3.6 * 10) / 10,
         rain_prob: realToday.rain_prob_today_pct, completion_prob: completionForRL(rl, wt), weather_today: realToday }
     })
-  }, [scenarioKey, realWeather])
+  }, [scenarioKey, realWeather, P])
 
   // ── Date selection ───────────────────────────────────────────────────────
   const initSelected = mission.selected_dates ?? (mission.selected_date ? [mission.selected_date] : [])
@@ -522,7 +523,7 @@ export function Step6Operations({ mission, update, next, back }: Props) {
                         <tr key={w}>
                           <td className={cn("font-mono font-bold pr-1 py-0.5", wDef?.color ?? "text-zinc-400")}>{w}</td>
                           {(["R0","R1","R2","R3","R4"] as RiskLevel[]).map(r => {
-                            const cell = MATRIX_CELL[getWRDecision(w, r)]
+                            const cell = MATRIX_CELL[getWRDecision(w, r, P)]
                             return <td key={r} className="py-0.5 px-0.5 text-center"><span className={cn("inline-block px-1 py-px rounded text-[9px] w-full text-center", cell.cls)}>{cell.label}</span></td>
                           })}
                         </tr>

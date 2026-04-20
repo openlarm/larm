@@ -1,9 +1,7 @@
 // ─── Pricing Parameters (configurable via Admin Params UI) ────────────────────
 //
-// Mirrors the pattern of weather-regime-params.ts:
-// - Default values defined here
-// - getPricingParams() reads localStorage override on client, falls back to defaults on server
-// - Admin Params UI pricing tab writes to localStorage key "pricing_params_override"
+// Default values defined here. Browser-side overrides flow through
+// src/lib/params-store.ts.
 
 import type { BuildingType, Complexity, Contamination, CleaningAgent, TimeWindow, RooftopAccess } from "../types"
 
@@ -123,55 +121,13 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
   version: "v1.0",
 }
 
-// ─── Migration: move legacy pricing_params_override into larm_params_override ─
-
-const LEGACY_LS_KEY = "pricing_params_override"
-const LARM_LS_KEY = "larm_params_override"
-
-function migrateLegacyPricingOverride(): void {
-  if (typeof window === "undefined") return
-  try {
-    const oldRaw = localStorage.getItem(LEGACY_LS_KEY)
-    if (!oldRaw) return
-    const oldPricing = JSON.parse(oldRaw) as Partial<PricingParams>
-    const larmRaw = localStorage.getItem(LARM_LS_KEY)
-    const larmOverride = larmRaw ? JSON.parse(larmRaw) : {}
-    // Only migrate if larm override doesn't already have pricing
-    if (!larmOverride.pricing) {
-      larmOverride.pricing = oldPricing
-      localStorage.setItem(LARM_LS_KEY, JSON.stringify(larmOverride))
-    }
-    localStorage.removeItem(LEGACY_LS_KEY)
-  } catch {
-    // silently ignore migration errors
-  }
-}
-
 // ─── Reader ──────────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated Pass pricing params explicitly via options where possible.
+ * This helper returns defaults only; the browser-side override path lives
+ * in `src/lib/params-store.ts`.
+ */
 export function getPricingParams(): PricingParams {
-  if (typeof window === "undefined") return PRICING_PARAMS_DEFAULT
-  migrateLegacyPricingOverride()
-  try {
-    const raw = localStorage.getItem(LARM_LS_KEY)
-    if (!raw) return PRICING_PARAMS_DEFAULT
-    const larm = JSON.parse(raw)
-    if (!larm.pricing) return PRICING_PARAMS_DEFAULT
-    const p = larm.pricing as Partial<PricingParams>
-    // Deep-merge nested Records so partial overrides don't erase defaults
-    return {
-      ...PRICING_PARAMS_DEFAULT,
-      ...p,
-      base_price: { ...PRICING_PARAMS_DEFAULT.base_price, ...p.base_price },
-      complexity_surcharge: { ...PRICING_PARAMS_DEFAULT.complexity_surcharge, ...p.complexity_surcharge },
-      contamination_surcharge: { ...PRICING_PARAMS_DEFAULT.contamination_surcharge, ...p.contamination_surcharge },
-      cleaning_agent_surcharge: { ...PRICING_PARAMS_DEFAULT.cleaning_agent_surcharge, ...p.cleaning_agent_surcharge },
-      facade_surcharges: { ...PRICING_PARAMS_DEFAULT.facade_surcharges, ...p.facade_surcharges },
-      supply_surcharges: { ...PRICING_PARAMS_DEFAULT.supply_surcharges, ...p.supply_surcharges },
-      time_window_multiplier: { ...PRICING_PARAMS_DEFAULT.time_window_multiplier, ...p.time_window_multiplier },
-      floor_multiplier: p.floor_multiplier ?? PRICING_PARAMS_DEFAULT.floor_multiplier,
-    }
-  } catch {
-    return PRICING_PARAMS_DEFAULT
-  }
+  return PRICING_PARAMS_DEFAULT
 }

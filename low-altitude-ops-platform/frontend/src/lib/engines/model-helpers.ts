@@ -4,7 +4,6 @@
 // Step5Weather.tsx. They are now the single source of truth, reading
 // thresholds from WeatherRegimeParams so the /admin/params UI can override them.
 
-import { getParams } from "./weather-regime-params"
 import type { WeatherRegimeParams } from "./weather-regime-params"
 import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "../types"
 
@@ -13,9 +12,9 @@ import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from 
 export function inferWCode(
   today: WeatherTodayInput,
   w30d: Weather30dInput,
-  P?: WeatherRegimeParams,
+  P: WeatherRegimeParams,
 ): WeatherType {
-  const t = (P ?? getParams()).ui_infer_thresholds
+  const t = P.ui_infer_thresholds
   const wind = today.wind_now_kmh
   const rain  = today.rain_prob_today_pct
   if (wind >= t.W5_wind_now_kmh && (w30d.gust_p90_kmh ?? 0) >= t.W5_gust_p90_kmh) return "W5"
@@ -40,9 +39,9 @@ export function completionForRL(rl: RiskLevel, w: WeatherType, localAdjustment =
 export function getWRDecision(
   w: WeatherType,
   r: RiskLevel,
-  P?: WeatherRegimeParams,
+  P: WeatherRegimeParams,
 ): "go" | "cond" | "nogo" {
-  return (P ?? getParams()).wr_matrix[w][r]
+  return P.wr_matrix[w][r]
 }
 
 /** Simple deterministic risk level from W-code (for UI display without full engine). */
