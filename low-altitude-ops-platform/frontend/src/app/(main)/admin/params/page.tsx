@@ -18,7 +18,6 @@ import { useState, useCallback, useEffect } from "react"
 import { SlidersHorizontal, RefreshCw, Download, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
-  getParams,
   WEATHER_REGIME_PARAMS,
   type WeatherRegimeParams,
   type WCode,
@@ -26,29 +25,12 @@ import {
   type WRDecision,
 } from "@/lib/engines/weather-regime-params"
 import {
-  PRICING_PARAMS_DEFAULT,
-} from "@/lib/engines/pricing-params"
+  loadParamOverride,
+  saveParamOverride,
+  clearParamOverride,
+  getParamsWithOverride,
+} from "@/lib/params-store"
 import type { RiskLevel, WeatherType } from "@/lib/types"
-
-// ── localStorage helpers ──────────────────────────────────────────────────────
-
-const LS_KEY = "larm_params_override"
-
-function loadOverride(): WeatherRegimeParams | null {
-  if (typeof window === "undefined") return null
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-function saveOverride(p: WeatherRegimeParams) {
-  localStorage.setItem(LS_KEY, JSON.stringify(p))
-}
-
-function clearOverride() {
-  localStorage.removeItem(LS_KEY)
-}
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 
@@ -106,26 +88,22 @@ type TabKey = "wr" | "wind_rain" | "classify" | "buffer" | "r_index" | "pricing"
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminParamsPage() {
-  const [params, setParams] = useState<WeatherRegimeParams>(() => {
-    const override = loadOverride()
-    if (override) return { ...getParams(), ...override, pricing: { ...PRICING_PARAMS_DEFAULT, ...(override.pricing ?? {}) } }
-    return getParams()
-  })
+  const [params, setParams] = useState<WeatherRegimeParams>(() => getParamsWithOverride())
   const [activeTab, setActiveTab] = useState<TabKey>("wr")
   const [saved, setSaved] = useState(false)
   const [hasOverride, setHasOverride] = useState(false)
 
-  useEffect(() => { setHasOverride(!!loadOverride()) }, [])
+  useEffect(() => { setHasOverride(loadParamOverride() !== null) }, [])
 
   const apply = useCallback(() => {
-    saveOverride(params)
+    saveParamOverride(params)
     setSaved(true)
     setHasOverride(true)
     setTimeout(() => setSaved(false), 2000)
   }, [params])
 
   const reset = useCallback(() => {
-    clearOverride()
+    clearParamOverride()
     setParams(WEATHER_REGIME_PARAMS)
     setHasOverride(false)
   }, [])
