@@ -122,7 +122,7 @@ export interface WeatherRegimeParams {
 
 // ─── v1.0 Params (legacy) ───────────────────────────────────────────────────
 
-const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
+export const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
   version: "v1.0",
   units: { wind: "km/h", rain_daily_heavy_threshold_mm: 20 },
   regimes: {
@@ -207,7 +207,7 @@ const WEATHER_REGIME_PARAMS_V1: WeatherRegimeParams = {
 
 // ─── v2.0 Params (active) ───────────────────────────────────────────────────
 
-const WEATHER_REGIME_PARAMS_V2: WeatherRegimeParams = {
+export const WEATHER_REGIME_PARAMS_V2: WeatherRegimeParams = {
   version: "v2.0",
   units: { wind: "km/h", rain_daily_heavy_threshold_mm: 20 },
   regimes: {
@@ -319,6 +319,25 @@ export const PARAM_REGISTRY: Record<string, WeatherRegimeParams> = {
 export const ACTIVE_PARAMS_VERSION = "v2.0"
 
 const LS_KEY = "larm_params_override"
+
+/**
+ * Pure parameter resolver. Takes a version key and an optional shallow
+ * override and returns a merged `WeatherRegimeParams`. Does NOT read
+ * `localStorage`, `window`, or any other browser-only global. Safe to
+ * call from server components, tests, and future package extractions.
+ */
+export function resolveParams(
+  version: string = ACTIVE_PARAMS_VERSION,
+  override?: Partial<WeatherRegimeParams>,
+): WeatherRegimeParams {
+  const base = PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
+  if (!override) return base
+  return {
+    ...base,
+    ...override,
+    pricing: { ...base.pricing, ...(override.pricing ?? {}) },
+  }
+}
 
 export function getParams(version: string = ACTIVE_PARAMS_VERSION): WeatherRegimeParams {
   const base = PARAM_REGISTRY[version] ?? PARAM_REGISTRY[ACTIVE_PARAMS_VERSION]
