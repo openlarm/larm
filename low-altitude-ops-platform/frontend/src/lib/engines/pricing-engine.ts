@@ -4,7 +4,22 @@ import type {
   CleaningAgent, RooftopAccess,
 } from "../types"
 import { getPricingParams, type PricingParams } from "./pricing-params"
-import { getParams } from "./weather-regime-params"
+import { getParams, type WeatherRegimeParams } from "./weather-regime-params"
+
+export interface GenerateQuoteOptions {
+  /** Explicit WeatherRegimeParams; only consulted for `quote_max_multiplier`. */
+  params?: WeatherRegimeParams
+  /** Explicit PricingParams. Defaults to getPricingParams() for back-compat. */
+  pricingParams?: PricingParams
+  /** Clock for today / valid_until. Defaults to () => new Date(). */
+  clock?: () => Date
+  /** Returns the full quote-code suffix appended after Q-YYYYMMDD-. Default uses Math.random. */
+  idGenerator?: () => string
+}
+
+const defaultClock: () => Date = () => new Date()
+const defaultIdGenerator: () => string = () =>
+  String(Math.floor(Math.random() * 900 + 100))
 
 // ─── Main function ────────────────────────────────────────────────────────────
 
@@ -21,8 +36,17 @@ export interface PricingEngineInput {
   urgent: boolean
 }
 
-export function generateQuote(input: PricingEngineInput, params?: PricingParams): PricingResult {
-  const P = params ?? getPricingParams()
+export function generateQuote(
+  input: PricingEngineInput,
+  options: GenerateQuoteOptions = {},
+): PricingResult {
+  const P = options.pricingParams ?? getPricingParams()
+  // Fallback path preserves pre-refactor behaviour: getParams() reads
+  // admin overrides from localStorage on the client. Task 8 will strip
+  // that lookup once callers migrate to passing options.params.
+  const W = options.params ?? getParams()
+  const clock = options.clock ?? defaultClock
+  const idGen = options.idGenerator ?? defaultIdGenerator
   const {
     buildingType, floors, facades, contamination, cleaningAgent,
     timeWindow, waterSupply, powerSupply, rooftopAccess, urgent,
@@ -114,15 +138,15 @@ export function generateQuote(input: PricingEngineInput, params?: PricingParams)
   const combinedMultiplier = mFloor * mTime * mUrgent
 
   // [Bug 8] v2.0: multiplier cap protection
-  const maxMult = getParams().quote_max_multiplier
+  const maxMult = W.quote_max_multiplier
   const requiresManualReview = combinedMultiplier > maxMult
   const multiplier = Math.min(maxMult, combinedMultiplier)
   const total = Math.round(subtotal * multiplier)
 
-  const today = new Date()
+  const today = clock()
   const validUntil = new Date(today)
   validUntil.setDate(today.getDate() + 30)
-  const quoteCode = `Q-${today.toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 900 + 100)}`
+  const quoteCode = `Q-${today.toISOString().slice(0, 10).replace(/-/g, "")}-${idGen()}`
 
   return {
     line_items: lineItems,
