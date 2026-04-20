@@ -1,0 +1,62 @@
+# Citation File Format 1.2.0
+# https://citation-file-format.github.io
+#
+# Machine-readable citation metadata for LARM.
+# Human-readable version is at the top of README.md under "Citation".
+#
+# The arXiv identifier is a placeholder; it will be filled in once the
+# preprint is posted (see OPEN_SOURCE_DECISIONS.md §5).
+
+cff-version: 1.2.0
+message: >-
+  If you use LARM in academic work, please cite both the software release
+  and — once published — the accompanying arXiv preprint.
+type: software
+title: "LARM: Low Altitude Risk Model"
+abstract: >-
+  LARM is a deterministic numerical decision-support model for
+  low-altitude drone operations. It aggregates weather context,
+  building-site geometry, operational context, and equipment health into
+  a single risk score (0–100) mapped to one of five risk levels (R0–R4),
+  each paired with a recommended decision (GO / CONDITIONAL / NO-GO), a
+  buffer ratio, and a completion-probability estimate. The reference
+  implementation is calibrated against subtropical (Taiwan) climate
+  conditions; region adapters supply alternative calibrations.
+authors:
+  - given-names: Shu-Yuan
+    family-names: Duann
+    alias: mkkb2156
+    email: teddyduann@gmail.com
+    affiliation: "Independent"
+license: Apache-2.0
+license-url: "https://www.apache.org/licenses/LICENSE-2.0"
+repository-code: "https://github.com/openlarm/larm"
+url: "https://openlarm.org"
+version: 0.1.0-alpha
+date-released: "2026-04-20"
+keywords:
+  - drone
+  - uav
+  - risk model
+  - flight safety
+  - decision support
+  - SORA 2.5
+  - low altitude operations
+  - subtropical climate
+
+# Additional reference to the accompanying preprint. The identifier will
+# be replaced once the arXiv submission is assigned a number.
+references:
+  - type: article
+    title: "LARM: A Deterministic Low-Altitude Drone Operation Risk Model for Subtropical Climates with SORA 2.5 Integration"
+    authors:
+      - given-names: Shu-Yuan
+        family-names: Duann
+    year: 2026
+    # identifiers:
+    #   - type: other
+    #     value: "arXiv:TBD"
+    #     description: "arXiv identifier (pending upload)"
+    notes: >-
+      Preprint pending upload to arXiv. This reference will be updated
+      with the arXiv identifier and DOI once assigned.
