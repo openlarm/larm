@@ -11,7 +11,7 @@
 //
 // ruleset_version: "v1.1-static" (update when zone data changes)
 
-import type { AirspaceResult } from "@/lib/types"
+import type { AirspaceResult } from "../types"
 
 // ─── Zone definitions ─────────────────────────────────────────────────────────
 

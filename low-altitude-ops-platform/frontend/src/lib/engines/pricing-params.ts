@@ -5,7 +5,7 @@
 // - getPricingParams() reads localStorage override on client, falls back to defaults on server
 // - Admin Params UI pricing tab writes to localStorage key "pricing_params_override"
 
-import type { BuildingType, Complexity, Contamination, CleaningAgent, TimeWindow, RooftopAccess } from "@/lib/types"
+import type { BuildingType, Complexity, Contamination, CleaningAgent, TimeWindow, RooftopAccess } from "../types"
 
 // ─── Interface ───────────────────────────────────────────────────────────────
 

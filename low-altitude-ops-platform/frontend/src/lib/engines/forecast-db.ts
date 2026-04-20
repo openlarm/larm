@@ -5,7 +5,7 @@
 //
 // Client-side only. All methods are no-ops if IndexedDB is unavailable (SSR).
 
-import type { ForecastLogEntry, ForecastBiasCorrection } from "@/lib/types"
+import type { ForecastLogEntry, ForecastBiasCorrection } from "../types"
 
 const DB_NAME = "larm_forecast_db"
 const DB_VERSION = 1

@@ -10,7 +10,7 @@ import type {
   ForecastBiasCorrection,
   BiasStats,
   ForecastAccuracySummary,
-} from "@/lib/types"
+} from "../types"
 import {
   putLogEntries,
   getLogEntriesByLocation,

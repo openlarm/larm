@@ -6,7 +6,7 @@
 
 import { getParams } from "./weather-regime-params"
 import type { WeatherRegimeParams } from "./weather-regime-params"
-import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "@/lib/types"
+import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "../types"
 
 /** UI-side W-code inference from a single forecast day + 30-day background.
  *  Reads ui_infer_thresholds from params so adjustments propagate everywhere. */

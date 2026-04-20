@@ -3,12 +3,12 @@
 // v2.0: SORA 2.5 GRC integration, EDR turbulence, component recalibration
 
 import type {
-  WeatherType, RiskLevel, Decision, Complexity, Mission,
+  WeatherType, RiskLevel, Decision, Complexity, CrowdDensity, Mission,
   Weather30dInput, WeatherTodayInput, BuildingSiteInput, OperationalContextInput,
   LARMInput, RiskResult, RiskExplanation, LARMVersions,
   RegionExposure, WeatherRegimeResult, Equipment,
   PopulationDensityClass,
-} from "@/lib/types"
+} from "../types"
 import { getParams, ACTIVE_PARAMS_VERSION } from "./weather-regime-params"
 
 // ─── Step A: Climate Regime Classification (with confidence) ──────────────────
@@ -236,7 +236,7 @@ function computeGScore(
 
 function computeOperationalScore(
   ops: OperationalContextInput,
-  crowd_density: import("@/lib/types").CrowdDensity | null,
+  crowd_density: CrowdDensity | null,
   expl: RiskExplanation[],
   P: ReturnType<typeof getParams>,
 ): number {
@@ -500,7 +500,7 @@ export function buildingSiteFromMission(mission: Partial<Mission>): BuildingSite
   const bld = mission.building
   const facades = mission.facades ?? []
 
-  const dominant: import("@/lib/types").Complexity =
+  const dominant: Complexity =
     facades.some(f => f.complexity === "heavy")  ? "heavy"  :
     facades.some(f => f.complexity === "medium") ? "medium" : "light"
 

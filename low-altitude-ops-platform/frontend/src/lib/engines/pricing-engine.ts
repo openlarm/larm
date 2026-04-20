@@ -2,7 +2,7 @@ import type {
   BuildingType, Complexity, Contamination,
   TimeWindow, Supply, FacadeData, PricingResult, PricingLineItem,
   CleaningAgent, RooftopAccess,
-} from "@/lib/types"
+} from "../types"
 import { getPricingParams, type PricingParams } from "./pricing-params"
 import { getParams } from "./weather-regime-params"
 

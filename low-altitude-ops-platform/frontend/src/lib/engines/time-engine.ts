@@ -1,7 +1,7 @@
 import type {
   MissionType, BuildingType, Complexity, Contamination,
   TimeWindow, RiskLevel, Supply, RooftopAccess, FacadeData, TimeResult,
-} from "@/lib/types"
+} from "../types"
 
 // ─── Baseline productivity (m²/hr) ───────────────────────────────────────────
 
