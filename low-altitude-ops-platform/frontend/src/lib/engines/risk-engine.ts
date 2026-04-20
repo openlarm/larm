@@ -9,7 +9,20 @@ import type {
   RegionExposure, WeatherRegimeResult, Equipment,
   PopulationDensityClass,
 } from "../types"
-import { getParams, ACTIVE_PARAMS_VERSION } from "./weather-regime-params"
+import { getParams, resolveParams, ACTIVE_PARAMS_VERSION, type WeatherRegimeParams } from "./weather-regime-params"
+
+// ─── Options type ─────────────────────────────────────────────────────────────
+
+export interface EvaluateRiskOptions {
+  /** Explicit merged params. If omitted, resolveParams() defaults are used. */
+  params?: WeatherRegimeParams
+  /** Clock for deterministic `evaluated_at`. Defaults to () => new Date(). */
+  clock?: () => Date
+  /** Optional param-version selector; ignored when `params` is supplied. */
+  paramsVersion?: string
+}
+
+const defaultClock: () => Date = () => new Date()
 
 // ─── Step A: Climate Regime Classification (with confidence) ──────────────────
 
@@ -49,6 +62,36 @@ function classifyWeatherRegime(
   }
 
   void today // reserved for future use
+  return { w_code: primary, confidence, secondary_w: secondary, adjusted_base: adjustedBase }
+}
+
+function classifyWeatherRegimeWithParams(
+  w30: Weather30dInput,
+  today: WeatherTodayInput,
+  override: WeatherType | undefined,
+  P: WeatherRegimeParams,
+  recentTyphoonCount: number | null | undefined,
+): WeatherRegimeResult & { adjusted_base: number } {
+  if (override) {
+    return { w_code: override, confidence: 1.0, secondary_w: null, adjusted_base: P.regimes[override].base_score }
+  }
+  const { wind_p90_kmh, gust_p90_kmh, rain_days_30, heavy_rain_days_30, instability_index, predictability_score } = w30
+  const matches: WeatherType[] = []
+  if (wind_p90_kmh >= 39 || (gust_p90_kmh != null && gust_p90_kmh >= 50)) matches.push("W5")
+  if (rain_days_30 >= 15 && heavy_rain_days_30 >= 3) matches.push("W3")
+  if (instability_index >= 0.70 && heavy_rain_days_30 >= 2) matches.push("W4")
+  if (wind_p90_kmh >= 33 && predictability_score >= 0.60) matches.push("W1")
+  if (rain_days_30 >= 8 && rain_days_30 <= 14 && predictability_score < 0.55) matches.push("W2")
+  const primary: WeatherType = matches[0] ?? "W0"
+  const secondary: WeatherType | null = matches[1] ?? null
+  const confidence = matches.length <= 1 ? 1.0 :
+    matches.length === 2 ? 0.78 :
+    matches.length === 3 ? 0.62 : 0.50
+  let adjustedBase = P.regimes[primary].base_score
+  if (primary === "W5" && recentTyphoonCount != null && recentTyphoonCount > P.w5_typhoon_trend_threshold) {
+    adjustedBase += P.w5_typhoon_trend_bonus
+  }
+  void today
   return { w_code: primary, confidence, secondary_w: secondary, adjusted_base: adjustedBase }
 }
 
@@ -420,8 +463,13 @@ function computeBufferRatio(
 
 // ─── Main: evaluateRisk ───────────────────────────────────────────────────────
 
-export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResult {
-  const P = getParams(paramsVersion)
+export function evaluateRisk(
+  input: LARMInput,
+  options: EvaluateRiskOptions = {},
+): RiskResult {
+  const P: WeatherRegimeParams = options.params
+    ?? resolveParams(options.paramsVersion ?? ACTIVE_PARAMS_VERSION)
+  const clock = options.clock ?? defaultClock
   const { weather_30d, weather_today, building, operational, w_override, equipment = [] } = input
   const ops: OperationalContextInput = operational ?? {
     time_window: "day", weekend: 0, urgent_days: null,
@@ -431,7 +479,9 @@ export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResu
   const expl: RiskExplanation[] = []
 
   // A — regime classification with confidence + W5 trend
-  const regimeResult = classifyWeatherRegime(weather_30d, weather_today, w_override, paramsVersion, input.recent_typhoon_count)
+  const regimeResult = classifyWeatherRegimeWithParams(
+    weather_30d, weather_today, w_override, P, input.recent_typhoon_count,
+  )
   const { w_code, confidence, secondary_w, adjusted_base } = regimeResult
   const base_w = adjusted_base
   expl.push({
@@ -466,10 +516,9 @@ export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResu
 
   const buffer_ratio = computeBufferRatio(risk_score, w_code, confidence, P, weather_today.forecast_confidence)
 
-  const usedVersion = paramsVersion ?? ACTIVE_PARAMS_VERSION
   const versions: LARMVersions = {
     larm_version: "v2.0",
-    weather_regime_params_version: P.version ?? usedVersion,
+    weather_regime_params_version: P.version ?? ACTIVE_PARAMS_VERSION,
     thresholds_version: "v2.0",
   }
 
@@ -478,7 +527,7 @@ export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResu
     internal_grade: getInternalGrade(risk_level),
     decision, requires_approval, controls,
     ruleset_version: "larm_v2.0",
-    evaluated_at: new Date().toISOString(),
+    evaluated_at: clock().toISOString(),
     w_code, base_w, weather_now, g_score,
     b_score: g_score,  // backward compatibility alias
     o_score, risk_score, buffer_ratio,
@@ -487,7 +536,6 @@ export function evaluateRisk(input: LARMInput, paramsVersion?: string): RiskResu
     secondary_w,
     e_score,
     conditional_tier,
-    // v2.0 detail fields
     edr_adj,
     tke_proxy,
     ground_consequence,

@@ -15,6 +15,7 @@
 
 import { describe, it, expect } from "vitest"
 import { evaluateRisk } from "@/lib/engines/risk-engine"
+import { resolveParams } from "@/lib/engines/weather-regime-params"
 import type {
   LARMInput,
   Weather30dInput,
@@ -210,5 +211,39 @@ describe("evaluateRisk — version identifiers", () => {
     expect(typeof r.versions.weather_regime_params_version).toBe("string")
     // evaluated_at must be a parseable ISO timestamp.
     expect(new Date(r.evaluated_at).toString()).not.toBe("Invalid Date")
+  })
+})
+
+// ─── Options: params + clock injection ───────────────────────────────────────
+
+describe("evaluateRisk options", () => {
+  it("accepts an explicit params object equal to the default and produces identical output", () => {
+    const base = evaluateRisk(makeInput())
+    const withExplicitParams = evaluateRisk(makeInput(), {
+      params: resolveParams("v2.0"),
+    })
+    expect(withExplicitParams.risk_score).toBe(base.risk_score)
+    expect(withExplicitParams.decision).toBe(base.decision)
+    expect(withExplicitParams.buffer_ratio).toBe(base.buffer_ratio)
+  })
+
+  it("honours an override passed via options.params", () => {
+    const overridden = resolveParams("v2.0", { r4_nogo_threshold: 80 })
+    const input = makeInput({
+      weather_today: { ...benignToday, wind_now_kmh: 35, rain_prob_today_pct: 95 },
+      weather_30d: { ...benign30d, wind_p90_kmh: 50, gust_p90_kmh: 60 },
+    })
+    const ovr = evaluateRisk(input, { params: overridden })
+    // The override lowers r4_nogo_threshold; if the computed risk exceeds 80
+    // the decision must be NO_GO under the override.
+    if (ovr.risk_score > 80) {
+      expect(ovr.decision).toBe("NO_GO")
+    }
+  })
+
+  it("uses the injected clock for evaluated_at", () => {
+    const fixed = new Date("2030-01-01T00:00:00.000Z")
+    const r = evaluateRisk(makeInput(), { clock: () => fixed })
+    expect(r.evaluated_at).toBe(fixed.toISOString())
   })
 })
