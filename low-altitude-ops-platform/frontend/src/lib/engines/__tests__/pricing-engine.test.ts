@@ -10,7 +10,7 @@ const baseInput = {
     {
       id: "f1",
       label: "N",
-      area_m2: 100,
+      area_m2: 500,
       material: "glass" as const,         // FacadeMaterial
       complexity: "light" as const,       // Complexity: "light" | "medium" | "heavy"
       road_closure: false,
@@ -56,5 +56,16 @@ describe("generateQuote options", () => {
     const r = generateQuote(baseInput)
     expect(r.total).toBeGreaterThan(0)
     expect(r.quote_code.startsWith("Q-")).toBe(true)
+  })
+
+  it("urgent=true applies the urgent multiplier to the total", () => {
+    const common = {
+      clock: () => new Date("2030-01-01T00:00:00.000Z"),
+      idGenerator: () => "X",
+    }
+    const calm = generateQuote(baseInput, common)
+    const urgent = generateQuote({ ...baseInput, urgent: true }, common)
+    expect(urgent.multiplier_breakdown.urgent).toBe(PRICING_PARAMS_DEFAULT.urgent_multiplier)
+    expect(urgent.total).toBeGreaterThan(calm.total)
   })
 })
