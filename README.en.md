@@ -3,7 +3,7 @@
 > A **deterministic risk-assessment decision-support model** for low-altitude
 > drone operations. Open specification + TypeScript reference implementation.
 >
-> **Model repo**: `openlarm/core` (upcoming) · **Spec**: `openlarm/spec` (upcoming) · **Docs**: docs.openlarm.org (upcoming)
+> **Home**: [openlarm.org](https://openlarm.org) · **GitHub**: [github.com/openlarm](https://github.com/openlarm) · **Packages**: `@openlarm/core` (upcoming) · **Docs**: docs.openlarm.org (upcoming)
 
 🇹🇼 [繁體中文版](./README.md)
 
@@ -138,7 +138,7 @@ Contributions welcome. Before opening a PR, please read:
 - [`MAINTAINERS.md`](./MAINTAINERS.md) — Committee membership
 - [`CORPORATE_CLA.md`](./CORPORATE_CLA.md) — Corporate CLA template (pending lawyer)
 - [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) — Full disclaimer draft
-- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) (upcoming) — Contributor Covenant 2.1
+- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
 
 ### Governance preview
 

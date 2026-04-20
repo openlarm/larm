@@ -11,7 +11,7 @@ This guide tells you everything you need to know before opening your first PR.
 ## Code of Conduct
 
 By participating in this project you agree to abide by our Code of Conduct
-(`CODE_OF_CONDUCT.md`, upcoming — based on Contributor Covenant 2.1). In
+(`CODE_OF_CONDUCT.md` — Contributor Covenant 2.1). In
 short: be respectful, be patient, focus on the work. The Code of Conduct
 applies in all project spaces (issues, PRs, discussions, chat, conferences).
 

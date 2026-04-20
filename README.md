@@ -2,7 +2,7 @@
 
 > 無人機低空作業的**風險評估決策支援模型**。開源規範 + TypeScript 參考實作。
 >
-> **Model repo**: `openlarm/core` (upcoming) · **Spec**: `openlarm/spec` (upcoming) · **Docs**: docs.openlarm.org (upcoming)
+> **Home**: [openlarm.org](https://openlarm.org) · **GitHub**: [github.com/openlarm](https://github.com/openlarm) · **Packages**: `@openlarm/core` (upcoming) · **Docs**: docs.openlarm.org (upcoming)
 
 🇺🇸 [English version](./README.en.md)
 
@@ -132,7 +132,7 @@ console.log(result.risk_level, result.decision, result.buffer_ratio)
 - [`MAINTAINERS.md`](./MAINTAINERS.md) — 委員會成員列表
 - [`CORPORATE_CLA.md`](./CORPORATE_CLA.md) — 企業 CLA 範本（pending lawyer）
 - [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) — 完整免責聲明草稿
-- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)（upcoming）— Contributor Covenant 2.1
+- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
 
 ### 治理模式預告
 

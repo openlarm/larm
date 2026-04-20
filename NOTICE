@@ -67,6 +67,6 @@ Safety Notice
 ───────────────────────────────────────────────────────────────────────────────
 
 LARM is a decision-support tool, not a regulatory compliance certification.
-See README.md §Safety Notice and LEGAL/DISCLAIMER.md (upcoming) for the
-authoritative statement. Operators bear full responsibility for all flight
-decisions.
+See README.md §Safety Notice and LEGAL/DISCLAIMER.md (draft, pending
+attorney finalisation before v0.1.0) for the authoritative statement.
+Operators bear full responsibility for all flight decisions.

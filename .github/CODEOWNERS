@@ -8,49 +8,49 @@
 # Place model-governed and spec-governed paths AFTER the broad code
 # defaults so they take precedence.
 #
-# Until the @openlarm GitHub organisation and its teams exist, every
-# committee resolves to the founder. After the org is created, replace
-# the @mkkb2156 mentions with team mentions:
-#   Code TSC          -> @openlarm/code-tsc
-#   Model Governance  -> @openlarm/model-governance
-#   Spec Editors      -> @openlarm/spec-editors
-# Tracked in OPEN_SOURCE_DECISIONS.md §7 (post-org-registration).
+# The three committee teams must exist under the @openlarm GitHub
+# organisation for this file to function. Teams used below:
+#   @openlarm/code-tsc           — Code TSC (code, architecture, CI)
+#   @openlarm/model-governance   — parameter values, gating rules
+#   @openlarm/spec-editors       — normative spec wording
+# @mkkb2156 is listed alongside each team as the founder fallback
+# so review requests still resolve while the teams are small.
 
 # ─── Default: Code TSC owns everything not specifically reassigned ───────────
 
-*                                                                  @mkkb2156
+*                                                                  @openlarm/code-tsc @mkkb2156
 
 # ─── Model Governance — anything that can change evaluateRisk() output ──────
 
-/low-altitude-ops-platform/frontend/src/lib/engines/risk-engine.ts          @mkkb2156
-/low-altitude-ops-platform/frontend/src/lib/engines/weather-regime-params.ts @mkkb2156
-/low-altitude-ops-platform/frontend/src/lib/engines/model-helpers.ts        @mkkb2156
-/low-altitude-ops-platform/frontend/src/lib/engines/__tests__/              @mkkb2156
-/MODEL_CHANGELOG.md                                                @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/risk-engine.ts          @openlarm/model-governance @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/weather-regime-params.ts @openlarm/model-governance @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/model-helpers.ts        @openlarm/model-governance @mkkb2156
+/low-altitude-ops-platform/frontend/src/lib/engines/__tests__/              @openlarm/model-governance @mkkb2156
+/MODEL_CHANGELOG.md                                                @openlarm/model-governance @mkkb2156
 
 # Future region adapter packages (one entry per package once they exist).
-# /packages/regions-taiwan/                                        @mkkb2156
-# /packages/regions-japan/                                         @mkkb2156
+# /packages/regions-taiwan/                                        @openlarm/model-governance @mkkb2156
+# /packages/regions-japan/                                         @openlarm/model-governance @mkkb2156
 
 # ─── Spec Editors — normative wording ────────────────────────────────────────
 
-# /spec/                                                           @mkkb2156
-# /rfcs/                                                           @mkkb2156
+/spec/                                                             @openlarm/spec-editors @openlarm/model-governance @mkkb2156
+/rfcs/                                                             @openlarm/spec-editors @mkkb2156
 
 # ─── Governance, legal, and contributor-facing docs ─────────────────────────
 
 # All three committees co-own these (any one can approve, but changes
 # to GOVERNANCE itself require the high-bar amendment procedure).
-/GOVERNANCE.md                                                     @mkkb2156
-/MAINTAINERS.md                                                    @mkkb2156
-/CONTRIBUTING.md                                                   @mkkb2156
-/CODE_OF_CONDUCT.md                                                @mkkb2156
-/LICENSE                                                           @mkkb2156
-/NOTICE                                                            @mkkb2156
-/SECURITY.md                                                       @mkkb2156
-/CORPORATE_CLA.md                                                  @mkkb2156
-/LEGAL/                                                            @mkkb2156
+/GOVERNANCE.md                                                     @openlarm/code-tsc @openlarm/model-governance @openlarm/spec-editors @mkkb2156
+/MAINTAINERS.md                                                    @openlarm/code-tsc @openlarm/model-governance @openlarm/spec-editors @mkkb2156
+/CONTRIBUTING.md                                                   @openlarm/code-tsc @mkkb2156
+/CODE_OF_CONDUCT.md                                                @openlarm/code-tsc @mkkb2156
+/LICENSE                                                           @openlarm/code-tsc @mkkb2156
+/NOTICE                                                            @openlarm/code-tsc @mkkb2156
+/SECURITY.md                                                       @openlarm/code-tsc @mkkb2156
+/CORPORATE_CLA.md                                                  @openlarm/code-tsc @mkkb2156
+/LEGAL/                                                            @openlarm/code-tsc @mkkb2156
 
 # ─── CI / release infrastructure (Code TSC alone) ───────────────────────────
 
-/.github/                                                          @mkkb2156
+/.github/                                                          @openlarm/code-tsc @mkkb2156
