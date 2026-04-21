@@ -1,0 +1,52 @@
+{
+  "name": "@openlarm/regions-taiwan",
+  "version": "0.0.0",
+  "description": "Taiwan climate calibration for LARM — parameter values (W-code thresholds, regime weights, region exposure matrix) validated against subtropical drone operations.",
+  "keywords": ["larm", "taiwan", "drone", "calibration", "subtropical"],
+  "homepage": "https://openlarm.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openlarm/larm.git",
+    "directory": "packages/regions-taiwan"
+  },
+  "license": "Apache-2.0",
+  "author": "Shu-Yuan Duann <teddyduann@gmail.com>",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@openlarm/core": "*"
+  },
+  "devDependencies": {
+    "@openlarm/core": "*",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
