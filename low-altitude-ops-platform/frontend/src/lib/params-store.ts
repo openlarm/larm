@@ -5,16 +5,27 @@
 // browser-free; they accept params explicitly and this module is how
 // the Next.js app layer threads user overrides through to them.
 //
+// Since Task 6, pricing parameters are stored separately under
+// PRICING_OVERRIDE_KEY rather than nested under the weather regime params.
+//
 // Legacy migration: early builds wrote a separate "pricing_params_override"
-// key. migrateLegacyPricingOverride() folds any surviving legacy payload
-// into the canonical "larm_params_override" key and deletes the old one.
+// key (flat PricingParams). migrateLegacyPricingOverride() folds any
+// surviving legacy payload into the canonical PRICING_OVERRIDE_KEY and
+// deletes the old one. Pre-Task-6 builds also wrote pricing under
+// larm_params_override.pricing — migrateNestedPricingOverride() moves
+// that to the canonical pricing key as well.
 
 import {
   resolveParams,
   type WeatherRegimeParams,
 } from "./engines/weather-regime-params"
+import {
+  getPricingParams,
+  type PricingParams,
+} from "./engines/pricing-params"
 
 export const LARM_OVERRIDE_KEY = "larm_params_override"
+export const PRICING_OVERRIDE_KEY = "pricing_params_override"
 export const LEGACY_PRICING_KEY = "pricing_params_override"
 
 /**
@@ -67,15 +78,46 @@ export function clearParamOverride(): void {
   }
 }
 
+// ─── Pricing override store ────────────────────────────────────────────────
+
+export function loadPricingOverride(): Partial<PricingParams> | null {
+  if (!hasStorage()) return null
+  try {
+    const raw = localStorage.getItem(PRICING_OVERRIDE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as Partial<PricingParams>
+  } catch (err) {
+    warn("loadPricingOverride", err)
+    return null
+  }
+}
+
+export function savePricingOverride(override: Partial<PricingParams>): void {
+  if (!hasStorage()) return
+  try {
+    localStorage.setItem(PRICING_OVERRIDE_KEY, JSON.stringify(override))
+  } catch (err) {
+    warn("savePricingOverride", err)
+  }
+}
+
+export function clearPricingOverride(): void {
+  if (!hasStorage()) return
+  try {
+    localStorage.removeItem(PRICING_OVERRIDE_KEY)
+  } catch (err) {
+    warn("clearPricingOverride", err)
+  }
+}
+
+// ─── Combined readers ──────────────────────────────────────────────────────
+
 /**
  * Merge any client-side override with engine defaults and return the full
  * WeatherRegimeParams. Safe to call from server components: returns pure
  * defaults when localStorage is unavailable.
  *
- * Also triggers the legacy `pricing_params_override` migration on the first
- * call per session (idempotent; no-op when the legacy key is absent). This
- * ensures users who set pricing overrides in pre-unification builds do not
- * silently lose them when the app updates.
+ * Also triggers legacy migrations on the first call per session (idempotent).
  */
 export function getParamsWithOverride(version?: string): WeatherRegimeParams {
   migrateLegacyPricingOverride()
@@ -83,31 +125,48 @@ export function getParamsWithOverride(version?: string): WeatherRegimeParams {
 }
 
 /**
- * One-shot migration for the "pricing_params_override" key that pre-dated
- * the unified override. The legacy value is a flat `Partial<PricingParams>`
- * written by earlier builds of the admin-params UI. This migration wraps it
- * under the canonical `pricing` sub-key of `larm_params_override`. Idempotent.
+ * Return PricingParams merged with any stored override.
+ * Safe to call from server components: returns pure defaults when
+ * localStorage is unavailable.
+ */
+export function getPricingParamsWithOverride(): PricingParams {
+  migrateLegacyPricingOverride()
+  const override = loadPricingOverride()
+  if (!override) return getPricingParams()
+  return { ...getPricingParams(), ...override }
+}
+
+/**
+ * One-shot migration for the legacy "pricing_params_override" key that
+ * pre-dated the Task 6 separation. Since both the old flat key and the new
+ * canonical key share the name PRICING_OVERRIDE_KEY, this function now
+ * also handles the case where pricing was previously stored nested under
+ * larm_params_override.pricing (pre-Task-6 unified store).
  *
- * Collision semantics: if `larm_params_override` already has a `pricing`
- * sub-object, the legacy value is discarded — the newer explicit setting
- * wins. This matches the original migration in `pricing-params.ts` that
- * this helper replaces.
+ * Idempotent — safe to call on every page load.
  */
 export function migrateLegacyPricingOverride(): void {
   if (!hasStorage()) return
   try {
-    const oldRaw = localStorage.getItem(LEGACY_PRICING_KEY)
-    if (!oldRaw) return
-    const oldPricing = JSON.parse(oldRaw) as Partial<WeatherRegimeParams["pricing"]>
-    const existing = loadParamOverride() ?? {}
-    if (!existing.pricing) {
-      const merged: Partial<WeatherRegimeParams> = {
-        ...existing,
-        pricing: oldPricing as WeatherRegimeParams["pricing"],
+    // Migration: if larm_params_override still has a nested `pricing` object
+    // (written by pre-Task-6 builds), extract it to the canonical pricing key
+    // and strip it from the weather override.
+    const raw = localStorage.getItem(LARM_OVERRIDE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (parsed && typeof parsed === "object" && "pricing" in parsed) {
+        const nestedPricing = parsed["pricing"] as Partial<PricingParams>
+        // Merge into existing pricing override only if not already set
+        const existingPricing = loadPricingOverride()
+        if (!existingPricing) {
+          localStorage.setItem(PRICING_OVERRIDE_KEY, JSON.stringify(nestedPricing))
+        }
+        // Strip pricing from the weather params override
+        const { pricing: _removed, ...rest } = parsed
+        void _removed
+        localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(rest))
       }
-      localStorage.setItem(LARM_OVERRIDE_KEY, JSON.stringify(merged))
     }
-    localStorage.removeItem(LEGACY_PRICING_KEY)
   } catch (err) {
     warn("migrateLegacyPricingOverride", err)
   }

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { generateQuote } from "../pricing-engine"
 import { PRICING_PARAMS_DEFAULT } from "../pricing-params"
-import { resolveParams } from "../weather-regime-params"
 
 const baseInput = {
   buildingType: "commercial" as const,   // BuildingType: "commercial" | "luxury" | "house" | "factory" | "solar"
@@ -40,10 +39,8 @@ describe("generateQuote options", () => {
     expect(r.valid_until).toBe("2030-01-31")
   })
 
-  it("accepts explicit params + pricingParams and still produces a valid total", () => {
-    const fixedParams = resolveParams("v2.0")
+  it("accepts explicit pricingParams and still produces a valid total", () => {
     const r = generateQuote(baseInput, {
-      params: fixedParams,
       pricingParams: PRICING_PARAMS_DEFAULT,
       clock: () => new Date("2030-01-01T00:00:00.000Z"),
       idGenerator: () => "TEST",

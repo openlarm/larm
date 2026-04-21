@@ -23,16 +23,6 @@ describe("resolveParams (pure)", () => {
     expect(p.regimes.W0.base_score).toBe(WEATHER_REGIME_PARAMS_V2.regimes.W0.base_score)
   })
 
-  it("deep-merges the pricing sub-object", () => {
-    const override: Partial<WeatherRegimeParams> = {
-      pricing: { urgent_multiplier: 1.75 } as WeatherRegimeParams["pricing"],
-    }
-    const p = resolveParams("v2.0", override)
-    expect(p.pricing.urgent_multiplier).toBe(1.75)
-    // Other pricing fields preserved
-    expect(p.pricing.base_price).toEqual(WEATHER_REGIME_PARAMS_V2.pricing.base_price)
-  })
-
   it("falls back to active version when given an unknown version key", () => {
     const p = resolveParams("v99.0" as string)
     expect(p.version).toBe(WEATHER_REGIME_PARAMS_V2.version)

@@ -4,11 +4,8 @@ import type {
   CleaningAgent, RooftopAccess,
 } from "../types"
 import { getPricingParams, type PricingParams } from "./pricing-params"
-import { resolveParams, type WeatherRegimeParams } from "./weather-regime-params"
 
 export interface GenerateQuoteOptions {
-  /** Explicit WeatherRegimeParams; only consulted for `quote_max_multiplier`. */
-  params?: WeatherRegimeParams
   /** Explicit PricingParams. Defaults to getPricingParams() for back-compat. */
   pricingParams?: PricingParams
   /** Clock for today / valid_until. Defaults to () => new Date(). */
@@ -41,7 +38,6 @@ export function generateQuote(
   options: GenerateQuoteOptions = {},
 ): PricingResult {
   const P = options.pricingParams ?? getPricingParams()
-  const W = options.params ?? resolveParams()
   const clock = options.clock ?? defaultClock
   const idGen = options.idGenerator ?? defaultIdGenerator
   const {
@@ -135,7 +131,7 @@ export function generateQuote(
   const combinedMultiplier = mFloor * mTime * mUrgent
 
   // [Bug 8] v2.0: multiplier cap protection
-  const maxMult = W.quote_max_multiplier
+  const maxMult = P.quote_max_multiplier
   const requiresManualReview = combinedMultiplier > maxMult
   const multiplier = Math.min(maxMult, combinedMultiplier)
   const total = Math.round(subtotal * multiplier)

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import type { AirspaceResult, PricingResult, TimeResult, Contamination, FacadeData } from "@/lib/types"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import { estimateTime } from "@/lib/engines/time-engine"
-import { getParamsWithOverride } from "@/lib/params-store"
+import { getPricingParamsWithOverride } from "@/lib/params-store"
 import type { QuoteFormData, AreaEstimate } from "./quote-defaults"
 import {
   buildFacadesFromInputs, buildFacades,
@@ -153,7 +153,7 @@ export function QuoteStep3({
       powerSupply,
       rooftopAccess,
       urgent: formData.urgent,
-    }, { params: getParamsWithOverride() }))
+    }, { pricingParams: getPricingParamsWithOverride() }))
 
     setTimeResult(estimateTime({
       missionType: mapServiceToMissionType(formData.serviceType),

@@ -47,6 +47,13 @@ export interface PricingParams {
   /** Urgent job multiplier (applied when deadline ≤ 30 days) */
   urgent_multiplier: number
 
+  /**
+   * Maximum combined multiplier (floor × time × urgent) before the quote
+   * requires manual review. Moved here from WeatherRegimeParams in Task 6.
+   * Default 4.5 (v2.0). Use 999 to effectively disable the cap (v1.0).
+   */
+  quote_max_multiplier: number
+
   /** Minimum order amount (NTD) */
   min_order: number
 
@@ -115,6 +122,8 @@ export const PRICING_PARAMS_DEFAULT: PricingParams = {
   },
 
   urgent_multiplier: 1.33,
+
+  quote_max_multiplier: 4.5,
 
   min_order: 15000,
 

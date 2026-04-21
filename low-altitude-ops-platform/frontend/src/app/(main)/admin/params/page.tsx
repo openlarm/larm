@@ -24,11 +24,15 @@ import {
   type RLevelKey,
   type WRDecision,
 } from "@/lib/engines/weather-regime-params"
+import { PRICING_PARAMS_DEFAULT, type PricingParams } from "@/lib/engines/pricing-params"
 import {
   loadParamOverride,
   saveParamOverride,
   clearParamOverride,
   getParamsWithOverride,
+  savePricingOverride,
+  clearPricingOverride,
+  getPricingParamsWithOverride,
 } from "@/lib/params-store"
 import type { RiskLevel, WeatherType } from "@/lib/types"
 
@@ -89,6 +93,7 @@ type TabKey = "wr" | "wind_rain" | "classify" | "buffer" | "r_index" | "pricing"
 
 export default function AdminParamsPage() {
   const [params, setParams] = useState<WeatherRegimeParams>(() => getParamsWithOverride())
+  const [pricingParams, setPricingParams] = useState<PricingParams>(() => getPricingParamsWithOverride())
   const [activeTab, setActiveTab] = useState<TabKey>("wr")
   const [saved, setSaved] = useState(false)
   const [hasOverride, setHasOverride] = useState(false)
@@ -97,24 +102,27 @@ export default function AdminParamsPage() {
 
   const apply = useCallback(() => {
     saveParamOverride(params)
+    savePricingOverride(pricingParams)
     setSaved(true)
     setHasOverride(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [params])
+  }, [params, pricingParams])
 
   const reset = useCallback(() => {
     clearParamOverride()
+    clearPricingOverride()
     setParams(WEATHER_REGIME_PARAMS)
+    setPricingParams(PRICING_PARAMS_DEFAULT)
     setHasOverride(false)
   }, [])
 
   const exportJSON = useCallback(() => {
-    const blob = new Blob([JSON.stringify(params, null, 2)], { type: "application/json" })
+    const blob = new Blob([JSON.stringify({ params, pricing: pricingParams }, null, 2)], { type: "application/json" })
     const a = document.createElement("a")
     a.href = URL.createObjectURL(blob)
     a.download = "model_params.json"
     a.click()
-  }, [params])
+  }, [params, pricingParams])
 
   // ── WR Matrix cell toggle ─────────────────────────────────────────────────
   const toggleWR = useCallback((w: WCode, r: RLevelKey) => {
@@ -742,7 +750,7 @@ export default function AdminParamsPage() {
           {activeTab === "pricing" && (
             <div className="space-y-5">
               <p className="text-[11px] text-violet-400/70 border border-violet-900/30 rounded px-3 py-2 bg-violet-950/20">
-                ⓘ 調整報價參數後點「套用」，Mission Wizard 及 Quote Wizard 皆會連動。版本：<span className="font-mono">{params.pricing.version}</span>
+                ⓘ 調整報價參數後點「套用」，Mission Wizard 及 Quote Wizard 皆會連動。版本：<span className="font-mono">{pricingParams.version}</span>
               </p>
 
               <div className="grid grid-cols-2 gap-6">
@@ -754,8 +762,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.base_price[key]} min={0} max={999} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, base_price: { ...p.pricing.base_price, [key]: v } } }))} />
+                            <NumInput value={pricingParams.base_price[key]} min={0} max={999} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, base_price: { ...p.base_price, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -771,8 +779,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.complexity_surcharge[key]} min={0} max={99} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, complexity_surcharge: { ...p.pricing.complexity_surcharge, [key]: v } } }))} />
+                            <NumInput value={pricingParams.complexity_surcharge[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, complexity_surcharge: { ...p.complexity_surcharge, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -788,16 +796,16 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.contamination_surcharge[key]} min={0} max={99} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, contamination_surcharge: { ...p.pricing.contamination_surcharge, [key]: v } } }))} />
+                            <NumInput value={pricingParams.contamination_surcharge[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, contamination_surcharge: { ...p.contamination_surcharge, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
                       <tr className="border-t border-zinc-800/40">
                         <td className="py-1 pr-4 text-zinc-500">疊加上限 cap</td>
                         <td className="py-1 text-right">
-                          <NumInput value={params.pricing.contamination_cap} min={0} max={99} step={1}
-                            onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, contamination_cap: v } }))} />
+                          <NumInput value={pricingParams.contamination_cap} min={0} max={99} step={1}
+                            onChange={v => setPricingParams(p => ({ ...p, contamination_cap: v }))} />
                         </td>
                       </tr>
                     </tbody>
@@ -812,8 +820,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.cleaning_agent_surcharge[key]} min={-99} max={99} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, cleaning_agent_surcharge: { ...p.pricing.cleaning_agent_surcharge, [key]: v } } }))} />
+                            <NumInput value={pricingParams.cleaning_agent_surcharge[key]} min={-99} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, cleaning_agent_surcharge: { ...p.cleaning_agent_surcharge, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -829,8 +837,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.facade_surcharges[key]} min={0} max={99} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, facade_surcharges: { ...p.pricing.facade_surcharges, [key]: v } } }))} />
+                            <NumInput value={pricingParams.facade_surcharges[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, facade_surcharges: { ...p.facade_surcharges, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -846,8 +854,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-4">{label}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.supply_surcharges[key]} min={0} max={99} step={1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, supply_surcharges: { ...p.pricing.supply_surcharges, [key]: v } } }))} />
+                            <NumInput value={pricingParams.supply_surcharges[key]} min={0} max={99} step={1}
+                              onChange={v => setPricingParams(p => ({ ...p, supply_surcharges: { ...p.supply_surcharges, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -861,14 +869,14 @@ export default function AdminParamsPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-1">樓層乘數</h3>
                   <table className="text-xs w-full">
                     <tbody className="text-zinc-400">
-                      {params.pricing.floor_multiplier.map((tier, i) => (
+                      {pricingParams.floor_multiplier.map((tier, i) => (
                         <tr key={i} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-3">≤ {tier.max_floor >= 9999 ? "∞" : tier.max_floor} 層</td>
                           <td className="py-1 text-right">
                             <NumInput value={tier.multiplier} min={0.1} max={10} step={0.1}
-                              onChange={v => setParams(p => ({
+                              onChange={v => setPricingParams(p => ({
                                 ...p,
-                                pricing: { ...p.pricing, floor_multiplier: p.pricing.floor_multiplier.map((t, j) => j === i ? { ...t, multiplier: v } : t) },
+                                floor_multiplier: p.floor_multiplier.map((t, j) => j === i ? { ...t, multiplier: v } : t),
                               }))} />
                           </td>
                         </tr>
@@ -885,8 +893,8 @@ export default function AdminParamsPage() {
                         <tr key={key} className="border-t border-zinc-800/40">
                           <td className="py-1 pr-3">{label} {key}</td>
                           <td className="py-1 text-right">
-                            <NumInput value={params.pricing.time_window_multiplier[key]} min={0.1} max={10} step={0.1}
-                              onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, time_window_multiplier: { ...p.pricing.time_window_multiplier, [key]: v } } }))} />
+                            <NumInput value={pricingParams.time_window_multiplier[key]} min={0.1} max={10} step={0.1}
+                              onChange={v => setPricingParams(p => ({ ...p, time_window_multiplier: { ...p.time_window_multiplier, [key]: v } }))} />
                           </td>
                         </tr>
                       ))}
@@ -901,15 +909,15 @@ export default function AdminParamsPage() {
                       <tr className="border-t border-zinc-800/40">
                         <td className="py-1 pr-3">急件乘數</td>
                         <td className="py-1 text-right">
-                          <NumInput value={params.pricing.urgent_multiplier} min={1} max={5} step={0.01}
-                            onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, urgent_multiplier: v } }))} />
+                          <NumInput value={pricingParams.urgent_multiplier} min={1} max={5} step={0.01}
+                            onChange={v => setPricingParams(p => ({ ...p, urgent_multiplier: v }))} />
                         </td>
                       </tr>
                       <tr className="border-t border-zinc-800/40">
                         <td className="py-1 pr-3">最低訂單金額</td>
                         <td className="py-1 text-right">
-                          <NumInput value={params.pricing.min_order} min={0} max={999999} step={1000}
-                            onChange={v => setParams(p => ({ ...p, pricing: { ...p.pricing, min_order: v } }))} />
+                          <NumInput value={pricingParams.min_order} min={0} max={999999} step={1000}
+                            onChange={v => setPricingParams(p => ({ ...p, min_order: v }))} />
                         </td>
                       </tr>
                     </tbody>
@@ -919,7 +927,7 @@ export default function AdminParamsPage() {
 
               <div className="text-xs text-zinc-600 border-t border-zinc-800 pt-3 space-y-1">
                 <div>總額 = round(小計 × 樓層 × 時間 × 急件)</div>
-                <div className="text-amber-500/70">v2.0: 複合乘數上限 = {params.quote_max_multiplier ?? 4.5}× — 超過則需人工審查</div>
+                <div className="text-amber-500/70">v2.0: 複合乘數上限 = {pricingParams.quote_max_multiplier ?? 4.5}× — 超過則需人工審查</div>
               </div>
             </div>
           )}

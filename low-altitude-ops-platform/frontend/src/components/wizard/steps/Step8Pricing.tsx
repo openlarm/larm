@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle, ShieldCheck } from "lucide-react"
 import { generateQuote } from "@/lib/engines/pricing-engine"
 import type { Mission, PricingResult, Contamination } from "@/lib/types"
-import { getParamsWithOverride } from "@/lib/params-store"
+import { getPricingParamsWithOverride } from "@/lib/params-store"
 
 interface Props { mission: Partial<Mission>; update: (p: Partial<Mission>) => void; next: () => void; back: () => void }
 
@@ -29,7 +29,7 @@ export function Step8Pricing({ mission, update, next, back }: Props) {
         waterSupply: mission.building?.water_supply ?? "Provided",
         powerSupply: mission.building?.power_supply ?? "Provided",
         urgent: false,
-      }, { params: getParamsWithOverride() })
+      }, { pricingParams: getPricingParamsWithOverride() })
       setResult(r)
       setLoading(false)
     }, 800)
