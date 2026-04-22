@@ -16,9 +16,10 @@
 // that to the canonical pricing key as well.
 
 import {
-  resolveParams,
+  mergeParams,
   type WeatherRegimeParams,
-} from "./engines/weather-regime-params"
+} from "@openlarm/core"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
 import {
   getPricingParams,
   type PricingParams,
@@ -118,9 +119,10 @@ export function clearPricingOverride(): void {
  *
  * Also triggers legacy migrations on the first call per session (idempotent).
  */
-export function getParamsWithOverride(version?: string): WeatherRegimeParams {
+export function getParamsWithOverride(): WeatherRegimeParams {
   migrateLegacyPricingOverride()
-  return resolveParams(version, loadParamOverride() ?? undefined)
+  const override = loadParamOverride()
+  return override ? mergeParams(TAIWAN_PARAMS_V2_0, override) : TAIWAN_PARAMS_V2_0
 }
 
 /**
