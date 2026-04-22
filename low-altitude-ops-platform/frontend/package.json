@@ -13,8 +13,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@openlarm/core": "*",
-    "@openlarm/regions-taiwan": "*",
+    "@openlarm/core": "0.1.0-alpha.0",
+    "@openlarm/regions-taiwan": "0.1.0-alpha.0",
     "@line/bot-sdk": "^10.6.0",
     "@supabase/supabase-js": "^2.99.3",
     "@types/leaflet": "^1.9.21",

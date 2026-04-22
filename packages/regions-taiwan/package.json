@@ -1,8 +1,14 @@
 {
   "name": "@openlarm/regions-taiwan",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Taiwan climate calibration for LARM — parameter values (W-code thresholds, regime weights, region exposure matrix) validated against subtropical drone operations.",
-  "keywords": ["larm", "taiwan", "drone", "calibration", "subtropical"],
+  "keywords": [
+    "larm",
+    "taiwan",
+    "drone",
+    "calibration",
+    "subtropical"
+  ],
   "homepage": "https://openlarm.org",
   "repository": {
     "type": "git",
@@ -24,7 +30,11 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -34,10 +44,10 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@openlarm/core": "*"
+    "@openlarm/core": "0.1.0-alpha.0"
   },
   "devDependencies": {
-    "@openlarm/core": "*",
+    "@openlarm/core": "0.1.0-alpha.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.0"

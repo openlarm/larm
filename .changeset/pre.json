@@ -1,0 +1,12 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "frontend": "0.1.0",
+    "@openlarm/core": "0.0.0",
+    "@openlarm/regions-taiwan": "0.0.0"
+  },
+  "changesets": [
+    "initial-openlarm-release"
+  ]
+}
