@@ -53,3 +53,14 @@ export type {
   WRDecision,
   WeatherRegimeParams,
 } from "./params/schema.ts"
+
+export {
+  ACTIVE_PARAMS_VERSION,
+  PARAM_REGISTRY,
+  registerParams,
+} from "./params/registry.js"
+
+export {
+  mergeParams,
+  resolveParams,
+} from "./params/merge.js"
