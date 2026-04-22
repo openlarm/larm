@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && npm install",
-  "buildCommand": "next build"
+  "installCommand": "cd ../.. && npm install --include=optional",
+  "buildCommand": "cd ../.. && npm -w @openlarm/core run build && npm -w @openlarm/regions-taiwan run build && cd low-altitude-ops-platform/frontend && next build"
 }
