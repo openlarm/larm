@@ -26,7 +26,6 @@ import {
 
 export const LARM_OVERRIDE_KEY = "larm_params_override"
 export const PRICING_OVERRIDE_KEY = "pricing_params_override"
-export const LEGACY_PRICING_KEY = "pricing_params_override"
 
 /**
  * Silent in tests (vitest's NODE_ENV==="test") and production builds;
