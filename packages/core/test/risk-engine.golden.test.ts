@@ -13,15 +13,16 @@
 // dedicated snapshot suite that will land with the `@openlarm/core`
 // package extraction (Task 3).
 
+import "./setup-taiwan.ts"
+
 import { describe, it, expect } from "vitest"
-import { evaluateRisk } from "@/lib/engines/risk-engine"
-import { resolveParams } from "@/lib/engines/weather-regime-params"
+import { evaluateRisk, resolveParams } from "../src/index.ts"
 import type {
   LARMInput,
   Weather30dInput,
   WeatherTodayInput,
   BuildingSiteInput,
-} from "@/lib/types"
+} from "../src/index.ts"
 
 // ─── Benign baseline factory ─────────────────────────────────────────────────
 // Designed so the regime classifier falls through to W0 and no hard stop trips.
@@ -220,7 +221,7 @@ describe("evaluateRisk options", () => {
   it("accepts an explicit params object equal to the default and produces identical output", () => {
     const base = evaluateRisk(makeInput())
     const withExplicitParams = evaluateRisk(makeInput(), {
-      params: resolveParams("v2.0"),
+      params: resolveParams("v2.0")!,
     })
     expect(withExplicitParams.risk_score).toBe(base.risk_score)
     expect(withExplicitParams.decision).toBe(base.decision)
@@ -228,7 +229,7 @@ describe("evaluateRisk options", () => {
   })
 
   it("honours an override passed via options.params", () => {
-    const overridden = resolveParams("v2.0", { r4_nogo_threshold: 80 })
+    const overridden = resolveParams("v2.0", { r4_nogo_threshold: 80 })!
     // Deliberately stressful input: W5 climate (wind_p90≥39), high wind+rain
     // today, tall building in high-urban area with env hazards, night ops with
     // fatigue, two blocked equipment items — all below hard-stop thresholds.

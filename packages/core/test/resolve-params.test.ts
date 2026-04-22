@@ -1,31 +1,33 @@
+import "./setup-taiwan.ts"
+
 import { describe, it, expect, vi } from "vitest"
 import {
   resolveParams,
-  WEATHER_REGIME_PARAMS_V2,
   type WeatherRegimeParams,
-} from "../weather-regime-params"
+} from "../src/index.ts"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
 
 describe("resolveParams (pure)", () => {
   it("returns v2.0 defaults when no override is given", () => {
-    expect(resolveParams()).toEqual(WEATHER_REGIME_PARAMS_V2)
+    expect(resolveParams()).toEqual(TAIWAN_PARAMS_V2_0)
   })
 
   it("returns v1.0 defaults when explicitly requested", () => {
     const p = resolveParams("v1.0")
-    expect(p.version).toBe("v1.0")
+    expect(p?.version).toBe("v1.0")
   })
 
   it("shallow-merges a top-level override over defaults", () => {
     const override: Partial<WeatherRegimeParams> = { r4_nogo_threshold: 88 }
     const p = resolveParams("v2.0", override)
-    expect(p.r4_nogo_threshold).toBe(88)
+    expect(p?.r4_nogo_threshold).toBe(88)
     // Unrelated fields preserved
-    expect(p.regimes.W0.base_score).toBe(WEATHER_REGIME_PARAMS_V2.regimes.W0.base_score)
+    expect(p?.regimes.W0.base_score).toBe(TAIWAN_PARAMS_V2_0.regimes.W0.base_score)
   })
 
-  it("falls back to active version when given an unknown version key", () => {
+  it("returns undefined for an unknown version key (core has no fallback)", () => {
     const p = resolveParams("v99.0" as string)
-    expect(p.version).toBe(WEATHER_REGIME_PARAMS_V2.version)
+    expect(p).toBeUndefined()
   })
 
   it("does not touch localStorage or window", () => {
