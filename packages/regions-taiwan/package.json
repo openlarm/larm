@@ -18,7 +18,7 @@
   "license": "Apache-2.0",
   "author": "Shu-Yuan Duann <teddyduann@gmail.com>",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": true,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,7 +44,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@openlarm/core": "0.1.0-alpha.0"
+    "@openlarm/core": "^0.1.0-alpha.0"
   },
   "devDependencies": {
     "@openlarm/core": "0.1.0-alpha.0",
