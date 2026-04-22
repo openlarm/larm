@@ -64,3 +64,15 @@ export {
   mergeParams,
   resolveParams,
 } from "./params/merge.js"
+
+export {
+  evaluateRisk,
+  type EvaluateRiskOptions,
+} from "./engines/risk-engine.js"
+
+export {
+  inferWCode,
+  getWRDecision,
+  completionForRL,
+  simpleRiskFromW,
+} from "./engines/model-helpers.js"
