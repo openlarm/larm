@@ -1,0 +1,70 @@
+---
+title: LARM v2.0 Specification
+description: Normative reference for LARM, the Low Altitude Risk Model.
+---
+
+# LARM v2.0 Specification
+
+The LARM specification is the normative source of truth for all conforming
+implementations. It describes:
+
+- The **input schema** — weather, building, operational, and equipment
+  inputs (§3).
+- The **regime classifier** — how a W-code is derived from 30-day climate
+  context (§4).
+- **Component scores** — `Base(W)`, `WeatherNow`, `G_score`, `O_score`,
+  `E_score`, each with component ranges, formulas, and parameter
+  references (§5).
+- **Aggregation and R-level mapping** — how component scores become a
+  single R-score (0–100) and an R-level (R0–R4) (§6).
+- **Decision gating** — hard stops, CONDITIONAL tiers, WR matrix lookup
+  (§7).
+- **Buffer ratio** and **completion probability** (§8, §9).
+- **Parameter registry** — normative core schema vs. informative Taiwan
+  calibration, region adapter specification, override mechanism (§10).
+- **Conformance test vectors** — 10 machine-readable JSON fixtures that
+  a conformant implementation MUST satisfy (§12, [linked below](#test-vectors)).
+
+> The spec is long (~3,000 lines). This page links to the authoritative
+> source rather than inlining it, so the spec and this documentation
+> cannot drift.
+
+## Read the spec
+
+- **[`spec/LARM-v2.0.md`](https://github.com/openlarm/larm/blob/main/spec/LARM-v2.0.md)** on GitHub (authoritative source, ~3,000 lines)
+- **[Test vectors (JSON fixtures)](https://github.com/openlarm/larm/tree/main/spec/test-vectors/v2.0)** — 10 machine-readable conformance examples
+
+## Conformance levels
+
+The spec defines three conformance levels (§1.1):
+
+- **Level 1 — Core**: implement every calculation in §3–§7.
+- **Level 2 — Full**: additionally implement the region adapter interface
+  from §10.3.
+- **Level 3 — Certified**: pass every test vector in `spec/test-vectors/v2.0/`
+  within a floating-point tolerance of < 0.01 (§1.2).
+
+`@openlarm/core@0.1.0-alpha.0` targets **Level 3**.
+
+## Test vectors
+
+Ten conformance test vectors live at
+[`spec/test-vectors/v2.0/`](https://github.com/openlarm/larm/tree/main/spec/test-vectors/v2.0).
+Each fixture is a JSON file containing `input`, `params_ref`, `expected`,
+and a `tolerance` block. Run them against any LARM implementation to
+verify conformance.
+
+## RFC process
+
+Changes to the normative spec flow through the RFC process at
+[`rfcs/`](https://github.com/openlarm/larm/tree/main/rfcs). Parameter-value
+changes require Model Governance Committee unanimous approval per
+[GOVERNANCE.md](https://github.com/openlarm/larm/blob/main/GOVERNANCE.md).
+
+## Known inconsistencies
+
+§14 of the spec documents 12+ implementation inconsistencies discovered
+during the v1.1 → v2.0 extraction. Worth reading if you're porting LARM
+to another language or auditing an implementation — some of them
+(e.g. the WR-matrix R3/R4 dead cells in `computeGating`) affect how you
+interpret the reference code.

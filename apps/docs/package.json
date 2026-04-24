@@ -1,0 +1,29 @@
+{
+  "name": "@openlarm/docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LARM documentation site (docs.openlarm.org) — Nextra + Next.js.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "nextra": "^3.3.0",
+    "nextra-theme-docs": "^3.3.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

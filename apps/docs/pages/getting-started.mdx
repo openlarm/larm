@@ -1,0 +1,121 @@
+---
+title: Getting started
+description: Install and use the LARM packages from npm.
+---
+
+# Getting started
+
+> `@openlarm/core@0.1.0-alpha.0` and `@openlarm/regions-taiwan@0.1.0-alpha.0`
+> are currently **staged for publish**. They pass all build and test gates
+> locally but have not yet been released to the public npm registry. This
+> page reflects the intended install experience once publish lands.
+
+## Install
+
+```bash
+# Using npm
+npm install @openlarm/core @openlarm/regions-taiwan
+
+# Using pnpm
+pnpm add @openlarm/core @openlarm/regions-taiwan
+
+# Using yarn
+yarn add @openlarm/core @openlarm/regions-taiwan
+```
+
+Supported runtimes: **Node.js ≥ 20**, modern browsers, Bun, Deno, Cloudflare
+Workers (core is runtime-agnostic; no platform globals are required).
+Both packages ship ESM and CJS with full `.d.ts` types.
+
+## Minimal example
+
+```ts
+import { evaluateRisk } from "@openlarm/core"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
+
+// Importing @openlarm/regions-taiwan has a side effect: it calls
+// registerParams() on @openlarm/core's PARAM_REGISTRY. After this line,
+// evaluateRisk(input) with no explicit params will fall back to the
+// Taiwan calibration.
+
+const result = evaluateRisk(
+  {
+    weather_30d: {
+      wind_mean_kmh: 8,
+      wind_p90_kmh: 20,
+      gust_p90_kmh: null,
+      rain_days_30: 3,
+      heavy_rain_days_30: 0,
+      instability_index: 0.2,
+      predictability_score: 0.85,
+    },
+    weather_today: {
+      wind_now_kmh: 18,
+      gust_now_kmh: null,
+      rain_prob_today_pct: 20,
+      rain_mmph_forecast: 0,
+      thunder_risk: 0,
+      forecast_confidence: 80,
+    },
+    building: {
+      site_altitude_m: 25,
+      building_floors: 5,
+      building_height_m: 18,
+      facade_complexity: "light",
+      clearance_m: 10,
+      near_hv_power: 0,
+      near_base_station: 0,
+      wind_channel_effect: 0,
+    },
+  },
+  { params: TAIWAN_PARAMS_V2_0 },
+)
+
+console.log(result.risk_level)   // e.g. "R1"
+console.log(result.decision)     // "GO" | "CONDITIONAL" | "NO_GO"
+console.log(result.buffer_ratio) // 0.05 – 0.55
+```
+
+## Customising parameters
+
+`@openlarm/core` exports a pure `mergeParams(base, override)` helper.
+Override only the fields you need; omitted fields inherit from the base.
+
+```ts
+import { evaluateRisk, mergeParams } from "@openlarm/core"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
+
+// Lower the R4 NO-GO threshold for a conservative operator profile.
+const stricter = mergeParams(TAIWAN_PARAMS_V2_0, { r4_nogo_threshold: 85 })
+
+const result = evaluateRisk(input, { params: stricter })
+```
+
+> **Merge semantics are shallow.** Top-level fields are replaced wholesale.
+> If you override a nested object (`regimes`, `wr_matrix`, `thresholds`,
+> `weather_now_weights`), you MUST supply the full sub-object — omitted
+> siblings are wiped. This is documented on the `resolveParams` JSDoc in
+> [`packages/core/src/params/merge.ts`](https://github.com/openlarm/larm/blob/main/packages/core/src/params/merge.ts).
+
+## Injecting a clock for deterministic tests
+
+```ts
+import { evaluateRisk } from "@openlarm/core"
+
+const fixedClock = () => new Date("2026-04-24T00:00:00.000Z")
+
+const result = evaluateRisk(input, {
+  params: TAIWAN_PARAMS_V2_0,
+  clock: fixedClock,
+})
+
+// result.evaluated_at === "2026-04-24T00:00:00.000Z"
+```
+
+## Next steps
+
+- Read the [Specification](/spec) for the full parameter schema and
+  gating rules.
+- Browse the [test vectors](https://github.com/openlarm/larm/tree/main/spec/test-vectors/v2.0)
+  for 10 worked examples.
+- Contribute via [GOVERNANCE.md](https://github.com/openlarm/larm/blob/main/GOVERNANCE.md).

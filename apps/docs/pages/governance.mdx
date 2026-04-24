@@ -1,0 +1,57 @@
+---
+title: Governance
+description: How LARM decisions get made — three committees, RFC process, contribution workflow.
+---
+
+# Governance
+
+LARM's governance is deliberately stricter than most open-source projects
+because parameter changes directly influence flight go/no-go decisions.
+See [`GOVERNANCE.md`](https://github.com/openlarm/larm/blob/main/GOVERNANCE.md)
+for the authoritative text; this page is a friendly summary.
+
+## Three committees
+
+| Committee | Scope | Decision threshold |
+|---|---|---|
+| **Code TSC** | `@openlarm/core` API, architecture, CI, tooling | Simple majority |
+| **Model Governance** | Parameter values, W-code / R-level boundaries, hard stops, WR matrix | **Unanimous consent** |
+| **Spec Editors** | Normative wording in `spec/LARM-v2.0.md` | Spec Editor consensus, co-signed with Model Governance when touching numeric behaviour |
+
+The members of each committee are listed in
+[`MAINTAINERS.md`](https://github.com/openlarm/larm/blob/main/MAINTAINERS.md).
+
+## Contributing
+
+Every contribution follows the DCO + CCLA dual track (see
+[CONTRIBUTING.md](https://github.com/openlarm/larm/blob/main/CONTRIBUTING.md)):
+
+- **Individual contributors**: sign each commit with `git commit -s`
+  (Developer Certificate of Origin).
+- **Corporate contributors**: your organisation signs a
+  [Corporate CLA](https://github.com/openlarm/larm/blob/main/CORPORATE_CLA.md)
+  once; its employees are covered thereafter.
+
+### Small vs. large changes
+
+- **Typo, formatting, comment** → open a PR, no RFC needed.
+- **New `@openlarm/core` export, refactor** → prefer an issue or draft PR
+  before spending significant time.
+- **Parameter value, W-code boundary, hard-stop threshold, anything in
+  `packages/regions-taiwan/`** → RFC required. Follow the template at
+  [`rfcs/0000-template.md`](https://github.com/openlarm/larm/blob/main/rfcs/0000-template.md).
+- **New region adapter (`@openlarm/regions-*`)** → RFC + proposal issue
+  first. Template at
+  [`.github/ISSUE_TEMPLATE/adapter_request.md`](https://github.com/openlarm/larm/blob/main/.github/ISSUE_TEMPLATE/adapter_request.md).
+
+## Code of Conduct
+
+We adopt the [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
+as our Code of Conduct. Report violations per the process in
+[`CODE_OF_CONDUCT.md`](https://github.com/openlarm/larm/blob/main/CODE_OF_CONDUCT.md).
+
+## Security
+
+Report security issues privately via GitHub Security Advisories. See
+[`SECURITY.md`](https://github.com/openlarm/larm/blob/main/SECURITY.md)
+for the full policy, supported versions, and PGP key placeholder.
