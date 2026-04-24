@@ -2,7 +2,7 @@
 
 > 無人機低空作業的**風險評估決策支援模型**。開源規範 + TypeScript 參考實作。
 >
-> **Home**: [openlarm.org](https://openlarm.org) · **GitHub**: [github.com/openlarm](https://github.com/openlarm) · **Packages**: `@openlarm/core` (upcoming) · **Docs**: docs.openlarm.org (upcoming)
+> **Home**: [openlarm.org](https://openlarm.org) · **GitHub**: [github.com/openlarm](https://github.com/openlarm) · **Packages**: `@openlarm/core@0.1.0-alpha.0` + `@openlarm/regions-taiwan@0.1.0-alpha.0`（staged；待使用者 `npm login` 授權後 publish） · **Docs**: docs.openlarm.org (upcoming)
 
 🇺🇸 [English version](./README.en.md)
 
@@ -53,13 +53,13 @@ LARM（Low Altitude Risk Model，低空作業風險模型）是一套為低空�
 |---|---|
 | 引擎版本 | **LARM v2.0**（SORA 2.5 GRC 整合 + EDR 湍流） |
 | 授權 | **Apache License 2.0** |
-| 公開套件 | 計畫中（`@openlarm/core`、`@openlarm/regions-taiwan`） |
-| 規範文件 | 撰寫中（`spec/LARM-v2.0.md`） |
-| CI | ✅ build + typecheck + lint + vitest golden tests |
-| v0.1 發佈 | 預計 2026 Q2–Q3 |
+| 公開套件 | ✅ 已抽出：`@openlarm/core@0.1.0-alpha.0`（engine，~50KB）+ `@openlarm/regions-taiwan@0.1.0-alpha.0`（Taiwan 校準，~11KB）— staged，`npm publish` 待授權 |
+| 規範文件 | ✅ 已完成：[`spec/LARM-v2.0.md`](./spec/LARM-v2.0.md)（3,018 行 + 10 個合規測試向量） |
+| CI | ✅ build + typecheck + lint + 55 個 vitest 測試（core 30 / regions 8 / frontend 17） |
+| Vercel 部署 | ✅ production deploy on `main` branch |
+| v0.1 正式發佈 | pending 律師定稿 `LEGAL/DISCLAIMER.md` + `npm publish` 授權 |
 
-> 目前 repo 主要程式碼仍在 `low-altitude-ops-platform/frontend/`（Next.js 應用完整版），
-> 模型引擎獨立套件（`@openlarm/core`）將在 v0.1 發佈時從此 monorepo 抽出。
+> Repo 是 npm-workspaces 單體倉庫：`packages/core/` + `packages/regions-taiwan/` 為可發佈 npm 套件；`low-altitude-ops-platform/frontend/` 是 Next.js reference app，透過 workspace 連結消費這兩個套件。
 
 ---
 
@@ -73,11 +73,11 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
-### 使用模型引擎（未來 `@openlarm/core` 發佈後）
+### 使用模型引擎
 
 ```ts
 import { evaluateRisk } from "@openlarm/core"
-import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"  // self-registers on import
 
 const result = evaluateRisk({
   weather_30d: { /* ... */ },
@@ -88,6 +88,8 @@ const result = evaluateRisk({
 console.log(result.risk_level, result.decision, result.buffer_ratio)
 // → "R1", "GO", 0.12
 ```
+
+> `npm install @openlarm/core @openlarm/regions-taiwan` 將於 `npm publish` 後可用。目前 monorepo 內可直接用 workspace link 使用。
 
 ---
 

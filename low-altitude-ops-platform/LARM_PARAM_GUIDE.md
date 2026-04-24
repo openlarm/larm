@@ -1,24 +1,36 @@
-# LARM v1.0 模型參數調整指南
+# LARM v2.0 模型參數調整指南
 
 > 本文件說明各可調整參數的意義、調整方向，以及彼此之間的計算關聯。
 > 所有參數均可在 `/admin/params` 頁面調整，調整結果存於 localStorage 並即時生效。
+>
+> **v2.0 重點差異**（對照舊 v1.x）：
+> - `B_score` 更名為 `G_score`（Ground/Geography score，含 SORA 2.5 ground-consequence + TKE proxy，不再只評建物）
+> - WeatherNow 上限 50 → **42**；weights 改為 wind 0.55 + rain 0.35 + instability **0.10**（加總 1.00）
+> - G_score 上限 25 → **20**；O_score 上限 15 → **12**；E_score 上限 10 → **8**
+> - Buffer ratio 上限 40% → **55%**
+> - 新增 EDR 湍流硬停（> 0.8）、W5 颱風趨勢修正、W4 午後時段 ×1.5 乘數
+> - Pricing 參數（如 `quote_max_multiplier`）從 `WeatherRegimeParams` 拆出，移至 `PricingParams`
+>
+> 詳見 `MODEL_CHANGELOG.md` v2.0 entry 與 `spec/LARM-v2.0.md`。
 
 ---
 
 ## 一、R_score 完整公式鏈
 
 ```
-R_score = clamp( Base(W) + WeatherNow + B_score + O_score + E_score , 0, 100 )
+R_score = clamp( Base(W) + WeatherNow + G_score + O_score + E_score , 0, 100 )
 ```
 
 | 組件 | 符號 | 範圍 | 來源 / 可調參數 |
 |---|---|---|---|
-| 天候基礎分 | Base(W) | 3–22 | `regimes[W].base_score` |
-| 即時天候分 | WeatherNow | 0–50 | 風雨規則、各項權重 |
-| 建築評分 | B_score | 0–25 | 任務表單（樓層/高度/環境） |
-| 作業評分 | O_score | 0–15 | 任務表單（夜間/週末/急件） |
-| 設備評分 | E_score | 0–10 | 任務表單（設備 Block/Warn） |
+| 天候基礎分 | Base(W) | 3–22 | `regimes[W].base_score`（+ W5 颱風趨勢修正 `w5_typhoon_trend_bonus`） |
+| 即時天候分 | WeatherNow | 0–42 | 風雨規則、各項權重、EDR 湍流調整 |
+| 地面/建物評分 | G_score（舊稱 B_score） | 0–20 | 任務表單（樓層/海拔/立面 + SORA 2.5 iGRC + TKE proxy） |
+| 作業評分 | O_score | 0–12 | 任務表單（夜間/週末/急件/人流/疲勞） |
+| 設備評分 | E_score | 0–8 | 任務表單（設備 Block +3 / Warn +1.5 每件） |
 | **合計** | **R_score** | **0–100** | 四捨五入，clamp |
+
+> 相容性：`RiskResult.b_score` 欄位作為 backward-compat alias 仍等於 `g_score`。
 
 **硬停條件**（不論 R_score，直接 NO-GO）：
 
@@ -26,6 +38,8 @@ R_score = clamp( Base(W) + WeatherNow + B_score + O_score + E_score , 0, 100 )
 |---|---|
 | `wind_now ≥ hard_stop.wind_kmh`（預設 39 km/h） | `thresholds.hard_stop.wind_kmh` |
 | `rain_mmph > hard_stop.rain_mmph`（預設 10）**且** `rain_prob > hard_stop.rain_prob_pct`（預設 60%） | `thresholds.hard_stop.rain_mmph` / `.rain_prob_pct` |
+| `edr > hard_stop.edr_threshold`（預設 0.8，v2.0 新增） | `thresholds.hard_stop.edr_threshold` |
+| `R_score > r4_nogo_threshold`（預設 92，v2.0 新增） | `r4_nogo_threshold` |
 | `E_score ≥ 8` | 固定邏輯，不可調 |
 
 ---
@@ -619,16 +633,20 @@ WeatherNow 計算最後乘上此係數（地形 × 天候型態交互）。
 
 | 公式/邏輯 | 實作位置 |
 |---|---|
-| `classifyWeatherRegime()` | `src/lib/engines/risk-engine.ts` |
-| `evaluateRisk()` — 完整 R_score 計算 | `src/lib/engines/risk-engine.ts` |
-| `computeBuildingScore()` — B_score | `src/lib/engines/risk-engine.ts` |
-| `computeOperationalScore()` — O_score | `src/lib/engines/risk-engine.ts` |
-| `computeEquipmentScore()` — E_score | `src/lib/engines/risk-engine.ts` |
-| `computeGating()` — CONDITIONAL Tier 判斷 | `src/lib/engines/risk-engine.ts` |
-| `inferWCode()` — UI 即時推斷 | `src/lib/engines/model-helpers.ts` |
-| `completionForRL()` — 完成率估計 | `src/lib/engines/model-helpers.ts` |
-| `getWRDecision()` | `src/lib/engines/model-helpers.ts` |
-| 所有可調參數與預設值 | `src/lib/engines/weather-regime-params.ts` |
-| `generateQuote()` — 報價引擎 | `src/lib/engines/pricing-engine.ts` |
+| `classifyWeatherRegimeWithParams()` | `packages/core/src/engines/risk-engine.ts` |
+| `evaluateRisk()` — 完整 R_score 計算 | `packages/core/src/engines/risk-engine.ts` |
+| `computeGScore()` — G_score（舊稱 B_score） | `packages/core/src/engines/risk-engine.ts` |
+| `computeOperationalScore()` — O_score | `packages/core/src/engines/risk-engine.ts` |
+| `computeEquipmentScore()` — E_score | `packages/core/src/engines/risk-engine.ts` |
+| `computeGating()` — CONDITIONAL Tier 判斷 | `packages/core/src/engines/risk-engine.ts` |
+| `inferWCode()` — UI 即時推斷 | `packages/core/src/engines/model-helpers.ts` |
+| `completionForRL()` — 完成率估計 | `packages/core/src/engines/model-helpers.ts` |
+| `getWRDecision()` | `packages/core/src/engines/model-helpers.ts` |
+| 參數 schema（型別） | `packages/core/src/params/schema.ts` |
+| Taiwan 校準數值（V1/V2） | `packages/regions-taiwan/src/v1.ts` / `v2.ts` |
+| 客戶端 localStorage 覆寫層 | `low-altitude-ops-platform/frontend/src/lib/params-store.ts` |
+| Pricing 參數（`PricingParams`，含 `quote_max_multiplier`） | `low-altitude-ops-platform/frontend/src/lib/engines/pricing-params.ts` |
+| `generateQuote()` — 報價引擎（已從 core 解耦） | `low-altitude-ops-platform/frontend/src/lib/engines/pricing-engine.ts` |
+| frontend re-export bridge（24+ in-app importers 相容用） | `low-altitude-ops-platform/frontend/src/lib/engines/*.ts` |
 | Admin Params UI | `src/app/(main)/admin/params/page.tsx` |
 | Climate 氣候日曆 | `src/app/(main)/climate/page.tsx` |
