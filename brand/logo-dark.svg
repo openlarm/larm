@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LARM wordmark — dark-mode variant.
+  Text switches from slate-900 to zinc-50. Gradient bar unchanged.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" fill="none">
+  <defs>
+    <linearGradient id="larm-r-gradient-dark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34d399"/><!-- R0 emerald-400 -->
+      <stop offset="0.25" stop-color="#38bdf8"/><!-- R1 sky-400 -->
+      <stop offset="0.5" stop-color="#fbbf24"/><!-- R2 amber-400 -->
+      <stop offset="0.75" stop-color="#fb923c"/><!-- R3 orange-400 -->
+      <stop offset="1" stop-color="#f87171"/><!-- R4 red-400 -->
+    </linearGradient>
+  </defs>
+
+  <text x="30" y="110"
+        font-family="'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif"
+        font-weight="800"
+        font-size="110"
+        letter-spacing="-4"
+        fill="#fafafa">LARM</text>
+
+  <rect x="30" y="128" width="380" height="8" rx="4" fill="url(#larm-r-gradient-dark)"/>
+
+  <text x="30" y="168"
+        font-family="'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif"
+        font-weight="500"
+        font-size="22"
+        letter-spacing="0"
+        fill="#a1a1aa">Low Altitude Risk Model</text>
+</svg>
