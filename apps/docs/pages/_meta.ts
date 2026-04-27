@@ -2,6 +2,7 @@ export default {
   index: "Introduction",
   "getting-started": "Getting started",
   spec: "Specification",
+  api: "API reference",
   governance: "Governance",
   changelog: "Changelog",
   contact: {

@@ -6,9 +6,11 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run docs:api && next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs:api": "typedoc",
+    "docs:api:clean": "rm -rf public/api-reference"
   },
   "dependencies": {
     "next": "^14.2.0",
@@ -18,9 +20,11 @@
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
+    "@openlarm/core": "*",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "typedoc": "^0.28.0",
     "typescript": "^5"
   },
   "engines": {
