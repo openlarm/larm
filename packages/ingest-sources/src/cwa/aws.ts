@@ -26,8 +26,8 @@ const CwaStationSchema = z.object({
   }),
 })
 
-const CwaResponseSchema = z.object({
-  records: z.object({ Station: z.array(CwaStationSchema) }),
+const CwaEnvelopeSchema = z.object({
+  records: z.object({ Station: z.array(z.unknown()) }),
 })
 
 const MS_TO_KMH = 3.6
@@ -45,20 +45,29 @@ export async function runCwaAws(deps: SourceDeps): Promise<SourceResult> {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) throw new Error(`CWA AWS HTTP ${res.status}`)
     const json = await res.json()
-    const parsed = CwaResponseSchema.parse(json)
+    const parsed = CwaEnvelopeSchema.parse(json)
 
     const accepted: NormalizedObservation[] = []
     let rejected = 0
 
-    for (const stn of parsed.records.Station) {
+    for (const raw of parsed.records.Station) {
+      const stnResult = CwaStationSchema.safeParse(raw)
+      if (!stnResult.success) {
+        rejected++
+        continue
+      }
+      const stn = stnResult.data
       const we = stn.WeatherElement
       const coord = stn.GeoInfo.Coordinates[0]
-      const wind_kmh = cleanCwaValue(we.WindSpeed ?? null) !== null
-        ? (we.WindSpeed as number) * MS_TO_KMH
-        : null
-      const gust_kmh = we.GustInfo?.PeakGustSpeed != null && cleanCwaValue(we.GustInfo.PeakGustSpeed) !== null
-        ? we.GustInfo.PeakGustSpeed * MS_TO_KMH
-        : null
+
+      const wind_clean = cleanCwaValue(we.WindSpeed ?? null)
+      const wind_kmh = wind_clean !== null ? wind_clean * MS_TO_KMH : null
+
+      const gust_raw = we.GustInfo?.PeakGustSpeed ?? null
+      const gust_clean = cleanCwaValue(gust_raw)
+      const gust_kmh_unchecked = gust_clean !== null ? gust_clean * MS_TO_KMH : null
+      const gust_kmh = isPlausibleWind(gust_kmh_unchecked) ? gust_kmh_unchecked : null
+
       const temp_c = cleanCwaValue(we.AirTemperature ?? null)
 
       if (!isPlausibleWind(wind_kmh) || !isPlausibleTemp(temp_c)) {
@@ -78,7 +87,7 @@ export async function runCwaAws(deps: SourceDeps): Promise<SourceResult> {
         temp_c,
         rh_pct: cleanCwaValue(we.RelativeHumidity ?? null),
         pressure_hpa: cleanCwaValue(we.AirPressure ?? null),
-        rain_mm_10min: we.Now?.Precipitation ?? null,
+        rain_mm_10min: cleanCwaValue(we.Now?.Precipitation ?? null),
         qc_flags: { bias_corrected: false, outlier: false },
       })
     }
@@ -92,7 +101,7 @@ export async function runCwaAws(deps: SourceDeps): Promise<SourceResult> {
     return { rows_written: written, rows_rejected: rejected, duration_ms: Date.now() - start }
   } catch (err) {
     await deps.db.recordFetchEnd(fetchLog.id, "failed", {
-      error_message: String(err),
+      error_message: err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err),
       duration_ms: Date.now() - start,
     })
     throw err
