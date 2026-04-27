@@ -19,4 +19,5 @@ export interface IngestDb {
   recordFetchEnd(id: number, status: "ok" | "partial" | "failed", payload: { rows_written?: number; rows_rejected?: number; error_message?: string; duration_ms: number }): Promise<void>
   getBudget(source: string): Promise<{ used: number; resetAt: Date }>
   incrementBudget(source: string, by: number): Promise<void>
+  insertGridded(row: { ts: string; source: string; variable: string; bbox_wkt: string; storage_url: string; raw_metadata?: unknown }): Promise<number>
 }
