@@ -41,4 +41,15 @@ describe("NormalizedObservation schema", () => {
     })
     expect(ok.success).toBe(true)
   })
+
+  it("rejects malformed timestamp", () => {
+    const bad = NormalizedObservationSchema.safeParse({
+      ts: "2026-04-27 10:00:00",  // missing T separator + timezone
+      source: "cwa_aws",
+      station_id: "STN001",
+      lat: 25.0,
+      lng: 121.5,
+    })
+    expect(bad.success).toBe(false)
+  })
 })
