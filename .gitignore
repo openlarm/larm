@@ -3,3 +3,36 @@ quote-page/
 
 # Internal legal-engagement scoping doc — not for public repo
 LEGAL/LAWYER_REVIEW_BRIEF.md
+
+# ─── Node / npm workspaces ────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ─── Build outputs ────────────────────────────────────────────────────────
+dist/
+**/dist/
+.next/
+**/.next/
+out/
+**/out/
+*.tsbuildinfo
+
+# ─── OS / editor noise ────────────────────────────────────────────────────
+.DS_Store
+*.swp
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# ─── Test + coverage ──────────────────────────────────────────────────────
+coverage/
+**/coverage/
+
+# ─── Local env ────────────────────────────────────────────────────────────
+.env
+.env*.local
+.env.local
+
+# ─── Tooling caches ───────────────────────────────────────────────────────
+.turbo/
+.cache/
