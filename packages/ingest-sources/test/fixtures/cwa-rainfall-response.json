@@ -1,0 +1,28 @@
+{
+  "records": {
+    "Station": [
+      {
+        "StationId": "C0A640",
+        "StationName": "中山",
+        "ObsTime": { "DateTime": "2026-04-27T10:00:00+08:00" },
+        "GeoInfo": { "Coordinates": [{ "StationLatitude": 25.06, "StationLongitude": 121.54 }] },
+        "RainfallElement": {
+          "Now": { "Precipitation": 0.5 },
+          "Past1hr": { "Precipitation": 2.3 },
+          "Past24hr": { "Precipitation": 18.7 }
+        }
+      },
+      {
+        "StationId": "C0A641",
+        "StationName": "大同",
+        "ObsTime": { "DateTime": "2026-04-27T10:00:00+08:00" },
+        "GeoInfo": { "Coordinates": [{ "StationLatitude": 25.07, "StationLongitude": 121.52 }] },
+        "RainfallElement": {
+          "Now": { "Precipitation": 1.2 },
+          "Past1hr": { "Precipitation": 5.8 },
+          "Past24hr": { "Precipitation": 32.1 }
+        }
+      }
+    ]
+  }
+}
