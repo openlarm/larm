@@ -54,12 +54,6 @@ describe("runCwaAws", () => {
     expect(stnNoGust.gust_kmh).toBeNull()
   })
 
-  it("logs fetch start + end", async () => {
-    await runCwaAws({ db: mockDb, now: () => new Date() })
-    expect(mockDb.recordFetchStart).toHaveBeenCalledWith("cwa_aws")
-    expect(mockDb.recordFetchEnd).toHaveBeenCalledWith(1, "ok", expect.objectContaining({ rows_written: expect.any(Number) }))
-  })
-
   it("rejects malformed station without killing batch", async () => {
     const malformed = {
       records: {

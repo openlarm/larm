@@ -1,6 +1,8 @@
 import http from "http"
 import type postgres from "postgres"
 
+const PROCESS_START = Date.now()
+
 export function startHealthServer(
   sql: ReturnType<typeof postgres>,
   port = 3000
@@ -11,8 +13,18 @@ export function startHealthServer(
         const sources = await sql`
           SELECT source, last_success, consecutive_failures FROM meta_sources
         `
+        const ageMs = Date.now() - PROCESS_START
+        const inWarmup = ageMs < 3_600_000
+
         const stale = (sources as unknown as Array<{ last_success: string | null; consecutive_failures: number }>).filter(
-          (s) => !s.last_success || Date.now() - new Date(s.last_success).getTime() > 3_600_000
+          (s) => {
+            // Warmup grace period: don't penalize sources that haven't had their first success yet
+            if (!s.last_success && inWarmup) return false
+            if (!s.last_success) return true
+            if (Date.now() - new Date(s.last_success).getTime() > 3_600_000) return true
+            if (s.consecutive_failures >= 3) return true
+            return false
+          }
         )
         const status = stale.length === 0 ? 200 : 503
         res.writeHead(status, { "content-type": "application/json" })

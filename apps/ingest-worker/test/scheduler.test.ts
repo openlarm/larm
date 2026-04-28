@@ -3,7 +3,10 @@ import { buildSchedule, runOnceForTest } from "../src/scheduler"
 
 describe("scheduler", () => {
   it("registers a cron entry per source", () => {
-    const schedule = buildSchedule()
+    const mockStorage = {
+      upload: async () => ({ path: "p", fullPath: "fp", size: 0 }),
+    }
+    const schedule = buildSchedule({ storage: mockStorage })
     expect(schedule.length).toBeGreaterThanOrEqual(6)
     expect(schedule.find((s) => s.name === "cwa_aws")).toBeDefined()
     expect(schedule.find((s) => s.name === "open_meteo_forecast")).toBeDefined()

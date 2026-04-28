@@ -77,7 +77,8 @@ async function upsertForecastBatch(sql: Sql, batch: NormalizedForecast[]): Promi
        wind_kmh, wind_dir_deg, gust_kmh, rain_prob_pct, rain_mmph,
        weather_code, raw_payload)
     VALUES ${values}
-    ON CONFLICT ON CONSTRAINT forecast_point_natural_key DO UPDATE SET
+    ON CONFLICT (issued_at, valid_at, source, COALESCE(region_id, ''), ST_AsText(geom::geometry))
+    DO UPDATE SET
       wind_kmh = EXCLUDED.wind_kmh,
       gust_kmh = EXCLUDED.gust_kmh,
       rain_prob_pct = EXCLUDED.rain_prob_pct,

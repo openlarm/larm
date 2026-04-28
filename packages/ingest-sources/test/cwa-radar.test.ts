@@ -78,25 +78,16 @@ describe("runCwaRadar", () => {
       runCwaRadar({ db: mockDb, now: () => new Date(), storage: mockStorage }),
     ).rejects.toThrow("CWA radar HTTP 503")
 
-    expect(mockDb.recordFetchEnd).toHaveBeenCalledWith(
-      1,
-      "failed",
-      expect.objectContaining({ error_message: expect.any(String) }),
-    )
     expect(mockStorage.upload).not.toHaveBeenCalled()
     expect(mockDb.insertGridded).not.toHaveBeenCalled()
   })
 
-  it("preserves stack trace in error_message on storage failure", async () => {
+  it("propagates storage failure error", async () => {
     const storageError = new Error("bucket not found")
     ;(mockStorage.upload as ReturnType<typeof vi.fn>).mockRejectedValueOnce(storageError)
 
     await expect(
       runCwaRadar({ db: mockDb, now: () => new Date(), storage: mockStorage }),
     ).rejects.toThrow("bucket not found")
-
-    const [, , payload] = (mockDb.recordFetchEnd as ReturnType<typeof vi.fn>).mock.calls[0] as [number, string, { error_message: string }]
-    expect(payload.error_message).toContain("bucket not found")
-    expect(payload.error_message).toContain("Error:")
   })
 })

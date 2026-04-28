@@ -33,64 +33,50 @@ export async function runEpaAq(deps: SourceDeps): Promise<SourceResult> {
   url.searchParams.set("format", "json")
   url.searchParams.set("limit", "1000")
 
-  const log = await deps.db.recordFetchStart("epa_aq")
   const t0 = Date.now()
 
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new Error(`EPA HTTP ${res.status}`)
-    const envelope = EnvelopeSchema.parse(await res.json())
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`EPA HTTP ${res.status}`)
+  const envelope = EnvelopeSchema.parse(await res.json())
 
-    const accepted: NormalizedObservation[] = []
-    let rejected = 0
+  const accepted: NormalizedObservation[] = []
+  let rejected = 0
 
-    for (const raw of envelope.records) {
-      const recResult = RecSchema.safeParse(raw)
-      if (!recResult.success) {
-        rejected++
-        continue
-      }
-      const rec = recResult.data
+  for (const raw of envelope.records) {
+    const recResult = RecSchema.safeParse(raw)
+    if (!recResult.success) {
+      rejected++
+      continue
+    }
+    const rec = recResult.data
 
-      const ws = parseFloatOrNull(rec.wind_speed)
-      if (ws === null) {
-        rejected++
-        continue
-      }
-
-      const lat = parseFloatOrNull(rec.latitude)
-      const lng = parseFloatOrNull(rec.longitude)
-      if (lat === null || lng === null) {
-        rejected++
-        continue
-      }
-
-      const wd = parseFloatOrNull(rec.wind_direc)
-
-      accepted.push({
-        ts: new Date(rec.publishtime.replace(" ", "T") + "+08:00").toISOString(),
-        source: "epa_aq",
-        station_id: rec.siteid,
-        lat,
-        lng,
-        wind_kmh: ws * MS_TO_KMH,
-        wind_dir_deg: wd,
-        qc_flags: { bias_corrected: false, outlier: false },
-      })
+    const ws = parseFloatOrNull(rec.wind_speed)
+    if (ws === null) {
+      rejected++
+      continue
     }
 
-    const written = await deps.db.upsertObservations(accepted)
-    await deps.db.recordFetchEnd(log.id, "ok", {
-      rows_written: written,
-      rows_rejected: rejected,
-      duration_ms: Date.now() - t0,
+    const lat = parseFloatOrNull(rec.latitude)
+    const lng = parseFloatOrNull(rec.longitude)
+    if (lat === null || lng === null) {
+      rejected++
+      continue
+    }
+
+    const wd = parseFloatOrNull(rec.wind_direc)
+
+    accepted.push({
+      ts: new Date(rec.publishtime.replace(" ", "T") + "+08:00").toISOString(),
+      source: "epa_aq",
+      station_id: rec.siteid,
+      lat,
+      lng,
+      wind_kmh: ws * MS_TO_KMH,
+      wind_dir_deg: wd,
+      qc_flags: { bias_corrected: false, outlier: false },
     })
-    return { rows_written: written, rows_rejected: rejected, duration_ms: Date.now() - t0 }
-  } catch (err) {
-    await deps.db.recordFetchEnd(log.id, "failed", {
-      error_message: err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err),
-      duration_ms: Date.now() - t0,
-    })
-    throw err
   }
+
+  const written = await deps.db.upsertObservations(accepted)
+  return { rows_written: written, rows_rejected: rejected, duration_ms: Date.now() - t0 }
 }

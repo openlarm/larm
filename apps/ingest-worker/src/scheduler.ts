@@ -11,7 +11,7 @@ import type { IngestDb, SourceResult, SourceDeps } from "@openlarm/ingest-types"
 
 // Minimal storage interface matching @openlarm/ingest-sources StorageClient.
 // Inlined here because StorageClient is not re-exported from the package index.
-interface StorageClient {
+export interface StorageClient {
   upload(
     path: string,
     body: Blob,
@@ -29,19 +29,14 @@ export interface ScheduleEntry {
 // In Sprint 2 these will be replaced by a frequent_sites loop in index.ts.
 const DEFAULT_TARGET = { lat: 25.05, lng: 121.53 }
 
-// No-op storage stub for radar — real storage client injected in production via env.
-const noopStorage: StorageClient = {
-  upload: async () => { throw new Error("storage not configured") },
-}
-
-export function buildSchedule(): ScheduleEntry[] {
+export function buildSchedule(deps: { storage: StorageClient }): ScheduleEntry[] {
   return [
     { cron: "*/10 * * * *", name: "cwa_aws", run: runCwaAws },
     { cron: "*/10 * * * *", name: "cwa_rainfall", run: runCwaRainfall },
     {
       cron: "*/10 * * * *",
       name: "cwa_radar",
-      run: (deps: SourceDeps) => runCwaRadar({ ...deps, storage: noopStorage }),
+      run: (sourceDeps: SourceDeps) => runCwaRadar({ ...sourceDeps, storage: deps.storage }),
     },
     { cron: "0 * * * *", name: "epa_aq", run: runEpaAq },
     // Forecast / archive jobs use a default Taipei target.
@@ -49,12 +44,12 @@ export function buildSchedule(): ScheduleEntry[] {
     {
       cron: "0 */3 * * *",
       name: "open_meteo_forecast",
-      run: (deps: SourceDeps) => runOpenMeteoForecast(deps, DEFAULT_TARGET),
+      run: (sourceDeps: SourceDeps) => runOpenMeteoForecast(sourceDeps, DEFAULT_TARGET),
     },
     {
       cron: "0 2 * * *",
       name: "open_meteo_archive",
-      run: (deps: SourceDeps) => runOpenMeteoArchive(deps, { ...DEFAULT_TARGET, days: 30 }),
+      run: (sourceDeps: SourceDeps) => runOpenMeteoArchive(sourceDeps, { ...DEFAULT_TARGET, days: 30 }),
     },
   ]
 }
@@ -70,6 +65,7 @@ export async function runOnceForTest(
     await db.recordFetchEnd(log.id, "ok", { ...result, duration_ms: Date.now() - t0 })
     return { status: "ok", result }
   } catch (err) {
+    console.error(`[worker] ${job.name} failed:`, err)
     await db.recordFetchEnd(log.id, "failed", {
       error_message: String(err),
       duration_ms: Date.now() - t0,

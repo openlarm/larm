@@ -38,53 +38,39 @@ export async function runOpenMeteoForecast(
 
   await checkAndConsumeBudget(deps.db, "open_meteo_forecast", dailyBudget, 1)
 
-  const log = await deps.db.recordFetchStart("open_meteo_forecast")
   const t0 = Date.now()
 
-  try {
-    const url = new URL(apiKey ? PAID_BASE : FREE_BASE)
-    if (apiKey) url.searchParams.set("apikey", apiKey)
-    url.searchParams.set("latitude", target.lat.toFixed(4))
-    url.searchParams.set("longitude", target.lng.toFixed(4))
-    url.searchParams.set(
-      "hourly",
-      "wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,precipitation_probability,weather_code"
-    )
-    url.searchParams.set("wind_speed_unit", "kmh")
-    url.searchParams.set("timezone", "Asia/Taipei")
-    url.searchParams.set("forecast_days", "14")
+  const url = new URL(apiKey ? PAID_BASE : FREE_BASE)
+  if (apiKey) url.searchParams.set("apikey", apiKey)
+  url.searchParams.set("latitude", target.lat.toFixed(4))
+  url.searchParams.set("longitude", target.lng.toFixed(4))
+  url.searchParams.set(
+    "hourly",
+    "wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,precipitation_probability,weather_code"
+  )
+  url.searchParams.set("wind_speed_unit", "kmh")
+  url.searchParams.set("timezone", "Asia/Taipei")
+  url.searchParams.set("forecast_days", "14")
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
-    const parsed = RespSchema.parse(await res.json())
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`)
+  const parsed = RespSchema.parse(await res.json())
 
-    const issuedAt = deps.now().toISOString()
-    const rows: NormalizedForecast[] = parsed.hourly.time.map((t, i) => ({
-      issued_at: issuedAt,
-      valid_at: new Date(`${t}+08:00`).toISOString(),
-      source: "open_meteo_forecast",
-      lat: parsed.latitude,
-      lng: parsed.longitude,
-      wind_kmh: parsed.hourly.wind_speed_10m[i],
-      wind_dir_deg: parsed.hourly.wind_direction_10m[i],
-      gust_kmh: parsed.hourly.wind_gusts_10m[i],
-      rain_prob_pct: parsed.hourly.precipitation_probability[i],
-      rain_mmph: parsed.hourly.precipitation[i],
-      weather_code: String(parsed.hourly.weather_code[i]),
-    }))
+  const issuedAt = deps.now().toISOString()
+  const rows: NormalizedForecast[] = parsed.hourly.time.map((t, i) => ({
+    issued_at: issuedAt,
+    valid_at: new Date(`${t}+08:00`).toISOString(),
+    source: "open_meteo_forecast",
+    lat: parsed.latitude,
+    lng: parsed.longitude,
+    wind_kmh: parsed.hourly.wind_speed_10m[i],
+    wind_dir_deg: parsed.hourly.wind_direction_10m[i],
+    gust_kmh: parsed.hourly.wind_gusts_10m[i],
+    rain_prob_pct: parsed.hourly.precipitation_probability[i],
+    rain_mmph: parsed.hourly.precipitation[i],
+    weather_code: String(parsed.hourly.weather_code[i]),
+  }))
 
-    const written = await deps.db.upsertForecasts(rows)
-    await deps.db.recordFetchEnd(log.id, "ok", {
-      rows_written: written,
-      rows_rejected: 0,
-      duration_ms: Date.now() - t0,
-    })
-    return { rows_written: written, rows_rejected: 0, duration_ms: Date.now() - t0 }
-  } catch (err) {
-    await deps.db.recordFetchEnd(log.id, "failed", {
-      error_message: err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err),
-      duration_ms: Date.now() - t0,
-    })
-    throw err
-  }
+  const written = await deps.db.upsertForecasts(rows)
+  return { rows_written: written, rows_rejected: 0, duration_ms: Date.now() - t0 }
 }
