@@ -17,5 +17,5 @@ COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/apps/ingest-worker/dist ./dist
 COPY --from=builder /repo/apps/ingest-worker/package.json ./package.json
-EXPOSE 3000
+EXPOSE 8080
 CMD ["node", "dist/index.js"]
