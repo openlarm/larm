@@ -43,6 +43,6 @@ export function startHealthServer(
     }
     res.writeHead(404).end()
   })
-  server.listen(port, () => console.log(`[health] listening on :${port}`))
+  server.listen(port, "0.0.0.0", () => console.log(`[health] listening on 0.0.0.0:${port}`))
   return server
 }
