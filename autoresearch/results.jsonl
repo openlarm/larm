@@ -1,0 +1,1 @@
+{"_comment": "Append-only experiment log. Each line is a JSON object the agent emits after running evaluate.mjs and deciding keep/revert. Do not edit by hand."}
