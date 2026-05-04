@@ -1,0 +1,24 @@
+{
+  "name": "openlarm-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LARM open-source monorepo: @openlarm/core, @openlarm/regions-taiwan, and the Next.js reference app.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "low-altitude-ops-platform/frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
+  }
+}

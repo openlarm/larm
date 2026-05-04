@@ -1,0 +1,22 @@
+{
+  "records": [
+    {
+      "siteid": "57",
+      "sitename": "中正",
+      "publishtime": "2026-04-27 10:00:00",
+      "wind_speed": "1.2",
+      "wind_direc": "120",
+      "longitude": "121.523",
+      "latitude": "25.041"
+    },
+    {
+      "siteid": "BAD",
+      "sitename": "Bad",
+      "publishtime": "2026-04-27 10:00:00",
+      "wind_speed": "",
+      "wind_direc": "",
+      "longitude": "121.5",
+      "latitude": "25.0"
+    }
+  ]
+}

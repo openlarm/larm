@@ -1,0 +1,13 @@
+{
+  "latitude": 25.0,
+  "longitude": 121.5,
+  "hourly": {
+    "time": ["2026-04-27T10:00", "2026-04-27T11:00"],
+    "wind_speed_10m": [12.5, 13.1],
+    "wind_direction_10m": [180, 175],
+    "wind_gusts_10m": [18.2, 19.4],
+    "precipitation": [0.0, 0.3],
+    "precipitation_probability": [10, 20],
+    "weather_code": [1, 2]
+  }
+}

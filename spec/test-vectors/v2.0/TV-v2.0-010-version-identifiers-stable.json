@@ -1,0 +1,53 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-010",
+  "name": "version_identifiers_stable",
+  "description": "Engine reports LARM v2.0 ruleset identifiers stably: ruleset_version = 'larm_v2.0', versions.larm_version = 'v2.0', versions.thresholds_version = 'v2.0'; weather_regime_params_version is a string; evaluated_at is a parseable ISO timestamp.",
+  "spec_section": "§11.1, §15",
+  "tags": ["versions", "metadata"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "ruleset_version": "larm_v2.0",
+    "versions": {
+      "larm_version": "v2.0",
+      "thresholds_version": "v2.0",
+      "weather_regime_params_version_type": "string"
+    },
+    "evaluated_at_is_iso_parseable": true
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

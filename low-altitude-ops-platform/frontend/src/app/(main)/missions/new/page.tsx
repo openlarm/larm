@@ -1,0 +1,97 @@
+"use client"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { VersionBar } from "@/components/layout/VersionBar"
+import { WizardStepper } from "@/components/wizard/WizardStepper"
+import { Step1Address } from "@/components/wizard/steps/Step1Address"
+import { Step2Airspace } from "@/components/wizard/steps/Step2Airspace"
+import { Step3Building } from "@/components/wizard/steps/Step3Building"
+import { Step4Facade } from "@/components/wizard/steps/Step4Facade"
+import { Step8Pricing } from "@/components/wizard/steps/Step8Pricing"
+import { Step6Operations } from "@/components/wizard/steps/Step6Operations"
+import { Step10Plan } from "@/components/wizard/steps/Step10Plan"
+import type { Mission } from "@/lib/types"
+import type { QuoteFacadeInput } from "@/app/(quote)/quote/components/quote-defaults"
+import { saveMission } from "@/lib/stores/mission-store"
+
+const STEPS = [
+  "Address", "Airspace", "Building", "Façade",
+  "Pricing", "Operations", "Plan",
+]
+
+export default function NewMissionPage() {
+  const router = useRouter()
+  const [step, setStep] = useState(0)
+  const [mission, setMission] = useState<Partial<Mission>>({})
+  // Shared state for polygon-based area estimation (Step 3 → Step 4)
+  const [facadeInputs, setFacadeInputs] = useState<QuoteFacadeInput[]>([])
+  // Per-building polygon state (sparse arrays, indexed by building tab index)
+  const [buildingPolygons, setBuildingPolygons] = useState<([number, number][] | null)[]>([])
+  const [perimeterMs, setPerimeterMs] = useState<(number | null)[]>([])
+
+  const update = (patch: Partial<Mission>) =>
+    setMission(prev => ({ ...prev, ...patch }))
+
+  const next = () => setStep(s => Math.min(s + 1, STEPS.length - 1))
+  const back = () => setStep(s => Math.max(s - 1, 0))
+
+  const stepProps = { mission, update, next, back }
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      {/* Top bar — offset by mobile header height on small screens */}
+      <div className="sticky top-14 lg:top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-2 sm:py-3 bg-zinc-900/90 backdrop-blur border-b border-zinc-800">
+        <div>
+          <span className="text-sm font-semibold text-white">New Mission Wizard</span>
+          <span className="text-xs text-zinc-500 ml-2">新任務精靈</span>
+        </div>
+        <VersionBar />
+      </div>
+
+      {/* Stepper */}
+      <div className="px-4 sm:px-8 pt-4 sm:pt-6">
+        <WizardStepper steps={STEPS} current={step} />
+      </div>
+
+      {/* Step content */}
+      <div className="flex-1 px-4 sm:px-8 py-4 sm:py-6">
+        {step === 0 && <Step1Address {...stepProps} />}
+        {step === 1 && <Step2Airspace {...stepProps} />}
+        {step === 2 && (
+          <Step3Building
+            {...stepProps}
+            buildingPolygons={buildingPolygons}
+            onPolygonDraw={(idx, verts, _area, perim) => {
+              setBuildingPolygons(prev => {
+                const next = [...prev]
+                while (next.length <= idx) next.push(null)
+                next[idx] = verts
+                return next
+              })
+              setPerimeterMs(prev => {
+                const next = [...prev]
+                while (next.length <= idx) next.push(null)
+                next[idx] = perim
+                return next
+              })
+            }}
+          />
+        )}
+        {step === 3 && (
+          <Step4Facade
+            {...stepProps}
+            facadeInputs={facadeInputs}
+            setFacadeInputs={setFacadeInputs}
+            perimeterM={perimeterMs.reduce((s: number, p) => s + (p ?? 0), 0) || null}
+          />
+        )}
+        {step === 4 && <Step8Pricing {...stepProps} />}
+        {step === 5 && <Step6Operations {...stepProps} />}
+        {step === 6 && <Step10Plan {...stepProps} onFinish={() => {
+          saveMission(mission)
+          router.push("/missions")
+        }} />}
+      </div>
+    </div>
+  )
+}

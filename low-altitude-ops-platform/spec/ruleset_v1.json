@@ -1,0 +1,105 @@
+{
+  "ruleset_version": "v1.0",
+  "effective_date": "2026-02-20",
+  "status": "active",
+  "description": "W×R risk classification ruleset for low-altitude operations",
+
+  "weather_types": {
+    "W0": { "label": "穩定高壓", "characteristics": "低風、低雨、穩定" },
+    "W1": { "label": "東北季風", "characteristics": "穩定風向、陣風偏高" },
+    "W2": { "label": "鋒面掃過", "characteristics": "降雨移動型、不穩定" },
+    "W3": { "label": "梅雨滯留", "characteristics": "連續降雨、地面潮濕" },
+    "W4": { "label": "午後熱對流", "characteristics": "短時雷陣雨、變化快" },
+    "W5": { "label": "颱風外圍", "characteristics": "強陣風、降雨不穩" }
+  },
+
+  "risk_levels": {
+    "R0": { "label": "低風險",   "operation_status": "正常可作業" },
+    "R1": { "label": "輕度風險", "operation_status": "可作業，需監控" },
+    "R2": { "label": "中度風險", "operation_status": "條件式作業" },
+    "R3": { "label": "高風險",   "operation_status": "原則不排" },
+    "R4": { "label": "禁飛",     "operation_status": "禁止作業" }
+  },
+
+  "wx_r_matrix": {
+    "description": "Allowable R levels per W type. Values: normal | conditional | not_applicable",
+    "W0": { "R0": "normal",        "R1": "normal",      "R2": "conditional", "R3": "not_applicable", "R4": "not_applicable" },
+    "W1": { "R0": "not_applicable","R1": "normal",      "R2": "conditional", "R3": "conditional",    "R4": "not_applicable" },
+    "W2": { "R0": "not_applicable","R1": "conditional", "R2": "conditional", "R3": "conditional",    "R4": "not_applicable" },
+    "W3": { "R0": "not_applicable","R1": "not_applicable","R2":"conditional", "R3": "conditional",   "R4": "not_applicable" },
+    "W4": { "R0": "not_applicable","R1": "conditional", "R2": "conditional", "R3": "conditional",    "R4": "not_applicable" },
+    "W5": { "R0": "not_applicable","R1": "not_applicable","R2":"conditional", "R3": "conditional",   "R4": "not_applicable" }
+  },
+
+  "decision_rules": [
+    {
+      "wx_r": "W0-R0",
+      "decision": "GO",
+      "requires_approval": false,
+      "controls": ["正常流程"]
+    },
+    {
+      "wx_r": "W0-R1",
+      "decision": "GO",
+      "requires_approval": false,
+      "controls": ["風速監控"]
+    },
+    {
+      "wx_r": "W1-R1",
+      "decision": "GO",
+      "requires_approval": false,
+      "controls": ["增加觀察手"]
+    },
+    {
+      "wx_r": "W1-R2",
+      "decision": "CONDITIONAL",
+      "requires_approval": true,
+      "controls": ["縮短飛行時段"]
+    },
+    {
+      "wx_r": "W2-R2",
+      "decision": "CONDITIONAL",
+      "requires_approval": true,
+      "controls": ["分段作業"]
+    },
+    {
+      "wx_r": "W3-R2",
+      "decision": "CONDITIONAL",
+      "requires_approval": true,
+      "controls": ["地面防滑措施"]
+    },
+    {
+      "wx_r": "W4-R2",
+      "decision": "CONDITIONAL",
+      "requires_approval": true,
+      "controls": ["即時雷達監控"]
+    },
+    {
+      "wx_r": "W5-R2",
+      "decision": "CONDITIONAL",
+      "requires_approval": true,
+      "approval_level": "supervisor",
+      "controls": ["主管簽核", "縮短飛行時段"]
+    },
+    {
+      "wx_r": "*-R3",
+      "decision": "NO_SCHEDULE",
+      "requires_approval": true,
+      "controls": ["原則不排，可申請例外"]
+    },
+    {
+      "wx_r": "*-R4",
+      "decision": "NO_GO",
+      "requires_approval": false,
+      "controls": []
+    }
+  ],
+
+  "pricing_multipliers": {
+    "R0": 1.00,
+    "R1": 1.05,
+    "R2": { "min": 1.10, "max": 1.20, "note": "由控制措施複雜度決定" },
+    "R3": null,
+    "R4": null
+  }
+}

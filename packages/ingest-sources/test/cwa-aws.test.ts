@@ -1,0 +1,74 @@
+// packages/ingest-sources/test/cwa-aws.test.ts
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { runCwaAws } from "../src/cwa/aws"
+import type { NormalizedObservation, IngestDb } from "@openlarm/ingest-types"
+import fixture from "./fixtures/cwa-aws-response.json"
+
+describe("runCwaAws", () => {
+  let mockDb: IngestDb
+  let upsertedRows: NormalizedObservation[] = []
+
+  beforeEach(() => {
+    vi.stubEnv("CWA_API_KEY", "test-key")
+    upsertedRows = []
+    mockDb = {
+      upsertObservations: vi.fn(async (rows) => {
+        upsertedRows.push(...rows)
+        return rows.length
+      }),
+      recordFetchStart: vi.fn(async () => ({ id: 1, startedAt: new Date() })),
+      recordFetchEnd: vi.fn(async () => {}),
+      getBudget: vi.fn(async () => ({ used: 0, resetAt: new Date() })),
+      incrementBudget: vi.fn(async () => {}),
+      upsertForecasts: vi.fn(),
+      upsertEnsemble: vi.fn(),
+      upsertLightning: vi.fn(),
+    } satisfies Partial<IngestDb> as IngestDb
+
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify(fixture), { status: 200 })
+    ))
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it("normalizes wind speed from m/s to km/h", async () => {
+    await runCwaAws({ db: mockDb, now: () => new Date("2026-04-27T10:00:00+08:00") })
+    const taipei = upsertedRows.find((r) => r.station_id === "466920")
+    expect(taipei.wind_kmh).toBeCloseTo(7.2 * 3.6, 1) // 7.2 m/s in fixture
+  })
+
+  it("rejects implausibly high wind readings (> 280 km/h)", async () => {
+    const result = await runCwaAws({ db: mockDb, now: () => new Date() })
+    // fixture includes one bad station with 100 m/s wind → 360 km/h, must reject
+    expect(result.rows_rejected).toBeGreaterThan(0)
+    expect(upsertedRows.find((r) => r.station_id === "BADSTN")).toBeUndefined()
+  })
+
+  it("converts CWA -99 sentinel to null", async () => {
+    await runCwaAws({ db: mockDb, now: () => new Date() })
+    const stnNoGust = upsertedRows.find((r) => r.station_id === "NOGUST")
+    expect(stnNoGust.gust_kmh).toBeNull()
+  })
+
+  it("rejects malformed station without killing batch", async () => {
+    const malformed = {
+      records: {
+        Station: [
+          { /* no StationId — schema will reject */ },
+          ...fixture.records.Station,
+        ],
+      },
+    }
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify(malformed), { status: 200 })
+    ))
+    const result = await runCwaAws({ db: mockDb, now: () => new Date() })
+    expect(result.rows_rejected).toBeGreaterThan(0)
+    // The valid stations from fixture must still be processed
+    expect(upsertedRows.find((r) => r.station_id === "466920")).toBeDefined()
+  })
+})

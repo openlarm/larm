@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/openlarm/larm/security/advisories/new
+    about: >-
+      Report privately via GitHub Security Advisories. Do NOT open a
+      public issue. See SECURITY.md for the full policy and PGP key.
+  - name: Usage questions / discussion
+    url: https://github.com/openlarm/larm/discussions
+    about: >-
+      Have a question or want to discuss an idea before filing an RFC?
+      Start a discussion thread.
+  - name: Code of Conduct concerns
+    url: https://github.com/openlarm/larm/blob/main/CODE_OF_CONDUCT.md
+    about: >-
+      Report conduct issues privately via the channels listed in the
+      Code of Conduct, not as a public issue.

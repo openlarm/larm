@@ -1,0 +1,40 @@
+section,param_group,param_key,label,unit,value,notes
+A,building_type,commercial_building,商業大樓,NTD/m2,30,
+A,building_type,luxury_residential,豪宅社區,NTD/m2,33,
+A,building_type,standalone_house,獨棟住宅,NTD/m2,200,
+A,building_type,factory_warehouse,工廠 / 倉儲,NTD/m2,28,
+A,building_type,solar_panel,太陽能設施（片）,NTD/m2,8,
+A,building_type,window_washing,洗窗,NTD/m2,500,
+B,face_surcharge,road_closure,需封路,NTD/m2,4,per affected face
+B,face_surcharge,tight_perimeter,周邊空間不足 < 5m,NTD/m2,6,per affected face
+B,face_surcharge,high_risk_env,高風險環境（高壓電/基地台）,NTD/m2,7,per affected face
+B,face_surcharge,no_water_supply,水源供應不足（需自備）,NTD/m2,7,per affected face
+B,face_surcharge,no_power_supply,電力供應不足（需自備）,NTD/m2,7,per affected face
+B,face_surcharge,poor_rooftop_anchor,屋頂吊掛條件不佳,NTD/m2,12,per affected face
+B,face_surcharge,structure_complexity_none,外牆結構複雜度（無）,NTD/m2,0,per affected face
+B,face_surcharge,structure_complexity_light,外牆結構複雜度（輕）,NTD/m2,4,per affected face
+B,face_surcharge,structure_complexity_medium,外牆結構複雜度（中）,NTD/m2,6,per affected face
+B,face_surcharge,structure_complexity_heavy,外牆結構複雜度（重）,NTD/m2,8,per affected face
+C,project_surcharge,detergent_water,清潔劑（清水）,NTD/m2,0,applied to all faces
+C,project_surcharge,detergent_neutral,清潔劑（中性）,NTD/m2,3,applied to all faces
+C,project_surcharge,detergent_acid,清潔劑（酸性）,NTD/m2,10,applied to all faces
+C,project_surcharge,detergent_alkaline,清潔劑（鹼性）,NTD/m2,10,applied to all faces
+C,project_surcharge,pollution_dust,污染（灰塵）,NTD/m2,0,stackable; cap recommended at +15
+C,project_surcharge,pollution_scale,污染（水垢）,NTD/m2,7,stackable; cap recommended at +15
+C,project_surcharge,pollution_bird,污染（鳥屎）,NTD/m2,4,stackable; cap recommended at +15
+C,project_surcharge,pollution_mold,污染（黑黴）,NTD/m2,5,stackable; cap recommended at +15
+C,project_surcharge,pollution_exhaust,污染（排煙汙垢）,NTD/m2,6,stackable; cap recommended at +15
+C,project_surcharge,pollution_grease,污染（機械油汙）,NTD/m2,12,stackable; cap recommended at +15
+C,project_surcharge,pollution_cap,污染加成上限,NTD/m2,15,SOP建議上限值
+D,multiplier,time_unrestricted,作業時間（無限制）,multiplier,1.00,
+D,multiplier,time_weekend,作業時間（週末）,multiplier,1.20,
+D,multiplier,time_night,作業時間（夜間）,multiplier,1.50,
+D,multiplier,urgent_30d,急件（30天內）,multiplier,1.33,
+D,multiplier,height_10f,高樓（> 10F）,multiplier,1.30,
+D,multiplier,height_20f,超高樓（> 20F）,multiplier,2.00,
+D,multiplier,height_30f,超級高樓（> 30F）,multiplier,3.00,
+D,multiplier,weather_risk_r0,氣候風險 R0,multiplier,1.00,
+D,multiplier,weather_risk_r1,氣候風險 R1,multiplier,1.05,
+D,multiplier,weather_risk_r2,氣候風險 R2,multiplier,1.15,
+D,multiplier,weather_risk_r3,氣候風險 R3,multiplier,1.40,備援待命費
+D,multiplier,weather_risk_r4,氣候風險 R4,multiplier,,不報價/延期

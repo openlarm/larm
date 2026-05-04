@@ -1,0 +1,58 @@
+---
+title: LARM — Low Altitude Risk Model
+description: Deterministic risk-scoring model for low-altitude drone operations.
+---
+
+# LARM
+
+**Low Altitude Risk Model** — a deterministic numerical decision-support
+model for low-altitude drone operations. Aggregates weather context,
+building/ground geometry, operational factors, and equipment health into
+a single risk score (0–100) mapped to one of five risk levels (R0–R4),
+each paired with a recommended decision (GO / CONDITIONAL / NO-GO),
+a buffer ratio, and a completion-probability estimate.
+
+## ⚠ Safety notice
+
+> **LARM is a decision-support tool, not a regulatory compliance
+> certification.** It does NOT guarantee flight safety. It is NOT a
+> substitute for Pilot-in-Command (PIC) judgment. It is NOT approved by
+> any civil aviation authority. Operators bear full responsibility for
+> all flight decisions.
+
+The authoritative Safety Notice lives in the spec, at
+[`spec/LARM-v2.0.md`](https://github.com/openlarm/larm/blob/main/spec/LARM-v2.0.md#safety-notice)
+§0.1, and in [`LEGAL/DISCLAIMER.md`](https://github.com/openlarm/larm/blob/main/LEGAL/DISCLAIMER.md).
+
+## What LARM does in one minute
+
+```ts
+import { evaluateRisk } from "@openlarm/core"
+import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"  // self-registers
+
+const r = evaluateRisk({
+  weather_30d: { /* 30-day climate context */ },
+  weather_today: { wind_now_kmh: 18, rain_prob_today_pct: 20 /* … */ },
+  building: { site_altitude_m: 25, /* … */ },
+}, { params: TAIWAN_PARAMS_V2_0 })
+
+console.log(r.risk_level, r.decision, r.buffer_ratio)
+// → "R1", "GO", 0.12
+```
+
+Pure function. Zero runtime dependencies. Full TypeScript types. Region-
+agnostic core; region adapters (e.g. `@openlarm/regions-taiwan`) supply
+the numeric calibration.
+
+## Where to go next
+
+- [Getting started →](/getting-started)
+- [Specification →](/spec)
+- [Governance →](/governance)
+- [Changelog →](/changelog)
+
+## License
+
+Apache License 2.0. See [`LICENSE`](https://github.com/openlarm/larm/blob/main/LICENSE).
+The specification itself is additionally licensed under CC-BY-4.0 to
+encourage reuse by regulators and academic authors.

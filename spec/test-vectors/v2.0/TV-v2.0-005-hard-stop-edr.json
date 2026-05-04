@@ -1,0 +1,49 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-005",
+  "name": "hard_stop_edr",
+  "description": "v2.0 turbulence hard stop: EDR > 0.8 forces NO_GO and controls must cite EDR.",
+  "spec_section": "§7.1",
+  "tags": ["hard-stop", "edr", "turbulence", "v2.0"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80,
+      "edr": 0.9
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "NO_GO",
+    "controls_match_regex": "EDR"
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

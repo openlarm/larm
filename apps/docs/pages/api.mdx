@@ -1,0 +1,124 @@
+---
+title: API reference
+description: Auto-generated TypeScript API reference for @openlarm/core.
+---
+
+# API reference
+
+The complete TypeScript API surface of `@openlarm/core` is generated
+directly from the published type declarations by [TypeDoc](https://typedoc.org).
+Every exported function, type, and constant is cross-linked and
+includes the source-code location on GitHub.
+
+### Browse the full reference
+
+👉 **[`/api-reference/`](/api-reference/)** — full API documentation
+(opens the TypeDoc site).
+
+The reference is rebuilt on every docs-site deploy from the latest
+`@openlarm/core` source. Versioned references for older releases are
+available on the corresponding git tags (`@openlarm/core@0.1.0-alpha.0`,
+etc.).
+
+---
+
+## Most-used exports — quick reference
+
+### Primary entry point
+
+```ts
+import { evaluateRisk } from "@openlarm/core"
+
+const result = evaluateRisk(input, { params, clock? })
+```
+
+Pure function. Accepts a `LARMInput` describing the mission, plus
+optional `EvaluateRiskOptions` (explicit `params` to use a specific
+parameter set, injected `clock` for deterministic tests). Returns a
+full `RiskResult` with `risk_score`, `risk_level`, `decision`,
+`buffer_ratio`, and component-by-component explanation.
+
+### Parameter resolution
+
+```ts
+import {
+  resolveParams,
+  mergeParams,
+  registerParams,
+  PARAM_REGISTRY,
+  ACTIVE_PARAMS_VERSION,
+} from "@openlarm/core"
+
+// register once at app boot via a region adapter
+registerParams("v2.0", yourParamsObject)
+
+// merge a partial override on top of a base
+const strict = mergeParams(base, { r4_nogo_threshold: 85 })
+
+// look up a registered version by string
+const p = resolveParams("v2.0")
+```
+
+`resolveParams()` returns `undefined` if the version isn't registered
+— callers can then fall back to `mergeParams(explicitBase, override)`.
+
+### Component-level helpers
+
+For callers that only need one piece of the model:
+
+```ts
+import {
+  inferWCode,
+  getWRDecision,
+  completionForRL,
+  simpleRiskFromW,
+} from "@openlarm/core"
+```
+
+- `inferWCode(today, w30d, P)` — UI-side W-code inference from today's
+  weather + 30-day context.
+- `getWRDecision(w, r, P)` — WR matrix lookup.
+- `completionForRL(r, w, localAdjustment?)` — expected completion
+  probability from R-level.
+- `simpleRiskFromW(w)` — deterministic R-level from W-code (UI only,
+  non-normative).
+
+### Types
+
+All exported types are re-exported from the barrel:
+
+```ts
+import type {
+  // Input schemas
+  LARMInput,
+  Weather30dInput,
+  WeatherTodayInput,
+  BuildingSiteInput,
+  OperationalContextInput,
+  Equipment,
+  // Output schemas
+  RiskResult,
+  RiskExplanation,
+  WeatherRegimeResult,
+  LARMVersions,
+  // Enum unions
+  WeatherType,
+  RiskLevel,
+  Decision,
+  Complexity,
+  PopulationDensityClass,
+  SORAMitigation,
+  RegionExposure,
+  // Parameter schema
+  WeatherRegimeParams,
+  RegimeEntry,
+  WindScoreRow,
+  WeatherNowWeights,
+  BufferCoefficients,
+  GScoreConfig,
+  EScoreConfig,
+} from "@openlarm/core"
+```
+
+The [full TypeDoc reference](/api-reference/) has every type's fields
+documented with JSDoc, source links, and cross-references.

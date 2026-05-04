@@ -1,0 +1,36 @@
+{
+  "records": {
+    "Station": [
+      {
+        "StationId": "466920",
+        "StationName": "臺北",
+        "ObsTime": { "DateTime": "2026-04-27T10:00:00+08:00" },
+        "GeoInfo": { "Coordinates": [{ "StationLatitude": 25.0381, "StationLongitude": 121.5145 }] },
+        "WeatherElement": {
+          "WindSpeed": 7.2, "WindDirection": 180,
+          "GustInfo": { "PeakGustSpeed": 11.5 },
+          "AirTemperature": 22.1, "RelativeHumidity": 78,
+          "AirPressure": 1013.2,
+          "Now": { "Precipitation": 0.0 }
+        }
+      },
+      {
+        "StationId": "BADSTN",
+        "StationName": "Bad",
+        "ObsTime": { "DateTime": "2026-04-27T10:00:00+08:00" },
+        "GeoInfo": { "Coordinates": [{ "StationLatitude": 25.0, "StationLongitude": 121.5 }] },
+        "WeatherElement": { "WindSpeed": 100.0, "WindDirection": 0 }
+      },
+      {
+        "StationId": "NOGUST",
+        "StationName": "NoGust",
+        "ObsTime": { "DateTime": "2026-04-27T10:00:00+08:00" },
+        "GeoInfo": { "Coordinates": [{ "StationLatitude": 24.5, "StationLongitude": 121.0 }] },
+        "WeatherElement": {
+          "WindSpeed": 5.0, "WindDirection": 90,
+          "GustInfo": { "PeakGustSpeed": -99 }
+        }
+      }
+    ]
+  }
+}

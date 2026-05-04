@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LARM wordmark — Low Altitude Risk Model
+  The underline gradient maps to R0-R1-R2-R3-R4 canonical colors.
+  Horizontal lock-up. Use on light backgrounds.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" fill="none">
+  <defs>
+    <linearGradient id="larm-r-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#10b981"/><!-- R0 emerald -->
+      <stop offset="0.25" stop-color="#0ea5e9"/><!-- R1 sky -->
+      <stop offset="0.5" stop-color="#f59e0b"/><!-- R2 amber -->
+      <stop offset="0.75" stop-color="#f97316"/><!-- R3 orange -->
+      <stop offset="1" stop-color="#ef4444"/><!-- R4 red -->
+    </linearGradient>
+  </defs>
+
+  <!-- wordmark -->
+  <text x="30" y="110"
+        font-family="'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif"
+        font-weight="800"
+        font-size="110"
+        letter-spacing="-4"
+        fill="#0f172a">LARM</text>
+
+  <!-- R-level gradient accent bar -->
+  <rect x="30" y="128" width="380" height="8" rx="4" fill="url(#larm-r-gradient)"/>
+
+  <!-- tagline -->
+  <text x="30" y="168"
+        font-family="'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif"
+        font-weight="500"
+        font-size="22"
+        letter-spacing="0"
+        fill="#475569">Low Altitude Risk Model</text>
+</svg>

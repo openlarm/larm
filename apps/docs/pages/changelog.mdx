@@ -1,0 +1,43 @@
+---
+title: Changelog
+description: Version history for @openlarm/core and @openlarm/regions-taiwan.
+---
+
+# Changelog
+
+This site mirrors the authoritative changelogs in the monorepo:
+
+- [`CHANGELOG.md`](https://github.com/openlarm/larm/blob/main/CHANGELOG.md)
+  — code, tooling, CI.
+- [`MODEL_CHANGELOG.md`](https://github.com/openlarm/larm/blob/main/MODEL_CHANGELOG.md)
+  — model behaviour (parameter values, formulas, thresholds). Pinned
+  separately because a "patch" in code can still be a behaviour change
+  for downstream implementations.
+
+## Current release
+
+- `@openlarm/core@0.1.0-alpha.0` — region-agnostic reference
+  implementation. ESM + CJS + `.d.ts`. Zero runtime dependencies. Ships
+  `evaluateRisk`, `mergeParams`, `resolveParams`, `registerParams`,
+  `PARAM_REGISTRY`, plus `inferWCode` / `getWRDecision` / `completionForRL`
+  / `simpleRiskFromW` and the full type surface.
+- `@openlarm/regions-taiwan@0.1.0-alpha.0` — Taiwan climate calibration.
+  Exports `TAIWAN_PARAMS_V1_0`, `TAIWAN_PARAMS_V2_0`, `TAIWAN_PARAMS_ACTIVE`.
+  Side-effect-registers with `@openlarm/core` on import.
+
+> **Staged, not yet published.** Both tarballs pass `npm pack --dry-run`
+> cleanly (50 KB and 11 KB respectively, with LICENSE + NOTICE included).
+> Publish is gated on maintainer `npm login` to the `@openlarm` scope.
+
+## Model v1.1 → v2.0 summary
+
+- WeatherNow recalibration: cap 50 → 42, weights 0.55/0.35/0.15 → 0.55/0.35/0.10
+- Component-score caps: G_score (was B_score) 25 → 20, O_score 15 → 12, E_score 10 → 8
+- Buffer-ratio ceiling: 40% → 55%
+- Hard stop additions: EDR > 0.8, R4 split (`risk_score > r4_nogo_threshold`)
+- SORA 2.5 GRC integration via `ground_consequence` + `M1A/M1B/M1C` mitigations
+- TKE proxy factor, W5 typhoon-trend correction, W4 afternoon multiplier
+- Pricing decoupled from core: `quote_max_multiplier` and `pricing` field
+  moved out of `WeatherRegimeParams` to app-layer `PricingParams`
+
+Full diff in [`MODEL_CHANGELOG.md`](https://github.com/openlarm/larm/blob/main/MODEL_CHANGELOG.md).

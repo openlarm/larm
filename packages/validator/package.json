@@ -1,0 +1,55 @@
+{
+  "name": "@openlarm/validator",
+  "version": "0.0.0",
+  "description": "Validate LARM model predictions against historical mission outcomes — accuracy, calibration, confusion matrix, per-regime slices.",
+  "keywords": ["larm", "drone", "validation", "accuracy", "calibration"],
+  "homepage": "https://openlarm.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openlarm/larm.git",
+    "directory": "packages/validator"
+  },
+  "license": "Apache-2.0",
+  "author": "Shu-Yuan Duann <teddyduann@gmail.com>",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "openlarm-validate": "./dist/cli.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@openlarm/core": "^0.1.0-alpha.0"
+  },
+  "devDependencies": {
+    "@openlarm/core": "*",
+    "@openlarm/regions-taiwan": "*",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

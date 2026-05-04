@@ -1,0 +1,28 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["../../packages/core/src/index.ts"],
+  "tsconfig": "../../packages/core/tsconfig.json",
+  "out": "public/api-reference",
+  "name": "@openlarm/core — API reference",
+  "readme": "none",
+  "hideGenerator": true,
+  "includeVersion": true,
+  "gitRevision": "main",
+  "gitRemote": "origin",
+  "sourceLinkTemplate": "https://github.com/openlarm/larm/blob/{gitRevision}/{path}#L{line}",
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "sort": ["alphabetical"],
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "disableSources": false,
+  "categorizeByGroup": true,
+  "navigationLinks": {
+    "docs home": "/",
+    "GitHub": "https://github.com/openlarm/larm",
+    "npm": "https://www.npmjs.com/package/@openlarm/core"
+  }
+}
