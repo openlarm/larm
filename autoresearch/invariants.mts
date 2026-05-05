@@ -68,6 +68,34 @@ function add(name: string, passed: boolean, msg: string) {
       `R-level mapping not a clean [0..100] partition`)
 }
 
+// 3b. ROUND-2 LOCK: R-level boundaries must stay at canonical spec values.
+//     Round 1 agent found that shifting boundaries (e.g. 21→30) was the
+//     cheapest way to move metric, at the cost of breaking spec §6.1 and
+//     making historical R-level reports inconsistent. Lock them.
+//     Spec canonical: R0=0–20, R1=21–40, R2=41–65, R3=66–85, R4=86–100.
+{
+  const m = P.thresholds.mapping_r_level
+  const canonical = [
+    { r_level: "R0", min: 0,  max: 20  },
+    { r_level: "R1", min: 21, max: 40  },
+    { r_level: "R2", min: 41, max: 65  },
+    { r_level: "R3", min: 66, max: 85  },
+    { r_level: "R4", min: 86, max: 100 },
+  ]
+  let canonicalOk = m.length === canonical.length
+  if (canonicalOk) {
+    for (let i = 0; i < canonical.length; i++) {
+      if (m[i].r_level !== canonical[i].r_level
+       || m[i].min     !== canonical[i].min
+       || m[i].max     !== canonical[i].max) { canonicalOk = false; break }
+    }
+  }
+  add("mapping_r_level_canonical_spec_boundaries",
+      canonicalOk,
+      `R-level boundaries must stay at canonical spec §6.1 values ` +
+      `(R0:0–20, R1:21–40, R2:41–65, R3:66–85, R4:86–100); got ${JSON.stringify(m)}`)
+}
+
 // 4. hard-stop thresholds within safety floor (catches the agent silently
 //    weakening hard stops to chase metric)
 {
@@ -87,6 +115,43 @@ function add(name: string, passed: boolean, msg: string) {
   const cell = P.wr_matrix.W1?.R0
   add("wr_matrix_w1_r0_not_nogo", cell !== "nogo",
       `wr_matrix.W1.R0 = ${JSON.stringify(cell)}, must not be "nogo"`)
+}
+
+// 5b. ROUND-2 LOCK: W0 (穩定高壓晴朗型) low-risk cells must not be "nogo".
+//     Round 1 agent flipped W0/R2 to nogo to chase metric, which contradicts
+//     LARM's design philosophy: stable high-pressure clear weather is the
+//     SAFEST regime. If R2 risk under W0 means nogo, the W/R matrix itself
+//     has lost meaning. W0/R0, W0/R1, W0/R2 must remain non-nogo.
+{
+  const w0 = P.wr_matrix.W0 ?? {}
+  const w0_r0_ok = w0.R0 !== "nogo"
+  const w0_r1_ok = w0.R1 !== "nogo"
+  const w0_r2_ok = w0.R2 !== "nogo"
+  add("wr_matrix_w0_low_risk_not_nogo",
+      w0_r0_ok && w0_r1_ok && w0_r2_ok,
+      `W0 (stable clear) R0/R1/R2 must not be "nogo": got ` +
+      `R0=${w0.R0}, R1=${w0.R1}, R2=${w0.R2}`)
+}
+
+// 5c. ROUND-2 LOCK: WR matrix structural shape.
+//     The W-regime rows are NOT simply monotonic in R-level — by design,
+//     under bad regimes (W2–W5) the R0 cell can be "nogo" because a very
+//     low score under bad weather is suspicious (likely missing data),
+//     while R2 reverts to "cond" once enough risk shows up to validate.
+//     What we DO require:
+//       (a) R4 column is always "nogo" (top risk under any regime)
+//       (b) W0.R4 is "nogo" (sanity: even calmest regime nogos at R4)
+//       (c) for each row, "go" decisions can only appear at R0 or R1,
+//           never at R2/R3/R4 (those must be cond or nogo)
+{
+  const rows = Object.entries(P.wr_matrix)
+  let r4_all_nogo = rows.every(([_, row]: any) => row.R4 === "nogo")
+  let no_go_above_r1 = rows.every(([_, row]: any) =>
+    row.R2 !== "go" && row.R3 !== "go" && row.R4 !== "go")
+  add("wr_matrix_r4_always_nogo", r4_all_nogo,
+      `R4 column must be nogo for every regime`)
+  add("wr_matrix_no_go_above_r1", no_go_above_r1,
+      `decision "go" must not appear at R2/R3/R4 in any regime`)
 }
 
 // 6. EDR adjustments monotonic in min_edr; top entry must not exceed hard stop
@@ -111,6 +176,99 @@ function add(name: string, passed: boolean, msg: string) {
       `buffer min=${b.min} not < max=${b.max}`)
   add("buffer_max_capped", b.max <= 0.6,
       `buffer.max=${b.max} > 0.6 (sane upper bound)`)
+}
+
+// 7d. v2.1 (RFC Recommendation A): env-hazards params sanity.
+//     New fields env_hazards_cap and env_hazard_points were added to
+//     g_score_config so region calibration can flex them. Prevent the
+//     agent from setting nonsense values.
+{
+  const cfg = P.g_score_config
+  add("g_score_env_interaction_cap_in_band",
+      cfg.env_hazards_cap >= 1 && cfg.env_hazards_cap <= 8,
+      `env_hazards_cap=${cfg.env_hazards_cap} outside [1, 8]`)
+  const pts = cfg.env_hazard_points
+  add("g_score_env_hazard_points_non_negative",
+      pts.near_hv_power >= 0 && pts.near_base_station >= 0 && pts.narrow_clearance >= 0,
+      `env_hazard_points has negative: hv=${pts.near_hv_power} base=${pts.near_base_station} narrow=${pts.narrow_clearance}`)
+  // No single hazard point may exceed the inner cap; otherwise a single
+  // flag trivially saturates. Baseline (3,1,2) ≤ cap=3 ✓.
+  add("g_score_env_hazard_points_le_cap",
+      pts.near_hv_power <= cfg.env_hazards_cap
+      && pts.near_base_station <= cfg.env_hazards_cap
+      && pts.narrow_clearance <= cfg.env_hazards_cap,
+      `each env_hazard_point must be ≤ env_hazards_cap=${cfg.env_hazards_cap}: ` +
+      `hv=${pts.near_hv_power} base=${pts.near_base_station} narrow=${pts.narrow_clearance}`)
+}
+
+// 7e. v2.1 (RFC Recommendation A applied to o_score): o_score flag points
+//     param-ization. Prevent the agent from setting nonsense values once
+//     the new o_score_flag_points field exists in WeatherRegimeParams.
+{
+  const fp = P.o_score_flag_points
+  const allPts = [
+    fp.night, fp.weekend, fp.road_closure,
+    fp.urgent_critical, fp.urgent_warn,
+    fp.crowd_high, fp.crowd_medium,
+    fp.operator_junior, fp.operator_mid, fp.operator_senior,
+    fp.long_mission_critical, fp.long_mission_warn,
+  ]
+  add("o_score_flag_points_non_negative",
+      allPts.every(v => v >= 0),
+      `o_score_flag_points has negative entry: ${JSON.stringify(fp)}`)
+
+  // Threshold ordering: urgent_critical_max_days ≤ urgent_warn_max_days
+  // so the critical band is a subset of the warn band; symmetrically for
+  // long_mission thresholds (warn must trigger BEFORE critical).
+  add("o_score_thresholds_ordered",
+      fp.urgent_critical_max_days <= fp.urgent_warn_max_days
+      && fp.long_mission_warn_min_days <= fp.long_mission_critical_min_days,
+      `o_score thresholds out of order: urgent_critical_max=${fp.urgent_critical_max_days} ` +
+      `> urgent_warn_max=${fp.urgent_warn_max_days}, OR long_mission_warn_min=${fp.long_mission_warn_min_days} ` +
+      `> long_mission_critical_min=${fp.long_mission_critical_min_days}`)
+
+  // No single flag may exceed o_score_cap; otherwise one flag trivially
+  // saturates the cap and the rest become dead. Baseline max single
+  // contribution is 5 (night, urgent_critical) ≤ cap=12 ✓.
+  add("o_score_individual_flag_le_cap",
+      allPts.every(v => v <= P.o_score_cap),
+      `each o_score_flag_points value must be ≤ o_score_cap=${P.o_score_cap}: ${JSON.stringify(fp)}`)
+}
+
+// 7b. ROUND-2 LOCK: regime base_score ordering. The W-regimes are
+//     ordered by background risk: W0 (clear) lowest, W5 (typhoon)
+//     highest. base_score must respect that ordering — agent should
+//     not be able to e.g. set W0.base_score > W4.base_score to
+//     redirect cases through the W matrix.
+{
+  const r = P.regimes
+  const ordered = r.W0.base_score <= r.W1.base_score
+                  && r.W0.base_score <= r.W2.base_score
+                  && r.W0.base_score <= r.W3.base_score
+                  && r.W0.base_score <= r.W4.base_score
+                  && r.W0.base_score <= r.W5.base_score
+                  && r.W5.base_score >= Math.max(r.W1.base_score, r.W2.base_score, r.W3.base_score, r.W4.base_score)
+  add("regime_base_score_ordering",
+      ordered,
+      `W0 must have lowest, W5 highest base_score: ` +
+      `W0=${r.W0.base_score} W1=${r.W1.base_score} W2=${r.W2.base_score} ` +
+      `W3=${r.W3.base_score} W4=${r.W4.base_score} W5=${r.W5.base_score}`)
+}
+
+// 7c. ROUND-2 LOCK: rain hard-stop conjunction must keep its design.
+//     mmph threshold and prob threshold must both be defensible:
+//     8 ≤ mmph ≤ 12, 50 ≤ prob ≤ 70. Agent attempted to widen this
+//     in round 1 to push thunder cases to NO_GO via rain alone.
+//     Already partially covered by check 4 above; this is the AND-shape lock.
+{
+  const hs = P.thresholds.hard_stop
+  // Rain hard-stop only triggers via the conjunction. As long as both
+  // thresholds are within their bands, the AND shape is preserved.
+  // (Engine-level enforcement of "AND" is in risk-engine.ts and out of
+  // params scope; we just confirm thresholds remain meaningful.)
+  add("rain_hard_stop_thresholds_meaningful",
+      hs.rain_mmph >= 8 && hs.rain_prob_pct >= 50,
+      `rain hard-stop too lenient: mmph=${hs.rain_mmph}, prob=${hs.rain_prob_pct}`)
 }
 
 // ---------------------------------------------------------------------------

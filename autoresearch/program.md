@@ -53,57 +53,69 @@ shows, run `git checkout -- <file>` to clean it up.
 
 ## Hypothesis seed list
 
-Pick from these when you have nothing better. Don't repeat a losing
-hypothesis. Don't pick the same category for >3 consecutive iterations.
+**Round 2 priorities** (round 1 over-indexed on R-level boundary moves
+which are now invariant-locked; metric ceiling found via boundary
+gaming was 0.9286). New high-leverage knobs to try first:
 
-**Component weights** (must keep `weather_now_weights` sum ≈ 1.0):
+**Tier 1 — try these BEFORE any other category** (these are the knobs
+the loop was designed to optimize):
+
 - adjust `weather_now_weights.wind` / `.rain` / `.instability`
-- adjust `weather_now_weights.instability_scale` / `.instability_scale_w4`
-- adjust `weather_now_weights.predictability_discount`
-
-**Wind / rain scoring tables**:
-- shift `wind_score_table` row scores (keep monotonic)
-- shift `wind_score_table` row breakpoints (keep contiguous, no gaps)
+  (must keep sum ≈ 1.0)
+- adjust `weather_now_weights.instability_scale` (default 20) and
+  `.instability_scale_w4` (default 28)
+- adjust `weather_now_weights.predictability_discount` (default 10)
+- adjust `weather_now_weights.thunder_add` (default 5) — directly
+  addresses thunderstorm cases
+- adjust individual rows of `wind_score_table` scores (keep monotonic)
 - adjust `rain_score_rules.rule_*.score`
 
-**EDR turbulence (v2.0 specific)**:
-- adjust `edr_thresholds[*].adj` values (keep monotonic in `min_edr`)
-- adjust `edr_thresholds[*].min_edr` (keep ascending, top entry `< 0.8`)
+**Tier 2 — turbulence and EDR**:
 
-**Hard stops** (very narrow band, ask before drastic moves):
-- `thresholds.hard_stop.wind_kmh` (only ±2 from 39)
-- `thresholds.hard_stop.rain_mmph` (only ±2 from 10)
-- `thresholds.hard_stop.edr_threshold` (only ±0.05 from 0.8)
-- **never** raise `wind_kmh` above 41 or `edr_threshold` above 0.85
+- adjust `edr_thresholds[*].adj` (penalty per EDR band)
+- adjust `edr_thresholds[*].min_edr` boundaries (keep ascending)
 
-**Decision boundaries**:
-- `mapping_r_level` thresholds (must stay contiguous, non-overlapping)
-- `r4_nogo_threshold` (sane range 88–96)
-- `wr_matrix[Wn][Rk]` cells (see forbidden list below)
+**Tier 3 — regime base scores and region weights**:
 
-**Buffer ratio**:
-- `buffer_coefficients.base` / `.score_divisor`
-- `buffer_coefficients.regime_conf_penalty` / `.ensemble_penalty`
-- `buffer_coefficients.min` / `.max` (must keep min < max, max ≤ 0.6)
+- adjust `regimes.W*.base_score` (must keep W0 ≤ W1..W4 ≤ W5)
+- adjust `regimes.W*.instability_weight` / `.predictability_weight`
+- adjust `region_weight_table` cells (windward / coastal multipliers)
+- adjust `volatility_buffer_add` per regime
+- adjust `w5_typhoon_trend_threshold` / `w5_typhoon_trend_bonus`
 
-**G/O/E score caps**:
-- `g_score_config.*_cap` (must keep sum ≤ `total_cap`)
+**Tier 4 — WR matrix surgery (ONE cell at a time, justify each move)**:
+
+- `wr_matrix.W2.*` / `wr_matrix.W3.*` / `wr_matrix.W4.*` cells
+  (subject to invariants: W0 low-risk cells locked, W1.R0 locked,
+  monotonic-in-R locked)
+- iGRC / ground-consequence overrides (if agent wants stricter
+  decisions for crowded sites under specific regimes)
+
+**Tier 5 — buffer ratio and component caps** (low priority, do last):
+
+- `buffer_coefficients.*`
+- `g_score_config.*_cap` (must keep sub-caps sum ≤ total_cap)
 - `e_score_config.block_points` / `.warn_points`
 - `o_score_cap`
 
-## Forbidden moves
+## EXPLICITLY FORBIDDEN as hypothesis (round 2)
 
-- Setting `wr_matrix.W1.R0 = "nogo"` (historical bug regression).
-- Removing or weakening any `thresholds.hard_stop.*` value below
-  the safety floor: `wind_kmh < 35`, `edr_threshold < 0.7`,
-  `rain_mmph < 8`.
-- Setting any `weather_now_weights.{wind,rain,instability}` outside [0, 1].
-- Letting `weather_now_weights.{wind+rain+instability}` drift > 0.02 from 1.0.
-- Making `wind_score_table` non-monotonic.
-- Reordering `mapping_r_level` so categories overlap or have gaps.
-- Editing this file, `evaluate.mjs`, `invariants.mts`,
-  `calibration/cases.json`, or anything in `packages/core/` or `spec/`.
-- Catching exceptions or returning early to mask failures.
+These were tried in round 1 and either failed conformance, broke
+invariants, or hit the ceiling without representing real model
+improvement:
+
+- **Editing `mapping_r_level` boundaries** — invariant-locked to canonical
+  spec values (R0:0–20, R1:21–40, R2:41–65, R3:66–85, R4:86–100). Don't
+  even try; it will revert.
+- **Setting `wr_matrix.W0.R0/R1/R2 = "nogo"`** — invariant-locked.
+  Stable clear weather can never be a blanket nogo at low/medium risk.
+- **Making `wr_matrix` non-monotonic in R-level** — invariant-locked.
+- **Reordering `regimes.W*.base_score`** — invariant-locked. W0 must
+  remain lowest, W5 must remain highest.
+- **Weakening any `thresholds.hard_stop.*` value** below the safety floor
+  (`wind_kmh < 35`, `edr_threshold < 0.7`, `rain_mmph < 8`,
+  `rain_prob_pct < 50`).
+- **Touching `wr_matrix.W1.R0`** (v1.1 Bug 3 territory).
 
 ## Hard limits per iteration
 

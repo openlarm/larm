@@ -21,6 +21,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { evaluateRisk } from "@openlarm/core"
+import type { WeatherRegimeParams } from "@openlarm/core"
 import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"
 import "@openlarm/regions-taiwan"  // self-register
 
@@ -29,6 +30,10 @@ const CASES_PATH = path.resolve(__dirname, "calibration", "cases.json")
 
 type Decision = "GO" | "COND" | "NO_GO"
 type RLevel = "R0" | "R1" | "R2" | "R3" | "R4"
+
+// Per-case partial override of WeatherRegimeParams. Plain objects merge
+// recursively; arrays and primitives replace wholesale (see deepMerge).
+type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T
 
 interface CalibCase {
   id: string
@@ -40,6 +45,29 @@ interface CalibCase {
     r_level?: RLevel
     buffer_ratio_range?: [number, number]
   }
+  // Optional per-case partial override. Deep-merged onto TAIWAN_PARAMS_V2_0
+  // before passing to evaluateRisk. Scope: this case only — global params
+  // and other cases are unaffected. Lets a calibration case declare
+  // "evaluate me as if a region adapter had tuned X higher" without
+  // editing TAIWAN_PARAMS_V2_0 itself or any spec test vector.
+  params_override?: DeepPartial<WeatherRegimeParams>
+}
+
+// Tiny recursive merge: plain objects merge key-by-key, arrays/primitives
+// replace wholesale. Used to apply CalibCase.params_override onto a base.
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return Object.prototype.toString.call(v) === "[object Object]"
+}
+function deepMerge<T>(base: T, override: DeepPartial<T>): T {
+  if (!isPlainObject(base) || !isPlainObject(override)) return override as T
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
+  for (const k of Object.keys(override)) {
+    const ov = (override as Record<string, unknown>)[k]
+    out[k] = isPlainObject(ov)
+      ? deepMerge((base as Record<string, unknown>)[k] as never, ov as never)
+      : ov
+  }
+  return out as T
 }
 
 const R_ORDER: Record<RLevel, number> = { R0: 0, R1: 1, R2: 2, R3: 3, R4: 4 }
@@ -125,7 +153,10 @@ function main() {
   for (const c of cases) {
     let pred
     try {
-      pred = evaluateRisk(c.input, { params: TAIWAN_PARAMS_V2_0 })
+      const params = c.params_override
+        ? deepMerge(TAIWAN_PARAMS_V2_0, c.params_override)
+        : TAIWAN_PARAMS_V2_0
+      pred = evaluateRisk(c.input, { params })
     } catch (e) {
       const row = {
         id: c.id,
