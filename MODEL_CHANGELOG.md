@@ -18,9 +18,59 @@ existing decisions.
 
 ---
 
-## [Unreleased]
+## [Unreleased] — 2026-05-05
 
-No model changes staged in the working tree.
+### Added (additive params, behaviour-preserving)
+
+- `WeatherRegimeParams.g_score_config.env_hazards_cap`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.near_hv_power`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.near_base_station`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.narrow_clearance`
+
+### Behaviour
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` match the
+v2.0 hardcoded literals exactly (env_hazards_cap=3, near_hv_power=3,
+near_base_station=1, narrow_clearance=2). All existing v2.0 inputs
+produce bit-identical outputs (verified by spec test vectors
+TV-v2.0-001 through TV-v2.0-010 plus the new
+TV-v2.0-011-env-hazards-paramized-defaults vector).
+
+### Why
+
+Round-1 autoresearch flagged CAL-006 (near-HV-powerline calm-weather
+mission) and similar multi-env-hazard cases as structurally
+unreachable above R0 with the previous hardcoded cap of 3. Region
+adapters can now calibrate env-hazards without an engine fork.
+The g_score interaction sub-block (line ~229, `wind_channel_effect`
+gated on `floors > 20`) intentionally remains hardcoded — revisit
+in v3.0.
+
+### Spec
+
+- §5.3 cap table updated with `env_hazards_cap` row
+- §5.3.4 pseudo-code updated to read from `cfg.env_hazard_points.*`
+  and `cfg.env_hazards_cap`
+- Appendix A `g_score_config` JSON schema updated
+
+### References
+
+- `docs/superpowers/plans/larm-engine-shape-rfc.md` (RFC source)
+- `docs/superpowers/plans/cwa-lightning-feed-verification.md` (related)
+- `autoresearch/CALIBRATION_LESSONS.md`
+- New calibration case: CAL-029-multi-env-hazards-addressable
+
+### Not bumped
+
+The model version remains **v2.0**. This change is intentionally NOT
+labelled v2.1: extracting hardcoded literals into params is a
+calibration-surface expansion, not a model behaviour change, and a
+version bump for that alone would be cosmetic. The v2.1 label is
+reserved for the next round of substantive changes (e.g. `cape_jkg`,
+`lightning_strikes_30min_5km`, or any other addition that changes
+output for some real input under default params). Bundling those
+with this entry keeps version numbers meaningful for downstream
+operators.
 
 ---
 

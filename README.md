@@ -1,173 +1,120 @@
-# LARM — Low Altitude Risk Model
+# Round-2 patch for autoresearch
 
-> 無人機低空作業的**風險評估決策支援模型**。開源規範 + TypeScript 參考實作。
->
-> **Home**: [openlarm.org](https://openlarm.org) · **GitHub**: [github.com/openlarm](https://github.com/openlarm) · **Packages**: `@openlarm/core@0.1.0-alpha.0` + `@openlarm/regions-taiwan@0.1.0-alpha.0`（staged；待使用者 `npm login` 授權後 publish） · **Docs**: docs.openlarm.org (upcoming)
+Three files updated to close the loopholes the round-1 agent found:
 
-🇺🇸 [English version](./README.en.md)
+| File | What changed |
+|------|--------------|
+| `autoresearch/invariants.mts` | +6 new locks. Total: 19 → 25 invariants. |
+| `autoresearch/program.md` | New tier-ranked hypothesis seed list; explicit forbidden-as-hypothesis list. |
+| `autoresearch/calibration/cases.json` | 8 → 28 cases. Adds W3/W4/W5 regime cases, EDR boundary, equipment block/warn, operational context, low-forecast-confidence, climate trend. |
 
----
+## How to apply
 
-## ⚠️ Safety Notice（安全聲明）
-
-> **LARM 是決策支援工具，不是法規合規證明。**
->
-> - ❌ **不保證**飛行安全
-> - ❌ **不能取代**機長（PIC）的現場判斷
-> - ❌ **未經** CAA / FAA / EASA / 任何航空主管機關認可或核可
-> - ✅ **必須**配合所在區域的適用航空法規一併使用
-> - ✅ **操作者**對所有飛行決策承擔全部責任
->
-> 本聲明最終措辭將於 v0.1 正式發佈前由執業律師定稿。
-> See [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) for the authoritative draft.
-
----
-
-## 這是什麼
-
-LARM（Low Altitude Risk Model，低空作業風險模型）是一套為低空無人機作業
-（如建物外牆清洗、巡檢、塗裝、太陽能板維護）設計的**決定性（deterministic）**
-風險評估模型，依當地氣候、作業環境、設備與人員狀態，計算單次作業的：
-
-- **R-score**（0–100 綜合風險分數）
-- **R-level**（R0 ～ R4）
-- **決策結論**（GO / CONDITIONAL-Tier / NO-GO）
-- **時間緩衝比例**（buffer ratio，5%–55%）
-- **完工機率**（5%–99%）
-
-和傳統「看單一風速門檻就 GO/NOGO」的硬門檻方法不同，LARM 同時考慮：
-
-| 組件 | 說明 | 範圍 |
-|---|---|---|
-| **Base(W)** | 30 日氣候背景等級（W0–W5） | 3–22 |
-| **WeatherNow** | 今日即時風雨 + EDR 湍流 | 0–42 |
-| **G_score** | 建物/地面風險（含 SORA 2.5 iGRC） | 0–20 |
-| **O_score** | 作業情境（夜間/週末/急件/人流/疲勞） | 0–12 |
-| **E_score** | 設備狀態（Block / Warn 分級） | 0–8 |
-
----
-
-## 當前狀態
-
-| 項目 | 狀態 |
-|---|---|
-| 引擎版本 | **LARM v2.0**（SORA 2.5 GRC 整合 + EDR 湍流） |
-| 授權 | **Apache License 2.0** |
-| 公開套件 | ✅ 已抽出：`@openlarm/core@0.1.0-alpha.0`（engine，~50KB）+ `@openlarm/regions-taiwan@0.1.0-alpha.0`（Taiwan 校準，~11KB）— staged，`npm publish` 待授權 |
-| 規範文件 | ✅ 已完成：[`spec/LARM-v2.0.md`](./spec/LARM-v2.0.md)（3,018 行 + 10 個合規測試向量） |
-| CI | ✅ build + typecheck + lint + 55 個 vitest 測試（core 30 / regions 8 / frontend 17） |
-| Vercel 部署 | ✅ production deploy on `main` branch |
-| v0.1 正式發佈 | pending 律師定稿 `LEGAL/DISCLAIMER.md` + `npm publish` 授權 |
-
-> Repo 是 npm-workspaces 單體倉庫：`packages/core/` + `packages/regions-taiwan/` 為可發佈 npm 套件；`low-altitude-ops-platform/frontend/` 是 Next.js reference app，透過 workspace 連結消費這兩個套件。
-
----
-
-## 快速開始
-
-### 執行現有 Next.js 應用（需 Node.js 20+）
+From the `openlarm/larm` repo root:
 
 ```bash
-cd low-altitude-ops-platform/frontend
-npm install
-npm run dev      # http://localhost:3000
+# back up your round-1 results first
+cp autoresearch/results.jsonl autoresearch/results.round1.jsonl
+
+# revert the round-1 v2.ts (those changes had structural problems)
+git checkout main -- packages/regions-taiwan/src/v2.ts
+
+# apply this patch
+unzip ~/Downloads/openlarm-autoresearch-round2.zip
+
+# clear results log for the new run
+echo '' > autoresearch/results.jsonl
+
+# verify baseline
+node autoresearch/evaluate.mjs
 ```
 
-### 使用模型引擎
-
-```ts
-import { evaluateRisk } from "@openlarm/core"
-import { TAIWAN_PARAMS_V2_0 } from "@openlarm/regions-taiwan"  // self-registers on import
-
-const result = evaluateRisk({
-  weather_30d: { /* ... */ },
-  weather_today: { wind_now_kmh: 18, rain_prob_today_pct: 20, /* ... */ },
-  building: { site_altitude_m: 25, /* ... */ },
-}, { params: TAIWAN_PARAMS_V2_0 })
-
-console.log(result.risk_level, result.decision, result.buffer_ratio)
-// → "R1", "GO", 0.12
-```
-
-> `npm install @openlarm/core @openlarm/regions-taiwan` 將於 `npm publish` 後可用。目前 monorepo 內可直接用 workspace link 使用。
-
----
-
-## 文件導覽
-
-| 文件 | 對象 | 內容 |
-|---|---|---|
-| [`README.en.md`](./README.en.md) | 國際使用者 | English mirror |
-| [`CLAUDE.md`](./CLAUDE.md) | 維護者 / AI | 專案結構與開發指令 |
-| [`low-altitude-ops-platform/LARM_CONCEPT_GUIDE.md`](./low-altitude-ops-platform/LARM_CONCEPT_GUIDE.md) | 業務、主管、客戶 | 白話說明模型與決策邏輯 |
-| [`low-altitude-ops-platform/LARM_PARAM_GUIDE.md`](./low-altitude-ops-platform/LARM_PARAM_GUIDE.md) | 操作員、工程師 | 參數公式與調整建議 |
-| [`OPEN_SOURCE_DECOUPLING_AUDIT.md`](./OPEN_SOURCE_DECOUPLING_AUDIT.md) | 貢獻者 | 解耦盤點報告 |
-| [`OPEN_SOURCE_TASK_2_PLAN.md`](./OPEN_SOURCE_TASK_2_PLAN.md) | 貢獻者 | spec 骨架計畫 |
-| [`OPEN_SOURCE_TASK_3_PLAN.md`](./OPEN_SOURCE_TASK_3_PLAN.md) | 貢獻者 | `@openlarm/core` API 設計 |
-| [`OPEN_SOURCE_TASK_4_PLAN.md`](./OPEN_SOURCE_TASK_4_PLAN.md) | 貢獻者 | 開源就緒清單 |
-| [`OPEN_SOURCE_DECISIONS.md`](./OPEN_SOURCE_DECISIONS.md) | 貢獻者 | 7 個關鍵決策記錄 |
-| [`CHANGELOG.md`](./CHANGELOG.md) | 所有人 | 版本變更紀錄 |
-| [`MODEL_CHANGELOG.md`](./MODEL_CHANGELOG.md) | 模型使用者 | 模型參數與公式變更紀錄 |
-| [`SECURITY.md`](./SECURITY.md) | 資安研究者 | 漏洞回報流程 |
-
----
-
-## 核心硬停規則（Hard Stops）
-
-即使其他條件極佳，下列任一情況觸發**強制 NO-GO**，不可人工覆蓋：
-
-- 🌪️ **即時風速 ≥ 39 km/h**
-- 🌧️ **雨量 > 10 mm/h 且降雨機率 > 60%**
-- 💨 **EDR（湍流）> 0.8**（v2.0 新增）
-- 📈 **R_score > r4_nogo_threshold**（R4 分級上限）
-
-所有硬停規則皆為**非政策性（non-policy）技術門檻**，由 LARM v2.0 規範明定。
-
----
-
-## 貢獻
-
-歡迎貢獻！在送出 PR 前請閱讀：
-
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — DCO + CCLA 流程
-- [`GOVERNANCE.md`](./GOVERNANCE.md) — 三層治理結構
-- [`MAINTAINERS.md`](./MAINTAINERS.md) — 委員會成員列表
-- [`CORPORATE_CLA.md`](./CORPORATE_CLA.md) — 企業 CLA 範本（pending lawyer）
-- [`LEGAL/DISCLAIMER.md`](./LEGAL/DISCLAIMER.md) — 完整免責聲明草稿
-- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
-
-### 治理模式預告
-
-| 委員會 | 審核範圍 |
-|---|---|
-| **Code TSC** | `@openlarm/core` API、架構、效能 |
-| **Model Governance** | 參數、W-code/R-level 邊界、硬停規則 |
-| **Spec Editors** | 規範文件措辭 |
-
-個人貢獻用 **DCO**（commit `Signed-off-by:`）；企業貢獻簽 **CCLA**（一次簽署，員工都覆蓋）。
-
----
-
-## 授權
-
-本專案以 **[Apache License 2.0](./LICENSE)** 發佈。
-著作權歸 **The LARM Authors**（所有貢獻者集體）所有。
-詳見 [`NOTICE`](./NOTICE) 對外部資料來源與第三方套件的歸屬。
-
----
-
-## 引用
-
-若在學術工作中使用 LARM，請引用（CITATION.cff 與 arXiv preprint 將於 v0.1 發佈後提供）：
+You should see something like:
 
 ```
-The LARM Authors (2026). LARM: A Deterministic Low-Altitude Drone Operation
-  Risk Model for Subtropical Climates with SORA 2.5 Integration.
-  arXiv preprint (pending).
+build             : PASS
+conformance       : PASS
+invariants_passed : true (25/25)
+metric_score      : 0.5076   ← new baseline on 28 cases
+worst_miss        : CAL-015-edr-just-below-hard-stop (pred GO/R1, exp NO_GO/R3)
+elapsed_sec       : ~11s
 ```
 
----
+## What's new in invariants.mts
 
-## 聯絡 / 回報安全問題
+1. **`mapping_r_level_canonical_spec_boundaries`** — locks R-level boundaries to canonical spec values (R0:0–20, R1:21–40, R2:41–65, R3:66–85, R4:86–100). This blocks the cheapest round-1 metric hack.
 
-見 [`SECURITY.md`](./SECURITY.md)。一般問題請開 GitHub issue。
+2. **`wr_matrix_w0_low_risk_not_nogo`** — W0 (stable clear weather) R0/R1/R2 cells must not be `nogo`. Blocks round-1 exp 14 hack.
+
+3. **`wr_matrix_r4_always_nogo`** — every regime row must end in `nogo` at R4.
+
+4. **`wr_matrix_no_go_above_r1`** — `"go"` decisions can only appear at R0/R1, never R2/R3/R4.
+
+5. **`regime_base_score_ordering`** — W0 must be lowest, W5 highest. Stops the agent from re-ordering regime severities to redirect cases through different W-rows.
+
+6. **`rain_hard_stop_thresholds_meaningful`** — keeps rain hard-stop thresholds within bands defensible against thunderstorm cases.
+
+## What's new in program.md
+
+The hypothesis seed list is now **5-tiered** with explicit ordering:
+
+- **Tier 1** (try first): `weather_now_weights`, `wind_score_table` row scores, `rain_score_rules` — the actual sensitivity knobs the loop was designed for
+- **Tier 2**: EDR thresholds and adjustments
+- **Tier 3**: regime base scores, `region_weight_table`, `volatility_buffer_add`
+- **Tier 4**: `wr_matrix` cells (one at a time, with justification)
+- **Tier 5**: buffer ratios, component caps
+
+The `## EXPLICITLY FORBIDDEN as hypothesis` section now names every round-1
+metric hack pattern with the exact invariant that catches it. Agent will
+stop trying these on iteration 1 instead of grinding through 5–6
+revert cycles per pattern.
+
+## What's new in cases.json
+
+20 new cases covering gaps I noticed in round 1:
+
+| ID | Tests |
+|----|-------|
+| CAL-009 | W3 meiyu regime with a clear-window operational decision |
+| CAL-010 | W4 climate but morning mission — temporal awareness |
+| CAL-011 | Light rain at low probability — should stay GO |
+| CAL-012 | Rain rate 11mm/h at 40% prob — must NOT trigger conjunction hard stop |
+| CAL-013 | Coastal windward exposure under NE monsoon |
+| CAL-014 | EDR=0.45 borderline turbulence |
+| CAL-015 | EDR=0.78 just-below hard stop (current worst_miss) |
+| CAL-016 | Wind 38 km/h just below 39 hard stop |
+| CAL-017 | Equipment block status |
+| CAL-018 | Two equipment items in warn |
+| CAL-019 | Tight clearance, small building |
+| CAL-020 | Multi-day split mission |
+| CAL-021 | Weekend + crowded area + road closure |
+| CAL-022 | Near 5G base station |
+| CAL-023 | W5 with high recent_typhoon_count |
+| CAL-024 | w_override regime (manual W4 forcing) |
+| CAL-025 | Low forecast confidence — buffer_ratio test |
+| CAL-026 | Poor rooftop condition |
+| CAL-027 | W0 climate + sudden high wind today |
+| CAL-028 | Urgent deadline pressure |
+
+Note CAL-015 and CAL-006: round-1 agent identified these as structurally
+unfixable by params (engine caps and hardcoded R3-CONDITIONAL behavior).
+With the new invariants in place, if these stay as worst_miss after
+round 2, that's evidence to take them to the **engine** (Code TSC review)
+rather than try more parameter tweaks.
+
+## Restart prompt for the agent
+
+```
+Read autoresearch/program.md (round 2). The R-level boundary lock is
+new — do not waste experiments trying to move them. Focus on Tier 1
+hypotheses (weather_now_weights, wind/rain score tables) first. Run
+30 experiments. Append to autoresearch/results.jsonl. Revert any
+change that fails build, conformance, invariants, or doesn't strictly
+improve metric_score.
+```
+
+If the agent runs into a metric ceiling around 0.7–0.8 and the
+worst_miss stays on CAL-006 / CAL-015 / R3-hardcoded cases, **stop the
+loop** and write up findings — those are engine-level concerns that
+need human Code TSC review per `OPEN_SOURCE_DECISIONS.md`, not more
+calibration iterations.
