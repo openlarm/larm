@@ -925,6 +925,7 @@ The Taiwan reference caps are:
 | `ground_consequence_cap` | 6  |
 | `tke_proxy_cap`          | 3  |
 | `env_interaction_cap`    | 4  |
+| `env_hazards_cap`        | 3  |
 | `total_cap`              | 20 |
 
 The four sub-dim caps sum to 23, which exceeds `total_cap = 20` by
@@ -1019,11 +1020,11 @@ values are [heuristic, no empirical source].
 
 ```
 env_raw = 0
-if building.near_hv_power     == 1:  env_raw += 3
-if building.near_base_station == 1:  env_raw += 1
+if building.near_hv_power     == 1:  env_raw += cfg.env_hazard_points.near_hv_power
+if building.near_base_station == 1:  env_raw += cfg.env_hazard_points.near_base_station
 if building.clearance_m is not null
-   and building.clearance_m < 5:     env_raw += 2
-env_score = min(3, env_raw)   # sub-cap 3 before interaction
+   and building.clearance_m < 5:     env_raw += cfg.env_hazard_points.narrow_clearance
+env_score = min(cfg.env_hazards_cap, env_raw)   # sub-cap before interaction
 
 interaction = 0
 if floors > 20 and building.wind_channel_effect == 1:
@@ -1038,7 +1039,16 @@ env_interaction = min(cfg.env_interaction_cap,
                       env_score + interaction_capped)
 ```
 
-Values are [heuristic, no empirical source].
+Values are [heuristic, no empirical source]. The four env-hazards
+constants — `env_hazard_points.near_hv_power`,
+`env_hazard_points.near_base_station`,
+`env_hazard_points.narrow_clearance`, and `env_hazards_cap` — are
+parameterised in `WeatherRegimeParams.g_score_config` (added in
+v2.1; defaults 3, 1, 2, 3 respectively preserve v2.0 behaviour
+exactly). Region adapters MAY override these values; they remain
+part of the normative output computation. The interaction sub-block
+literals (`+2 / +2` per term and `min(2, …)`) remain hardcoded under
+v2.0 / v2.1 and are tracked separately for a future v3.0 review.
 
 #### §5.3.5 Aggregation (normative)
 
@@ -1180,68 +1190,81 @@ G_score total: `min(20, 5 + 0 + 0 + 0) = 5`.
 Operational-context additive score.
 
 ```
+fp = P.o_score_flag_points
 score = 0
 parts = []
 
 if ops.time_window == "night":
-    score += 5;  parts.push("night")
+    score += fp.night;  parts.push("night")
 if ops.weekend == 1:
-    score += 2;  parts.push("weekend")
+    score += fp.weekend;  parts.push("weekend")
 if ops.road_closure_needed == 1:
-    score += 3;  parts.push("road_closure")
+    score += fp.road_closure;  parts.push("road_closure")
 if ops.urgent_days != null:
-    if ops.urgent_days <= 3:
-        score += 5
-    elif ops.urgent_days <= 7:
-        score += 3
+    if ops.urgent_days <= fp.urgent_critical_max_days:
+        score += fp.urgent_critical
+    elif ops.urgent_days <= fp.urgent_warn_max_days:
+        score += fp.urgent_warn
 if crowd_density == "high":
-    score += 3
+    score += fp.crowd_high
 elif crowd_density == "medium":
-    score += 2
+    score += fp.crowd_medium
 if ops.operator_experience_level == "junior":
-    score += 2
+    score += fp.operator_junior
+elif ops.operator_experience_level == "mid":
+    score += fp.operator_mid
+elif ops.operator_experience_level == "senior":
+    score += fp.operator_senior
 if ops.mission_days != null:
-    if ops.mission_days >= 7:
-        score += 3
-    elif ops.mission_days >= 4:
-        score += 2
+    if ops.mission_days >= fp.long_mission_critical_min_days:
+        score += fp.long_mission_critical
+    elif ops.mission_days >= fp.long_mission_warn_min_days:
+        score += fp.long_mission_warn
 
 o_score = min(P.o_score_cap, score)
 ```
 
+v2.1 update: per-flag points and the urgent / long-mission thresholds
+are now read from `P.o_score_flag_points` rather than being hardcoded
+literals. Default Taiwan values preserve v2.0 behaviour exactly (see
+§5.4.2 below). Region adapters MAY tune any of these values; the
+`o_score_cap` invariant is unchanged.
+
 #### §5.4.1 Raw-sum behaviour (normative)
 
-The raw sum of the additive contributions above can reach `23` in the
-most extreme case (all sub-flags simultaneously active). The
-documented `0..12` upper bound is the **post-cap** value via
-`min(P.o_score_cap, ...)`. Implementations MUST apply the cap and
-MUST NOT return the uncapped raw sum.
+The raw sum of the additive contributions above can reach `23` under
+default Taiwan values in the most extreme case (all sub-flags
+simultaneously active). The documented `0..12` upper bound is the
+**post-cap** value via `min(P.o_score_cap, ...)`. Implementations MUST
+apply the cap and MUST NOT return the uncapped raw sum.
 
 Taiwan reference: `o_score_cap = 12` [heuristic, no empirical source].
 
 Point values are [heuristic, no empirical source].
 
-### §5.4.2 Point-value summary table (informative)
+### §5.4.2 Point-value summary table — Taiwan defaults (informative)
 
-| Condition | Contribution |
-|---|---:|
-| `time_window == "night"` | +5 |
-| `weekend == 1` | +2 |
-| `road_closure_needed == 1` | +3 |
-| `urgent_days <= 3` | +5 |
-| `4 <= urgent_days <= 7` | +3 |
-| `urgent_days > 7` or null | 0 |
-| `crowd_density == "high"` | +3 |
-| `crowd_density == "medium"` | +2 |
-| `crowd_density == "low"` or null | 0 |
-| `operator_experience_level == "junior"` | +2 |
-| `mission_days >= 7` | +3 |
-| `4 <= mission_days <= 6` | +2 |
-| `mission_days <= 3` or null | 0 |
+| Condition | Param field | Default contribution |
+|---|---|---:|
+| `time_window == "night"` | `o_score_flag_points.night` | +5 |
+| `weekend == 1` | `o_score_flag_points.weekend` | +2 |
+| `road_closure_needed == 1` | `o_score_flag_points.road_closure` | +3 |
+| `urgent_days <= 3` (`urgent_critical_max_days`) | `o_score_flag_points.urgent_critical` | +5 |
+| `4 <= urgent_days <= 7` (`urgent_warn_max_days`) | `o_score_flag_points.urgent_warn` | +3 |
+| `urgent_days > 7` or null | — | 0 |
+| `crowd_density == "high"` | `o_score_flag_points.crowd_high` | +3 |
+| `crowd_density == "medium"` | `o_score_flag_points.crowd_medium` | +2 |
+| `crowd_density == "low"` or null | — | 0 |
+| `operator_experience_level == "junior"` | `o_score_flag_points.operator_junior` | +2 |
+| `operator_experience_level == "mid"` | `o_score_flag_points.operator_mid` | 0 |
+| `operator_experience_level == "senior"` | `o_score_flag_points.operator_senior` | 0 |
+| `mission_days >= 7` (`long_mission_critical_min_days`) | `o_score_flag_points.long_mission_critical` | +3 |
+| `4 <= mission_days <= 6` (`long_mission_warn_min_days`) | `o_score_flag_points.long_mission_warn` | +2 |
+| `mission_days <= 3` or null | — | 0 |
 
-The theoretical maximum raw sum is `5 + 2 + 3 + 5 + 3 + 2 + 3 = 23`,
-of which only the post-cap `o_score_cap` (default `12`) propagates
-downstream.
+The theoretical maximum raw sum under default Taiwan values is
+`5 + 2 + 3 + 5 + 3 + 2 + 3 = 23`, of which only the post-cap
+`o_score_cap` (default `12`) propagates downstream.
 
 ### §5.4.3 Worked example — urgent weekend night (informative)
 
@@ -2898,6 +2921,12 @@ this specification refer to values in this JSON.
     "ground_consequence_cap": 6,
     "tke_proxy_cap": 3,
     "env_interaction_cap": 4,
+    "env_hazards_cap": 3,
+    "env_hazard_points": {
+      "near_hv_power": 3,
+      "near_base_station": 1,
+      "narrow_clearance": 2
+    },
     "total_cap": 20
   },
   "e_score_config": {
@@ -2906,6 +2935,24 @@ this specification refer to values in this JSON.
     "warn_points": 1.5
   },
   "o_score_cap": 12,
+  "o_score_flag_points": {
+    "night": 5,
+    "weekend": 2,
+    "road_closure": 3,
+    "urgent_critical": 5,
+    "urgent_warn": 3,
+    "urgent_critical_max_days": 3,
+    "urgent_warn_max_days": 7,
+    "crowd_high": 3,
+    "crowd_medium": 2,
+    "operator_junior": 2,
+    "operator_mid": 0,
+    "operator_senior": 0,
+    "long_mission_critical": 3,
+    "long_mission_warn": 2,
+    "long_mission_critical_min_days": 7,
+    "long_mission_warn_min_days": 4
+  },
   "quote_max_multiplier": 4.5,
   "w5_typhoon_trend_threshold": 3.6,
   "w5_typhoon_trend_bonus": 2,

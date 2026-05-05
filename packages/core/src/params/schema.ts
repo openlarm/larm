@@ -81,7 +81,14 @@ export interface GScoreConfig {
   structural_cap: number           // default 10
   ground_consequence_cap: number   // default 6
   tke_proxy_cap: number            // default 3
-  env_interaction_cap: number      // default 4
+  env_interaction_cap: number      // default 4 — outer cap on env_score + interaction_capped
+  // v2.1: inner env_raw cap and per-hazard point values (RFC Recommendation A)
+  env_hazards_cap: number          // default 3 — inner cap on env_raw before interaction
+  env_hazard_points: {
+    near_hv_power: number          // default 3
+    near_base_station: number      // default 1
+    narrow_clearance: number       // default 2 (added when clearance_m < 5)
+  }
   total_cap: number                // default 20
 }
 
@@ -90,6 +97,26 @@ export interface EScoreConfig {
   cap: number                      // default 8
   block_points: number             // default 3
   warn_points: number              // default 1.5
+}
+
+// v2.1: O_score per-flag points and thresholds (param-ized v2.0 literals)
+export interface OScoreFlagPoints {
+  night: number                          // default 5
+  weekend: number                        // default 2
+  road_closure: number                   // default 3
+  urgent_critical: number                // default 5
+  urgent_warn: number                    // default 3
+  urgent_critical_max_days: number       // default 3 (urgent_days <= this)
+  urgent_warn_max_days: number           // default 7 (urgent_days <= this)
+  crowd_high: number                     // default 3
+  crowd_medium: number                   // default 2
+  operator_junior: number                // default 2
+  operator_mid: number                   // default 0
+  operator_senior: number                // default 0
+  long_mission_critical: number          // default 3
+  long_mission_warn: number              // default 2
+  long_mission_critical_min_days: number // default 7 (mission_days >= this)
+  long_mission_warn_min_days: number     // default 4 (mission_days >= this)
 }
 
 export type RLevelKey = "R0" | "R1" | "R2" | "R3" | "R4"
@@ -122,6 +149,7 @@ export interface WeatherRegimeParams {
   g_score_config: GScoreConfig
   e_score_config: EScoreConfig
   o_score_cap: number
+  o_score_flag_points: OScoreFlagPoints
   w5_typhoon_trend_threshold: number   // default 3.6 (avg annual typhoons)
   w5_typhoon_trend_bonus: number       // default 2
   r4_nogo_threshold: number            // default 92 (R4 score above this = hard NO-GO)

@@ -1,0 +1,48 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-011",
+  "name": "env_hazards_paramized_defaults",
+  "description": "v2.1 additive params: env_hazards_cap and env_hazard_points are now in WeatherRegimeParams.g_score_config. Default Taiwan values (cap=3; near_hv_power=3, near_base_station=1, narrow_clearance=2) preserve v2.0 behaviour exactly. With near_hv_power=1 + near_base_station=1 + clearance_m=5 (so narrow_clearance does not fire) + floors=8 (so wind_channel_effect interaction does not fire), env_raw = 3+1+0 = 4, env_score = min(env_hazards_cap=3, 4) = 3, interaction_capped = 0, env_interaction = min(env_interaction_cap=4, 3+0) = 3.",
+  "spec_section": "§5.3.4",
+  "tags": ["params", "env_hazards", "v2.1"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 8,
+      "building_height_m": 28,
+      "facade_complexity": "light",
+      "clearance_m": 5,
+      "near_hv_power": 1,
+      "near_base_station": 1,
+      "wind_channel_effect": 1,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "GO",
+    "narrative_contains": ["環境危害", "上限3"]
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

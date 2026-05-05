@@ -1,0 +1,55 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-012",
+  "name": "o_score_flag_weights_paramized_defaults",
+  "description": "v2.1 additive params: o_score_flag_points is now in WeatherRegimeParams. Default Taiwan values (night=5, weekend=2, road_closure=3, urgent_critical=5, urgent_warn=3, crowd_high=3, crowd_medium=2, operator_junior=2, long_mission_critical=3, long_mission_warn=2, plus thresholds urgent_critical_max_days=3, urgent_warn_max_days=7, long_mission_critical_min_days=7, long_mission_warn_min_days=4) preserve v2.0 behaviour exactly. With time_window=night + weekend=1 + crowd_density=medium, raw_sum = 5+2+2 = 9, o_score = min(12, 9) = 9 — well under cap.",
+  "spec_section": "§5.4",
+  "tags": ["params", "o_score", "v2.1"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "medium",
+      "region_exposure": null
+    },
+    "operational_context": {
+      "time_window": "night",
+      "weekend": 1,
+      "urgent_days": null,
+      "road_closure_needed": 0,
+      "multi_day_split": 0,
+      "operator_experience_level": null
+    },
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "o_score": 9,
+    "narrative_contains": ["夜間+5", "週末+2", "中人流+2", "上限 12"]
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

@@ -219,11 +219,12 @@ function computeGScore(
   const tkeProxy = Math.min(cfg.tke_proxy_cap, Math.floor(floorTkeFactor * tkeWindF * tkeCorridorF))
 
   // Sub-dimension 4: Environment Hazards + Interaction (cap 4)
+  const envPts = cfg.env_hazard_points
   let envRaw = 0
-  if (b.near_hv_power === 1)       envRaw += 3
-  if (b.near_base_station === 1)   envRaw += 1
-  if (b.clearance_m != null && b.clearance_m < 5) envRaw += 2
-  const envScore = Math.min(3, envRaw)
+  if (b.near_hv_power === 1)       envRaw += envPts.near_hv_power
+  if (b.near_base_station === 1)   envRaw += envPts.near_base_station
+  if (b.clearance_m != null && b.clearance_m < 5) envRaw += envPts.narrow_clearance
+  const envScore = Math.min(cfg.env_hazards_cap, envRaw)
 
   let interaction = 0
   if (floors > 20 && b.wind_channel_effect === 1) interaction += 2
@@ -245,10 +246,10 @@ function computeGScore(
   }
   if (envScore > 0) {
     const parts: string[] = []
-    if (b.near_hv_power === 1) parts.push("高壓電+3")
-    if (b.near_base_station === 1) parts.push("基地台+1")
-    if (b.clearance_m != null && b.clearance_m < 5) parts.push(`狹窄${b.clearance_m}m+2`)
-    expl.push({ factor: "環境危害", value: envRaw, score: envScore, note: parts.join(", ") + "（上限3）" })
+    if (b.near_hv_power === 1) parts.push(`高壓電+${envPts.near_hv_power}`)
+    if (b.near_base_station === 1) parts.push(`基地台+${envPts.near_base_station}`)
+    if (b.clearance_m != null && b.clearance_m < 5) parts.push(`狹窄${b.clearance_m}m+${envPts.narrow_clearance}`)
+    expl.push({ factor: "環境危害", value: envRaw, score: envScore, note: parts.join(", ") + `（上限${cfg.env_hazards_cap}）` })
   }
   if (interactionCapped > 0) {
     const parts: string[] = []
@@ -268,23 +269,45 @@ function computeOperationalScore(
   expl: RiskExplanation[],
   P: WeatherRegimeParams,
 ): number {
+  const fp = P.o_score_flag_points
   const parts: string[] = []
   let score = 0
 
-  if (ops.time_window === "night")                { score += 5; parts.push("夜間+5") }
-  if (ops.weekend === 1)                          { score += 2; parts.push("週末+2") }
-  if (ops.road_closure_needed === 1)              { score += 3; parts.push("封路+3") }
+  if (ops.time_window === "night" && fp.night > 0) {
+    score += fp.night; parts.push(`夜間+${fp.night}`)
+  }
+  if (ops.weekend === 1 && fp.weekend > 0) {
+    score += fp.weekend; parts.push(`週末+${fp.weekend}`)
+  }
+  if (ops.road_closure_needed === 1 && fp.road_closure > 0) {
+    score += fp.road_closure; parts.push(`封路+${fp.road_closure}`)
+  }
   if (ops.urgent_days != null) {
-    const pts = ops.urgent_days <= 3 ? 5 : ops.urgent_days <= 7 ? 3 : 0
+    const pts =
+      ops.urgent_days <= fp.urgent_critical_max_days ? fp.urgent_critical
+      : ops.urgent_days <= fp.urgent_warn_max_days   ? fp.urgent_warn
+      : 0
     if (pts > 0) { score += pts; parts.push(`急件(${ops.urgent_days}d)+${pts}`) }
   }
-  if (crowd_density === "high")                   { score += 3; parts.push("高人流+3") }
-  else if (crowd_density === "medium")            { score += 2; parts.push("中人流+2") }
-  if (ops.operator_experience_level === "junior") { score += 2; parts.push("初級操作員+2") }
+  if (crowd_density === "high" && fp.crowd_high > 0) {
+    score += fp.crowd_high; parts.push(`高人流+${fp.crowd_high}`)
+  } else if (crowd_density === "medium" && fp.crowd_medium > 0) {
+    score += fp.crowd_medium; parts.push(`中人流+${fp.crowd_medium}`)
+  }
+  if (ops.operator_experience_level === "junior" && fp.operator_junior > 0) {
+    score += fp.operator_junior; parts.push(`初級操作員+${fp.operator_junior}`)
+  } else if (ops.operator_experience_level === "mid" && fp.operator_mid > 0) {
+    score += fp.operator_mid; parts.push(`中級操作員+${fp.operator_mid}`)
+  } else if (ops.operator_experience_level === "senior" && fp.operator_senior > 0) {
+    score += fp.operator_senior; parts.push(`資深操作員+${fp.operator_senior}`)
+  }
 
   // Personnel fatigue
   if (ops.mission_days != null) {
-    const fatigue = ops.mission_days >= 7 ? 3 : ops.mission_days >= 4 ? 2 : 0
+    const fatigue =
+      ops.mission_days >= fp.long_mission_critical_min_days ? fp.long_mission_critical
+      : ops.mission_days >= fp.long_mission_warn_min_days   ? fp.long_mission_warn
+      : 0
     if (fatigue > 0) { score += fatigue; parts.push(`長工期疲勞(${ops.mission_days}天)+${fatigue}`) }
   }
 
