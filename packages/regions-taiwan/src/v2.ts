@@ -25,10 +25,10 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
   },
   volatility_buffer_add: { W0: 0.00, W1: 0.02, W2: 0.03, W3: 0.04, W4: 0.05, W5: 0.06 },
   wr_matrix: {
-    W0: { R0: "go",   R1: "go",   R2: "cond", R3: "nogo", R4: "nogo" },
-    W1: { R0: "cond", R1: "go",   R2: "cond", R3: "cond", R4: "nogo" },  // [Bug 3] W1/R0: nogo→cond
+    W0: { R0: "go",   R1: "cond", R2: "cond", R3: "nogo", R4: "nogo" },
+    W1: { R0: "cond", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },  // [Bug 3] W1/R0: nogo→cond
     W2: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-    W3: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
+    W3: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
     W4: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
     W5: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
   },
@@ -38,7 +38,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     instability: 0.10,            // [Bug 1] 0.15→0.10, sum now = 1.00
     instability_scale: 20,        // 15→20 (general)
     instability_scale_w4: 28,     // W4-specific: 15→28 (convective amplification)
-    predictability_discount: 10,
+    predictability_discount: 6,
     thunder_add: 5,
     ensemble_low_conf_threshold: 55,
     weather_now_cap: 42,          // 50→42 (component recalibration)
@@ -99,7 +99,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     env_hazard_points: { near_hv_power: 3, near_base_station: 1, narrow_clearance: 2 },
     total_cap: 20,
   },
-  e_score_config: { cap: 8, block_points: 3, warn_points: 1.5 },
+  e_score_config: { cap: 8, block_points: 6, warn_points: 1.5 },
   o_score_cap: 12,
   o_score_flag_points: {
     night: 5,
@@ -120,6 +120,6 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     long_mission_warn_min_days: 4,
   },
   w5_typhoon_trend_threshold: 3.6,
-  w5_typhoon_trend_bonus: 2,
+  w5_typhoon_trend_bonus: 12,
   r4_nogo_threshold: 92,                       // [Bug 2] R4 86–92 = COND-D2, >92 = NO-GO
 }
