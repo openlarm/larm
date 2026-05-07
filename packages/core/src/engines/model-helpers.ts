@@ -4,7 +4,7 @@
 // Step5Weather.tsx. They are now the single source of truth, reading
 // thresholds from WeatherRegimeParams so the /admin/params UI can override them.
 
-import type { WeatherRegimeParams, CapeContributionConfig } from "../params/schema.ts"
+import type { WeatherRegimeParams, CapeContributionConfig, LightningObservationConfig } from "../params/schema.ts"
 import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "../types/index.ts"
 
 /** UI-side W-code inference from a single forecast day + 30-day background.
@@ -75,4 +75,46 @@ export function capeToInstabilityContribution(
   }
   const frac = (cape_jkg - cfg.mid_breakpoint) / (cfg.upper_breakpoint - cfg.mid_breakpoint)
   return cfg.mid_value + frac * (cfg.upper_value - cfg.mid_value)
+}
+
+/**
+ * v2.1 candidate (Unreleased): does observed lightning force thunder_risk to 1?
+ * Returns true iff strikes is non-null and ≥ thunder_force_threshold. Used by
+ * the WeatherNow engine path to override the forecast-layer thunder_risk with
+ * ground-truth observation. See spec §5.6.1.
+ */
+export function lightningForcesThunderRisk(
+  strikes: number | null | undefined,
+  cfg: LightningObservationConfig,
+): boolean {
+  return strikes != null && strikes >= cfg.thunder_force_threshold
+}
+
+/**
+ * v2.1 candidate (Unreleased): tiered direct adder applied to risk_score after
+ * component aggregation but before clamp/r_level mapping. Returns 0 for
+ * null/undefined or sub-threshold strike counts. Capped above by `max_adj`
+ * (defends against single-channel saturation). See spec §5.6.2.
+ *
+ * Tier mapping (defaults: thunder_force_threshold=1, tier_1_max_exclusive=3,
+ *                         tier_2_max_exclusive=10, tier_*_adj=8/15/20, max_adj=25):
+ *   strikes < thunder_force_threshold  → 0
+ *   strikes < tier_1_max_exclusive     → tier_1_adj
+ *   strikes < tier_2_max_exclusive     → tier_2_adj
+ *   strikes ≥ tier_2_max_exclusive     → tier_3_adj  (capped at max_adj)
+ *
+ * Note on boundary semantics: `_max_exclusive` means strikes equal to the
+ * threshold fall into the NEXT tier. `tier_1_max_exclusive=3, strikes=3`
+ * → tier 2, not tier 1.
+ */
+export function lightningTierAdj(
+  strikes: number | null | undefined,
+  cfg: LightningObservationConfig,
+): number {
+  if (strikes == null || strikes < cfg.thunder_force_threshold) return 0
+  let adj: number
+  if (strikes < cfg.tier_1_max_exclusive)      adj = cfg.tier_1_adj
+  else if (strikes < cfg.tier_2_max_exclusive) adj = cfg.tier_2_adj
+  else                                         adj = cfg.tier_3_adj
+  return Math.min(cfg.max_adj, adj)
 }

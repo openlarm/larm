@@ -63,6 +63,28 @@ export interface WeatherTodayInput {
    *   2500+        severe
    */
   cape_jkg?: number | null
+  /**
+   * v2.1 candidate (Unreleased): cloud-to-ground (CG) lightning strike count
+   * within 5 km radius of the mission site, observed in the past 30 minutes.
+   * From CWA opendata O-A0039-001 (KMZ feed). NOT a forecast — observed
+   * ground-truth signal. Cloud-to-cloud (IC) strikes are excluded; CG is
+   * what threatens drones at altitude.
+   *
+   * NULL when unavailable; engine falls back to forecast-only thunder_risk
+   * with no lightning adder.
+   *
+   * Range: integer >= 0.
+   * Typical Taiwan ranges:
+   *   0      clear / no activity
+   *   1–2    distant
+   *   3–9    active storm in vicinity
+   *   10+    intense activity
+   *
+   * Two engine effects (see spec §5.6):
+   *   (A) Mechanism A — forces thunder_risk = 1 when strikes ≥ thunder_force_threshold
+   *   (B) Mechanism B — tiered direct adder applied to risk_score after aggregation
+   */
+  lightning_strikes_30min_5km?: number | null
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
   jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }
@@ -221,6 +243,8 @@ export interface RiskResult {
   edr_adj?: number                // EDR turbulence adjustment (0..20)
   tke_proxy?: number              // TKE proxy add (0..3)
   ground_consequence?: number     // SORA GRC ground consequence (0..6)
+  // ── v2.1 candidate (Unreleased) ───────────────────────────────────────────
+  lightning_adj?: number          // Lightning observation tier adder (0..max_adj, default cap 25)
 }
 
 /** W regime classification result with confidence */

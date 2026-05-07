@@ -119,6 +119,24 @@ export interface OScoreFlagPoints {
   long_mission_warn_min_days: number     // default 4 (mission_days >= this)
 }
 
+// v2.1 candidate (Unreleased): lightning-observation contribution config.
+// Two mechanisms feed off this single config block:
+//   (A) thunder_force_threshold — observed strikes ≥ this overrides
+//       weather_today.thunder_risk to 1, activating thunder_add in WeatherNow.
+//   (B) tier_*_max_exclusive + tier_*_adj — piecewise tier adder applied to
+//       risk_score AFTER component aggregation but BEFORE clamp/r_level mapping.
+//       Bounded above by max_adj (defends against single-channel saturation).
+// See spec §5.6 (Unreleased) and docs/superpowers/plans/data-expansion-v2.1.md §5.2.
+export interface LightningObservationConfig {
+  thunder_force_threshold: number   // strikes count to force thunder_risk=1 (default 1)
+  tier_1_max_exclusive: number       // strikes < this → tier 1 (default 3)
+  tier_2_max_exclusive: number       // strikes < this → tier 2; ≥ this → tier 3 (default 10)
+  tier_1_adj: number                 // points added in tier 1 (default 8)
+  tier_2_adj: number                 // points added in tier 2 (default 15)
+  tier_3_adj: number                 // points added in tier 3 (default 20)
+  max_adj: number                    // cap on the contribution (default 25)
+}
+
 // v2.1 candidate (Unreleased): CAPE-driven instability contribution config.
 // Piecewise-linear mapping from cape_jkg (J/kg) to a 0..1 instability-equivalent
 // value, additively combined with weather_30d.instability_index in the engine
@@ -165,6 +183,7 @@ export interface WeatherRegimeParams {
   o_score_flag_points: OScoreFlagPoints
   // v2.1 candidate (Unreleased)
   cape_contribution_config: CapeContributionConfig
+  lightning_observation_config: LightningObservationConfig
   w5_typhoon_trend_threshold: number   // default 3.6 (avg annual typhoons)
   w5_typhoon_trend_bonus: number       // default 2
   r4_nogo_threshold: number            // default 92 (R4 score above this = hard NO-GO)

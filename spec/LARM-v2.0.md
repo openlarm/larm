@@ -323,6 +323,7 @@ Today's forecast or real-time weather.
 | `edr` | number \| null \| optional | `[0, ∞)` or null | — | Eddy Dissipation Rate. |
 | `local_hour` | integer \| null \| optional | `[0, 23]` | — | Local hour for W4 time-of-day multiplier. |
 | `cape_jkg` | number \| null \| optional | `[0, ∞)` or null | J/kg | **v2.1 candidate (Unreleased)** — Convective Available Potential Energy at the mission hour. NULL falls back to v2.0 behaviour (instability_index alone). See §5.2.4.1. |
+| `lightning_strikes_30min_5km` | integer \| null \| optional | `[0, ∞)` or null | count | **v2.1 candidate (Unreleased)** — Cloud-to-ground (CG) lightning strikes within 5 km observed in the past 30 minutes. CG only (IC excluded). NULL falls back to v2.0 behaviour. See §5.6. |
 | `cwa_cross` | object \| optional | — | — | CWA cross-validation payload (opaque; informative). |
 | `jma_cross` | object \| optional | — | — | JMA cross-validation payload (opaque; informative). |
 
@@ -779,6 +780,12 @@ thunder = P.weather_now_weights.thunder_add  if today.thunder_risk == 1 else 0
 ```
 
 Taiwan reference: `thunder_add = 5` [heuristic, no empirical source].
+
+> **v2.1 candidate (Unreleased)** — When `today.lightning_strikes_30min_5km`
+> is non-null and ≥ `P.lightning_observation_config.thunder_force_threshold`,
+> the engine substitutes `effective_thunder_risk = 1` for `today.thunder_risk`
+> in the formula above (Mechanism A). Observed lightning overrides the
+> forecast layer's `thunder_risk`. See §5.6.1.
 
 #### §5.2.7 EDR turbulence adjustment (normative)
 
@@ -1418,12 +1425,110 @@ in the score but not in the decision tier.
 
 ---
 
+### §5.6 Lightning observation contribution (v2.1 candidate, Unreleased)
+
+> **Status:** non-normative until v2.1 publishes. Conformance vectors
+> TV-001..TV-014 are unaffected — they have no
+> `lightning_strikes_30min_5km` field, so both mechanisms below are
+> no-ops and the engine produces bit-identical v2.0 output. TV-015
+> verifies the null-fallback identity; TV-016 verifies both mechanisms
+> binding together.
+
+The `weather_today.lightning_strikes_30min_5km` input (v2.1
+candidate, see §3.2) is a count of cloud-to-ground (CG) lightning
+strikes observed within 5 km of the mission site in the past 30
+minutes. It feeds **two independent mechanisms** wired off a single
+`P.lightning_observation_config` block:
+
+#### §5.6.1 Mechanism A — thunder_risk forcing (v2.1 candidate)
+
+```
+lightning_forces = lightning_strikes_30min_5km is not None
+                   AND lightning_strikes_30min_5km
+                       >= P.lightning_observation_config.thunder_force_threshold
+
+effective_thunder_risk = 1 if lightning_forces else today.thunder_risk
+```
+
+The WeatherNow thunder add-on of §5.2.6 then reads
+`effective_thunder_risk` instead of `today.thunder_risk` directly.
+Rationale: observed lightning is ground-truth that thunderstorm
+activity is happening NOW; observation overrides the forecast layer
+regardless of what the forecast estimated. When `effective_thunder_risk
+= 1`, the existing `weather_now_weights.thunder_add` bonus (default
++5) activates inside WeatherNow exactly as in v2.0.
+
+When the input `today.thunder_risk` is already 1, this mechanism is a
+no-op (no double-count).
+
+#### §5.6.2 Mechanism B — tier adder (v2.1 candidate)
+
+```
+function lightning_tier_adj(strikes, cfg):
+    if strikes is None or strikes < cfg.thunder_force_threshold:
+        return 0
+    if strikes < cfg.tier_1_max_exclusive:      adj = cfg.tier_1_adj
+    else if strikes < cfg.tier_2_max_exclusive: adj = cfg.tier_2_adj
+    else:                                       adj = cfg.tier_3_adj
+    return min(cfg.max_adj, adj)
+```
+
+The returned `lightning_adj` is added to the inner sum of §6.1
+**before** the round/clamp, **after** the per-component score
+aggregation. It is its own channel because lightning observation is
+qualitatively different from the atmospheric-state assessment in
+WeatherNow — it's an active immediate threat signal, not a regime
+probability.
+
+**Boundary semantics** (important): `_max_exclusive` means strikes
+equal to the threshold fall into the NEXT tier. With defaults
+`tier_1_max_exclusive = 3`, `strikes = 3` → tier 2 (+15), not tier 1
+(+8). Spec authors and test-vector writers MUST respect this when
+selecting calibration values.
+
+#### §5.6.3 Defaults
+
+Taiwan reference values:
+
+| Field                     | Default | Interpretation                                  |
+|---------------------------|--------:|-------------------------------------------------|
+| `thunder_force_threshold` |       1 | ≥ 1 strike forces `thunder_risk = 1`            |
+| `tier_1_max_exclusive`    |       3 | strikes < 3 → tier 1 (1–2 strikes)              |
+| `tier_2_max_exclusive`    |      10 | strikes < 10 → tier 2 (3–9 strikes)             |
+| `tier_1_adj`              |       8 | tier-1 adjustment                                |
+| `tier_2_adj`              |      15 | tier-2 adjustment                                |
+| `tier_3_adj`              |      20 | tier-3 (≥ 10 strikes)                            |
+| `max_adj`                 |      25 | cap on the contribution                          |
+
+All seven are [heuristic, no empirical source]; derived from
+operational ranges in
+`docs/superpowers/plans/data-expansion-v2.1.md` §5.2 and CWA
+opendata feed verification in
+`docs/superpowers/plans/cwa-lightning-feed-verification.md`. Region
+adapters MAY override any of the seven via
+`WeatherRegimeParams.lightning_observation_config`.
+
+#### §5.6.4 NOT a hard stop (informative)
+
+Even at high strike counts, the engine returns `COND/R3` or `COND/R4`
+via the existing wr_matrix path — NOT a hard-stop `NO_GO`. Adding a
+hard-stop trigger at high strike count is a governance question for
+Spec Editors (modifies §7.1) and is deferred. This v2.1 candidate
+adds risk_score *contributions* only, leaving §7 unchanged.
+
 ## §6 Risk Score Aggregation
 
 ### §6.1 R-score and R-level (normative)
 
 ```
-risk_score = clamp(round(base_w + weather_now + g_score + o_score + e_score),
+# v2.1 candidate (Unreleased): lightning_adj added inside the round.
+# When lightning_strikes_30min_5km is null/missing, lightning_adj = 0
+# and the formula collapses to the v2.0 expression exactly.
+lightning_adj = lightning_tier_adj(today.lightning_strikes_30min_5km,
+                                    P.lightning_observation_config)
+
+risk_score = clamp(round(base_w + weather_now + g_score + o_score + e_score
+                         + lightning_adj),
                    0, 100)
 
 risk_level = first row r in P.thresholds.mapping_r_level

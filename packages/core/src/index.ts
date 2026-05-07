@@ -50,6 +50,7 @@ export type {
   GScoreConfig,
   EScoreConfig,
   CapeContributionConfig,
+  LightningObservationConfig,
   RLevelKey,
   WRDecision,
   WeatherRegimeParams,
@@ -77,4 +78,6 @@ export {
   completionForRL,
   simpleRiskFromW,
   capeToInstabilityContribution,
+  lightningForcesThunderRisk,
+  lightningTierAdj,
 } from "./engines/model-helpers.js"

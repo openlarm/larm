@@ -12,7 +12,11 @@ import type {
 } from "../types/index.ts"
 import { resolveParams } from "../params/merge.js"
 import { ACTIVE_PARAMS_VERSION } from "../params/registry.js"
-import { capeToInstabilityContribution } from "./model-helpers.js"
+import {
+  capeToInstabilityContribution,
+  lightningForcesThunderRisk,
+  lightningTierAdj,
+} from "./model-helpers.js"
 import type { WeatherRegimeParams } from "../params/schema.ts"
 
 // ─── Options type ─────────────────────────────────────────────────────────────
@@ -148,7 +152,18 @@ function computeWeatherNow(
   const effective_instability = Math.min(1, base_instability + cape_contrib)
   const instComp   = effective_instability * instScale
   const predDisc   = -(w30.predictability_score * wts.predictability_discount)
-  const thunder    = today.thunder_risk === 1 ? wts.thunder_add : 0
+
+  // v2.1 candidate (Unreleased): observed lightning forces thunder_risk=1
+  // when strikes ≥ thunder_force_threshold (default 1). Ground-truth
+  // observation overrides forecast layer. When lightning_strikes_30min_5km
+  // is null/missing, this is a no-op and effective_thunder_risk equals the
+  // input thunder_risk exactly. See spec §5.6.1.
+  const lightning_forces = lightningForcesThunderRisk(
+    today.lightning_strikes_30min_5km, P.lightning_observation_config,
+  )
+  const effective_thunder_risk: 0 | 1 | null =
+    lightning_forces ? 1 : today.thunder_risk
+  const thunder    = effective_thunder_risk === 1 ? wts.thunder_add : 0
 
   // v2.0: EDR turbulence adjustment
   const edrAdj = computeEDRAdj(today.edr, P)
@@ -182,7 +197,12 @@ function computeWeatherNow(
     expl.push({ factor: "CAPE 不穩定加成", value: `${today.cape_jkg} J/kg`, score: 0, note: `對流潛勢 → +${cape_contrib.toFixed(2)} 不穩定貢獻 (與 30d index 加成 取 min(1, ·))` })
   }
   expl.push({ factor: "預測性折扣", value: w30.predictability_score.toFixed(2), score: Math.round(predDisc * 10) / 10, note: `predictability×(-10)` })
-  if (thunder > 0) expl.push({ factor: "雷雨加成", value: 1, score: thunder, note: "+5" })
+  if (thunder > 0) {
+    const thunderNote = lightning_forces && today.thunder_risk !== 1
+      ? `+${wts.thunder_add} (閃電觀測強制 thunder_risk=1: ${today.lightning_strikes_30min_5km} 次/30min/5km)`
+      : `+${wts.thunder_add}`
+    expl.push({ factor: "雷雨加成", value: 1, score: thunder, note: thunderNote })
+  }
   if (edrAdj > 0) expl.push({ factor: "EDR湍流修正", value: today.edr?.toFixed(2) ?? "N/A", score: edrAdj, note: `EDR=${today.edr} → +${edrAdj}` })
   if (region_exposure && regionWeight !== 1.0) {
     expl.push({ factor: "地形曝露乘數", value: region_exposure, score: 0, note: `×${regionWeight} (${w_code})` })
@@ -524,8 +544,26 @@ export function evaluateRisk(
   // E — equipment score
   const e_score = computeEquipmentScore(equipment, expl, P)
 
-  // C
-  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + g_score + o_score + e_score)))
+  // C — risk_score aggregation
+  // v2.1 candidate (Unreleased): observed-lightning tier adder is added to
+  // the inner sum BEFORE the round/clamp. Applied here (outside WeatherNow)
+  // because the contribution is a separate channel — observed ground-truth
+  // active-threat signal, qualitatively different from the atmospheric-state
+  // assessment in WeatherNow. Capped above at lightning_observation_config.max_adj.
+  // When lightning_strikes_30min_5km is null/missing, lightning_adj = 0 and
+  // this collapses to the v2.0 expression. See spec §5.6.2.
+  const lightning_adj = lightningTierAdj(
+    weather_today.lightning_strikes_30min_5km, P.lightning_observation_config,
+  )
+  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + g_score + o_score + e_score + lightning_adj)))
+  if (lightning_adj > 0) {
+    expl.push({
+      factor: "閃電觀測加成",
+      value: `${weather_today.lightning_strikes_30min_5km} 次/30min/5km`,
+      score: lightning_adj,
+      note: "觀測級閃電活動 — 直接加在 r_score, 不受 weather_now_cap 限制",
+    })
+  }
   const risk_level = mapToRLevel(risk_score, P)
 
   // D — gating with risk_score for R4 split
@@ -558,5 +596,6 @@ export function evaluateRisk(
     edr_adj,
     tke_proxy,
     ground_consequence,
+    lightning_adj: lightning_adj > 0 ? lightning_adj : undefined,
   }
 }

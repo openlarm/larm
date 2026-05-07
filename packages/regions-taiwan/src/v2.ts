@@ -128,6 +128,17 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     mid_value: 0.4,
     upper_value: 0.8,
   },
+  // v2.1 candidate (Unreleased): lightning observation contribution.
+  // See spec §5.6 and docs/superpowers/plans/data-expansion-v2.1.md §5.2.
+  lightning_observation_config: {
+    thunder_force_threshold: 1,
+    tier_1_max_exclusive: 3,
+    tier_2_max_exclusive: 10,
+    tier_1_adj: 8,
+    tier_2_adj: 15,
+    tier_3_adj: 20,
+    max_adj: 25,
+  },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 12,
   r4_nogo_threshold: 92,                       // [Bug 2] R4 86–92 = COND-D2, >92 = NO-GO

@@ -113,6 +113,18 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
     mid_value: 0.4,
     upper_value: 0.8,
   },
+  // v2.1 candidate (Unreleased): lightning observation contribution.
+  // v1.0 inputs won't carry lightning_strikes_30min_5km, but the param
+  // block must exist so the engine doesn't crash when v1.0 params are passed.
+  lightning_observation_config: {
+    thunder_force_threshold: 1,
+    tier_1_max_exclusive: 3,
+    tier_2_max_exclusive: 10,
+    tier_1_adj: 8,
+    tier_2_adj: 15,
+    tier_3_adj: 20,
+    max_adj: 25,
+  },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 0,
   r4_nogo_threshold: 86,
