@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-014",
+  "name": "cape_jkg_binding_contribution",
+  "description": "v2.1 candidate (Unreleased): cape_jkg binds when capeContrib > 0 and lifts effective_instability under additive aggregation. Base TV-001 modified to wind_now=18 (band 11–18, score 10), rain_prob=30 (rule_1, score 10), instability_index=0.10 (low so CAPE is the binding signal). With cape_jkg=2000 (mid-to-upper segment): cape_contrib = 0.4 + (2000−1500)/1000 × (0.8−0.4) = 0.6. effective_instability = min(1, 0.10 + 0.6) = 0.7. Δ instComp = (0.7−0.10) × 20 = +12. Δ raw via wts.instability=0.10: +1.2. weather_now baseline 3.0 → 4.2 with CAPE. risk_score baseline = round(9 + 3.0 + 6) = 18 (R0); with CAPE = round(9 + 4.2 + 6) = 19 (R0). Decision GO both ways — channel is intrinsically narrow (×0.10 weight), test proves wiring not R-level transition. Cannot use TV-001's input verbatim because predDisc=−5.1 floors weather_now at 0 in both states. Spec: §5.2.7 (Unreleased).",
+  "spec_section": "§5.2.7",
+  "tags": ["cape", "v2.1", "binding"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.10,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 18,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 30,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80,
+      "cape_jkg": 2000
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "GO",
+    "w_code": "W0",
+    "narrative_contains": ["CAPE", "不穩定加成"]
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

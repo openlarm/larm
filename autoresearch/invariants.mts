@@ -260,6 +260,30 @@ function add(name: string, passed: boolean, msg: string) {
       `each o_score_flag_points value must be ≤ o_score_cap=${P.o_score_cap}: ${JSON.stringify(fp)}`)
 }
 
+// 7f. v2.1 candidate (Unreleased): cape_contribution_config sanity.
+//     Defends against the autoresearch agent setting nonsensical
+//     breakpoints to chase metric. The piecewise-linear contract
+//     requires lower < mid < upper and 0 ≤ mid_value < upper_value ≤ 1.
+//     The realistic-bounds check rejects values outside [100, 5000] J/kg,
+//     which encompasses the full Taiwan summer CAPE distribution.
+//     The max_value_le_1 check defends against upper_value > 1 silently
+//     wasted by the engine's `min(1, base + cape_contrib)` cap.
+{
+  const cfg = P.cape_contribution_config
+  add("cape_contribution_breakpoints_ordered",
+      cfg.lower_breakpoint < cfg.mid_breakpoint && cfg.mid_breakpoint < cfg.upper_breakpoint,
+      `cape breakpoints not ascending: lower=${cfg.lower_breakpoint} mid=${cfg.mid_breakpoint} upper=${cfg.upper_breakpoint}`)
+  add("cape_contribution_values_ordered",
+      cfg.mid_value >= 0 && cfg.mid_value < cfg.upper_value && cfg.upper_value <= 1,
+      `cape values out of order or out of [0,1]: mid_value=${cfg.mid_value}, upper_value=${cfg.upper_value}`)
+  add("cape_contribution_breakpoints_realistic",
+      cfg.lower_breakpoint >= 100 && cfg.upper_breakpoint <= 5000,
+      `cape breakpoints unrealistic: lower=${cfg.lower_breakpoint} (must be ≥100), upper=${cfg.upper_breakpoint} (must be ≤5000)`)
+  add("cape_contribution_max_value_le_1",
+      cfg.upper_value <= 1.0,
+      `cape upper_value=${cfg.upper_value} > 1.0 (would be silently capped by min(1, ·) in engine, wasting the excess)`)
+}
+
 // 7b. ROUND-2 LOCK: regime base_score ordering. The W-regimes are
 //     ordered by background risk: W0 (clear) lowest, W5 (typhoon)
 //     highest. base_score must respect that ordering — agent should
