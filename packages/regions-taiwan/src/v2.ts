@@ -8,7 +8,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
   version: "v2.0",
   units: { wind: "km/h", rain_daily_heavy_threshold_mm: 20 },
   regimes: {
-    W0: { name: "穩定高壓晴朗型",     base_score: 3,  volatility_profile: "stable",         instability_weight: 0.8, predictability_weight: -1.0, notes: "最穩定背景；常見低雨低風。" },
+    W0: { name: "穩定高壓晴朗型",     base_score: 9,  volatility_profile: "stable",         instability_weight: 0.8, predictability_weight: -1.0, notes: "最穩定背景；常見低雨低風。" },
     W1: { name: "東北季風型",         base_score: 9,  volatility_profile: "windy_stable",    instability_weight: 1.0, predictability_weight: -0.8, notes: "冬季長時間偏強風，迎風面/沿海更嚴格。" },
     W2: { name: "鋒面掃過型",         base_score: 11, volatility_profile: "moving_rain",     instability_weight: 1.1, predictability_weight: -0.6, notes: "降雨系統移動，變動性較高。" },
     W3: { name: "梅雨滯留型",         base_score: 16, volatility_profile: "persistent_rain", instability_weight: 1.2, predictability_weight: -0.3, notes: "連續多日降雨，窗口小且地面濕滑，作業彈性低。" },
@@ -25,10 +25,10 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
   },
   volatility_buffer_add: { W0: 0.00, W1: 0.02, W2: 0.03, W3: 0.04, W4: 0.05, W5: 0.06 },
   wr_matrix: {
-    W0: { R0: "go",   R1: "cond", R2: "cond", R3: "nogo", R4: "nogo" },
-    W1: { R0: "cond", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },  // [Bug 3] W1/R0: nogo→cond
+    W0: { R0: "go",   R1: "go",   R2: "cond", R3: "nogo", R4: "nogo" },
+    W1: { R0: "cond", R1: "go",   R2: "cond", R3: "cond", R4: "nogo" },  // [Bug 3] W1/R0: nogo→cond
     W2: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
-    W3: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
+    W3: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
     W4: { R0: "nogo", R1: "cond", R2: "cond", R3: "cond", R4: "nogo" },
     W5: { R0: "nogo", R1: "nogo", R2: "cond", R3: "cond", R4: "nogo" },
   },
@@ -48,7 +48,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     base: 0.05,
     score_divisor: 400,           // [Bug 6] 250→400
     regime_conf_penalty: 0.05,    // 0.04→0.05
-    ensemble_penalty: 0.10,       // 0.08→0.10
+    ensemble_penalty: 0.20,       // 0.08→0.10
     min: 0.05,
     max: 0.55,                    // [Bug 6] 0.40→0.55
   },
