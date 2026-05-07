@@ -12,6 +12,7 @@ import type {
 } from "../types/index.ts"
 import { resolveParams } from "../params/merge.js"
 import { ACTIVE_PARAMS_VERSION } from "../params/registry.js"
+import { capeToInstabilityContribution } from "./model-helpers.js"
 import type { WeatherRegimeParams } from "../params/schema.ts"
 
 // ─── Options type ─────────────────────────────────────────────────────────────
@@ -137,7 +138,15 @@ function computeWeatherNow(
 
   // v2.0: W4-specific instability scale
   const instScale = w_code === "W4" ? wts.instability_scale_w4 : wts.instability_scale
-  const instComp   = w30.instability_index * instScale
+
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // effective_instability = min(1, instability_index + cape_contrib)
+  // When cape_jkg is null/missing, cape_contrib = 0 and effective_instability
+  // collapses to instability_index — bit-identical v2.0 behaviour. See spec §5.2.7.
+  const cape_contrib = capeToInstabilityContribution(today.cape_jkg, P.cape_contribution_config)
+  const base_instability = w30.instability_index ?? 0
+  const effective_instability = Math.min(1, base_instability + cape_contrib)
+  const instComp   = effective_instability * instScale
   const predDisc   = -(w30.predictability_score * wts.predictability_discount)
   const thunder    = today.thunder_risk === 1 ? wts.thunder_add : 0
 
@@ -168,7 +177,10 @@ function computeWeatherNow(
     : `wind_score=${windScore} ×0.8 ×0.55`
   expl.push({ factor: "風速", value: `${effectiveWindKmh} km/h`, score: Math.round(wts.wind * windComp * 10) / 10, note: windNote })
   expl.push({ factor: "降雨", value: `${today.rain_prob_today_pct}% / ${today.rain_mmph_forecast} mm/h`, score: Math.round(wts.rain * rainScore * 10) / 10, note: `rain_score=${rainScore} ×${wts.rain}` })
-  expl.push({ factor: "不穩定指數", value: w30.instability_index.toFixed(2), score: Math.round(wts.instability * instComp * 10) / 10, note: `×${instScale} ×${wts.instability}${w_code === "W4" ? " (W4增強)" : ""}` })
+  expl.push({ factor: "不穩定指數", value: effective_instability.toFixed(2), score: Math.round(wts.instability * instComp * 10) / 10, note: `×${instScale} ×${wts.instability}${w_code === "W4" ? " (W4增強)" : ""}${cape_contrib > 0 ? " (含CAPE加成)" : ""}` })
+  if (cape_contrib > 0) {
+    expl.push({ factor: "CAPE 不穩定加成", value: `${today.cape_jkg} J/kg`, score: 0, note: `對流潛勢 → +${cape_contrib.toFixed(2)} 不穩定貢獻 (與 30d index 加成 取 min(1, ·))` })
+  }
   expl.push({ factor: "預測性折扣", value: w30.predictability_score.toFixed(2), score: Math.round(predDisc * 10) / 10, note: `predictability×(-10)` })
   if (thunder > 0) expl.push({ factor: "雷雨加成", value: 1, score: thunder, note: "+5" })
   if (edrAdj > 0) expl.push({ factor: "EDR湍流修正", value: today.edr?.toFixed(2) ?? "N/A", score: edrAdj, note: `EDR=${today.edr} → +${edrAdj}` })

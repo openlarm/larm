@@ -322,6 +322,7 @@ Today's forecast or real-time weather.
 | `wind_direction_deg` | number \| optional | `[0, 360)` | degrees | 0 = N, 90 = E, etc. |
 | `edr` | number \| null \| optional | `[0, ∞)` or null | — | Eddy Dissipation Rate. |
 | `local_hour` | integer \| null \| optional | `[0, 23]` | — | Local hour for W4 time-of-day multiplier. |
+| `cape_jkg` | number \| null \| optional | `[0, ∞)` or null | J/kg | **v2.1 candidate (Unreleased)** — Convective Available Potential Energy at the mission hour. NULL falls back to v2.0 behaviour (instability_index alone). See §5.2.4.1. |
 | `cwa_cross` | object \| optional | — | — | CWA cross-validation payload (opaque; informative). |
 | `jma_cross` | object \| optional | — | — | JMA cross-validation payload (opaque; informative). |
 
@@ -696,11 +697,69 @@ inst_scale =
     P.weather_now_weights.instability_scale_w4  if w_code == "W4"
     else P.weather_now_weights.instability_scale
 
-inst_comp = w30.instability_index * inst_scale
+# v2.1 candidate (Unreleased): CAPE-driven additive contribution.
+# When today.cape_jkg is null/missing, cape_contrib = 0 and
+# effective_instability collapses to instability_index — bit-identical
+# v2.0 behaviour. See §5.2.4.1 for the helper definition.
+cape_contrib = cape_to_instability_contribution(today.cape_jkg,
+                                                P.cape_contribution_config)
+base_instability = w30.instability_index if w30.instability_index is not None else 0
+effective_instability = min(1, base_instability + cape_contrib)
+
+inst_comp = effective_instability * inst_scale
 ```
 
 Taiwan reference values: `instability_scale = 20`,
 `instability_scale_w4 = 28`. Both are [heuristic, no empirical source].
+
+The `effective_instability = min(1, base + cape_contrib)` aggregation
+preserves the engine assumption that the instability signal lives in
+`[0, 1]`. When `cape_jkg` is absent, the formula collapses to the
+v2.0 expression `inst_comp = w30.instability_index * inst_scale`
+exactly. See `docs/superpowers/plans/data-expansion-v2.1.md §5.1` for
+rationale and `MODEL_CHANGELOG.md [Unreleased]` for the activation
+note.
+
+#### §5.2.4.1 CAPE-to-instability contribution (v2.1 candidate, Unreleased)
+
+> **Status:** non-normative until v2.1 publishes. Conformance vectors
+> TV-001..TV-012 are unaffected — they have no `cape_jkg` field, so
+> `cape_contrib = 0` and §5.2.4 reduces to its v2.0 form. TV-013
+> verifies the null-fallback identity; TV-014 verifies the binding
+> contribution.
+
+Piecewise-linear mapping from `cape_jkg` (J/kg) to a 0..1
+instability-equivalent contribution:
+
+```
+function cape_to_instability_contribution(cape_jkg, cfg):
+    if cape_jkg is None or cape_jkg <= cfg.lower_breakpoint:
+        return 0
+    if cape_jkg >= cfg.upper_breakpoint:
+        return cfg.upper_value
+    if cape_jkg <= cfg.mid_breakpoint:
+        frac = (cape_jkg - cfg.lower_breakpoint)
+             / (cfg.mid_breakpoint - cfg.lower_breakpoint)
+        return frac * cfg.mid_value
+    frac = (cape_jkg - cfg.mid_breakpoint)
+         / (cfg.upper_breakpoint - cfg.mid_breakpoint)
+    return cfg.mid_value + frac * (cfg.upper_value - cfg.mid_value)
+```
+
+Taiwan reference values:
+
+| Field              | Default | Taiwan summer interpretation         |
+|--------------------|--------:|--------------------------------------|
+| `lower_breakpoint` |     500 | below: stable atmosphere             |
+| `mid_breakpoint`   |    1500 | marginal instability                 |
+| `upper_breakpoint` |    2500 | severe (saturates at upper_value)    |
+| `mid_value`        |     0.4 | contribution at mid_breakpoint       |
+| `upper_value`      |     0.8 | contribution at upper_breakpoint     |
+
+All five are [heuristic, no empirical source]; derived from
+operational ranges in `docs/superpowers/plans/data-expansion-v2.1.md`
+§5.1 and Taiwan summer convective climatology. Region adapters MAY
+override any of the five via `WeatherRegimeParams.cape_contribution_config`.
 
 #### §5.2.5 Predictability discount (normative)
 

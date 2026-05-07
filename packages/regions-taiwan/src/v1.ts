@@ -103,6 +103,16 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
     long_mission_critical_min_days: 7,
     long_mission_warn_min_days: 4,
   },
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // v1.0 inputs won't carry cape_jkg, but the param block must exist so the
+  // engine doesn't crash when v1.0 params are passed.
+  cape_contribution_config: {
+    lower_breakpoint: 500,
+    mid_breakpoint: 1500,
+    upper_breakpoint: 2500,
+    mid_value: 0.4,
+    upper_value: 0.8,
+  },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 0,
   r4_nogo_threshold: 86,

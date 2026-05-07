@@ -50,6 +50,19 @@ export interface WeatherTodayInput {
   wind_direction_deg?: number    // Wind direction in degrees (0=N, 90=E, 180=S, 270=W)
   edr?: number | null            // v2.0: Eddy Dissipation Rate (turbulence, 0–1+)
   local_hour?: number | null     // v2.0: local hour (0–23) for W4 time-of-day multiplier
+  /**
+   * v2.1 candidate (Unreleased): Convective Available Potential Energy at the
+   * mission hour, J/kg. From Open-Meteo /v1/forecast hourly=cape. Forward-looking
+   * instability proxy. NULL is acceptable for inputs from sources that do not
+   * provide CAPE; engine falls back to `weather_30d.instability_index` alone.
+   *
+   * Typical Taiwan summer ranges:
+   *   0–500 J/kg   stable
+   *   500–1500     marginal
+   *   1500–2500    moderate, thunderstorm potential
+   *   2500+        severe
+   */
+  cape_jkg?: number | null
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
   jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }

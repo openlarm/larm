@@ -119,6 +119,19 @@ export interface OScoreFlagPoints {
   long_mission_warn_min_days: number     // default 4 (mission_days >= this)
 }
 
+// v2.1 candidate (Unreleased): CAPE-driven instability contribution config.
+// Piecewise-linear mapping from cape_jkg (J/kg) to a 0..1 instability-equivalent
+// value, additively combined with weather_30d.instability_index in the engine
+// via `effective_instability = min(1, instability_index + cape_contrib)`.
+// See spec §5.2.7 (Unreleased) and docs/superpowers/plans/data-expansion-v2.1.md §5.1.
+export interface CapeContributionConfig {
+  lower_breakpoint: number  // J/kg below which contribution = 0 (default 500)
+  mid_breakpoint: number    // J/kg where contribution = mid_value     (default 1500)
+  upper_breakpoint: number  // J/kg at/above which contribution = upper_value (default 2500)
+  mid_value: number         // contribution at mid_breakpoint, 0..1    (default 0.4)
+  upper_value: number       // contribution at upper_breakpoint, 0..1  (default 0.8)
+}
+
 export type RLevelKey = "R0" | "R1" | "R2" | "R3" | "R4"
 export type WRDecision = "go" | "cond" | "nogo"
 
@@ -150,6 +163,8 @@ export interface WeatherRegimeParams {
   e_score_config: EScoreConfig
   o_score_cap: number
   o_score_flag_points: OScoreFlagPoints
+  // v2.1 candidate (Unreleased)
+  cape_contribution_config: CapeContributionConfig
   w5_typhoon_trend_threshold: number   // default 3.6 (avg annual typhoons)
   w5_typhoon_trend_bonus: number       // default 2
   r4_nogo_threshold: number            // default 92 (R4 score above this = hard NO-GO)

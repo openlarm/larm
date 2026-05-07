@@ -49,6 +49,7 @@ export type {
   EDRThreshold,
   GScoreConfig,
   EScoreConfig,
+  CapeContributionConfig,
   RLevelKey,
   WRDecision,
   WeatherRegimeParams,
@@ -75,4 +76,5 @@ export {
   getWRDecision,
   completionForRL,
   simpleRiskFromW,
+  capeToInstabilityContribution,
 } from "./engines/model-helpers.js"

@@ -4,7 +4,7 @@
 // Step5Weather.tsx. They are now the single source of truth, reading
 // thresholds from WeatherRegimeParams so the /admin/params UI can override them.
 
-import type { WeatherRegimeParams } from "../params/schema.ts"
+import type { WeatherRegimeParams, CapeContributionConfig } from "../params/schema.ts"
 import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "../types/index.ts"
 
 /** UI-side W-code inference from a single forecast day + 30-day background.
@@ -50,4 +50,29 @@ export function simpleRiskFromW(w: WeatherType): RiskLevel {
     W0: "R0", W1: "R1", W2: "R1", W3: "R2", W4: "R2", W5: "R3",
   }
   return map[w]
+}
+
+/**
+ * v2.1 candidate (Unreleased): map cape_jkg (Convective Available Potential
+ * Energy, J/kg) to a 0..1 instability-equivalent contribution via piecewise
+ * linear interpolation through (lower→0), (mid→mid_value), (upper→upper_value).
+ *
+ * Returns 0 for null/undefined input or for cape_jkg ≤ lower_breakpoint
+ * (engine fallback to weather_30d.instability_index alone — bit-identical
+ * v2.0 behaviour). Returns upper_value for cape_jkg ≥ upper_breakpoint.
+ *
+ * See spec §5.2.7 and docs/superpowers/plans/data-expansion-v2.1.md §5.1.
+ */
+export function capeToInstabilityContribution(
+  cape_jkg: number | null | undefined,
+  cfg: CapeContributionConfig,
+): number {
+  if (cape_jkg == null || cape_jkg <= cfg.lower_breakpoint) return 0
+  if (cape_jkg >= cfg.upper_breakpoint) return cfg.upper_value
+  if (cape_jkg <= cfg.mid_breakpoint) {
+    const frac = (cape_jkg - cfg.lower_breakpoint) / (cfg.mid_breakpoint - cfg.lower_breakpoint)
+    return frac * cfg.mid_value
+  }
+  const frac = (cape_jkg - cfg.mid_breakpoint) / (cfg.upper_breakpoint - cfg.mid_breakpoint)
+  return cfg.mid_value + frac * (cfg.upper_value - cfg.mid_value)
 }

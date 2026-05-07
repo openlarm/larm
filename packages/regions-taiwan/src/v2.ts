@@ -119,6 +119,15 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     long_mission_critical_min_days: 7,
     long_mission_warn_min_days: 4,
   },
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // See spec §5.2.7 and docs/superpowers/plans/data-expansion-v2.1.md §5.1.
+  cape_contribution_config: {
+    lower_breakpoint: 500,
+    mid_breakpoint: 1500,
+    upper_breakpoint: 2500,
+    mid_value: 0.4,
+    upper_value: 0.8,
+  },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 12,
   r4_nogo_threshold: 92,                       // [Bug 2] R4 86–92 = COND-D2, >92 = NO-GO
