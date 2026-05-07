@@ -154,6 +154,31 @@ function add(name: string, passed: boolean, msg: string) {
       `decision "go" must not appear at R2/R3/R4 in any regime`)
 }
 
+// 5d. ROUND-3 LOCK: wr_matrix.W{0,1,3}.R1 cells locked to spec values.
+//     Round 2 autoresearch identified flipping these cells as
+//     metric-improving but they encode LARM operational policy
+//     (under stable / monsoon / meiyu regimes, low-risk missions
+//     are released as "go" — NOT requiring conditional review).
+//     Changing this is a Spec Editors + Model Governance decision,
+//     not a calibration adjustment. Until that review concludes,
+//     the autoresearch agent must not propose changes here.
+//     Tracked: round-2 results.jsonl kept changes n=17, n=18, n=28.
+{
+  const w = P.wr_matrix
+  const w0_r1_ok = w.W0?.R1 === "go"
+  const w1_r1_ok = w.W1?.R1 === "go"
+  const w3_r1_ok = w.W3?.R1 === "nogo"
+  add("wr_matrix_w0_r1_pending_governance",
+      w0_r1_ok,
+      `wr_matrix.W0.R1 = ${JSON.stringify(w.W0?.R1)}, must remain "go" (governance review pending)`)
+  add("wr_matrix_w1_r1_pending_governance",
+      w1_r1_ok,
+      `wr_matrix.W1.R1 = ${JSON.stringify(w.W1?.R1)}, must remain "go" (governance review pending)`)
+  add("wr_matrix_w3_r1_pending_governance",
+      w3_r1_ok,
+      `wr_matrix.W3.R1 = ${JSON.stringify(w.W3?.R1)}, must remain "nogo" (governance review pending)`)
+}
+
 // 6. EDR adjustments monotonic in min_edr; top entry must not exceed hard stop
 {
   const edr = P.edr_thresholds
