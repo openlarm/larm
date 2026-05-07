@@ -44,7 +44,7 @@
         "weather_today": { "wind_now_kmh": 12, "gust_now_kmh": 20, "rain_prob_today_pct": 70, "rain_mmph_forecast": 6, "thunder_risk": 1, "forecast_confidence": 55, "cape_jkg": 2200, "lightning_strikes_30min_5km": 3 },
         "building": { "site_altitude_m": 15, "building_floors": 12, "building_height_m": 42, "facade_complexity": "medium", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "low", "region_exposure": null }
       },
-      "expected": { "decision": "COND", "r_level": "R3" }
+      "expected": { "decision": "COND", "r_level": "R3", "r_score_range": [66, 80] }
     },
     {
       "id": "CAL-005-typhoon-outer-rim",
@@ -77,7 +77,7 @@
         "weather_today": { "wind_now_kmh": 28, "gust_now_kmh": 38, "rain_prob_today_pct": 15, "rain_mmph_forecast": 0, "thunder_risk": 0, "forecast_confidence": 70, "edr": 0.55 },
         "building": { "site_altitude_m": 25, "building_floors": 35, "building_height_m": 130, "facade_complexity": "heavy", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 1, "rooftop_condition": "good", "crowd_density": "high", "region_exposure": "windward" }
       },
-      "expected": { "decision": "COND", "r_level": "R3" }
+      "expected": { "decision": "COND", "r_level": "R3", "r_score_range": [70, 82] }
     },
     {
       "id": "CAL-008-night-urgent-heritage",
@@ -241,7 +241,7 @@
         "building": { "site_altitude_m": 15, "building_floors": 12, "building_height_m": 42, "facade_complexity": "medium", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "high", "region_exposure": null },
         "operational": { "time_window": "day", "weekend": 1, "urgent_days": null, "road_closure_needed": 1, "multi_day_split": 0, "operator_experience_level": "experienced" }
       },
-      "expected": { "decision": "COND", "r_level": "R2" }
+      "expected": { "decision": "COND", "r_level": "R2", "r_score_range": [42, 55] }
     },
     {
       "id": "CAL-022-near-base-station-rf-interference",
@@ -287,7 +287,7 @@
         "weather_today": { "wind_now_kmh": 12, "gust_now_kmh": 18, "rain_prob_today_pct": 30, "rain_mmph_forecast": 0, "thunder_risk": 0, "forecast_confidence": 40 },
         "building": { "site_altitude_m": 15, "building_floors": 10, "building_height_m": 35, "facade_complexity": "medium", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "medium", "region_exposure": null }
       },
-      "expected": { "decision": "COND", "r_level": "R2", "buffer_ratio_range": [0.20, 0.40] }
+      "expected": { "decision": "COND", "r_level": "R2", "buffer_ratio_range": [0.20, 0.40], "r_score_range": [42, 55] }
     },
     {
       "id": "CAL-026-rooftop-poor-condition",
@@ -321,7 +321,7 @@
         "building": { "site_altitude_m": 15, "building_floors": 14, "building_height_m": 50, "facade_complexity": "medium", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "medium", "region_exposure": null },
         "operational": { "time_window": "day", "weekend": 0, "urgent_days": 2, "road_closure_needed": 0, "multi_day_split": 0, "operator_experience_level": "experienced" }
       },
-      "expected": { "decision": "COND", "r_level": "R2" }
+      "expected": { "decision": "COND", "r_level": "R2", "r_score_range": [42, 52] }
     },
     {
       "id": "CAL-029-multi-env-hazards-unresolved",
