@@ -18,7 +18,91 @@ existing decisions.
 
 ---
 
-## [Unreleased] — 2026-05-05
+## [Unreleased] — 2026-05-07
+
+### Added (v2.1 candidate field — additive, behaviour-preserving when null)
+
+- `WeatherTodayInput.cape_jkg` (number | null) — Convective Available
+  Potential Energy at the mission hour, J/kg. Forward-looking instability
+  proxy from Open-Meteo `/v1/forecast hourly=cape`.
+- `WeatherRegimeParams.cape_contribution_config` (5 numeric fields:
+  `lower_breakpoint`, `mid_breakpoint`, `upper_breakpoint`, `mid_value`,
+  `upper_value`). Region adapters MAY override.
+- New helper export `capeToInstabilityContribution(cape_jkg, cfg)` from
+  `@openlarm/core` (piecewise-linear).
+
+### Behaviour
+
+Engine integrates CAPE additively into the instability sub-component:
+`effective_instability = min(1, weather_30d.instability_index + cape_contrib)`.
+When `cape_jkg` is `null` or `undefined`, `cape_contrib = 0` and
+`effective_instability` collapses to `instability_index` exactly —
+**bit-identical v2.0 behaviour**. Verified by:
+- All 10 existing TV-v2.0-001 through TV-v2.0-010 conformance vectors
+  (no `cape_jkg` field; engine path unchanged).
+- TV-v2.0-013 (`cape_jkg: null` produces same output as v2.0 baseline).
+- TV-v2.0-014 (`cape_jkg: 2000` with low `instability_index=0.10` lifts
+  `risk_score` by exactly +1; channel weight `wts.instability=0.10`
+  attenuates the inner Δ instComp of +12 to a Δ raw of +1.2).
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical:
+`{ lower_breakpoint: 500, mid_breakpoint: 1500, upper_breakpoint: 2500,
+mid_value: 0.4, upper_value: 0.8 }`.
+
+### Why
+
+Round-3 autoresearch saturated at metric 0.7207, with 13 of the top
+losses sitting at the R1→R2 score-boundary cliff (no parameter lever
+can push them across without over-correcting adjacent cases —
+documented in `docs/superpowers/plans/larm-engine-shape-rfc.md` §5).
+`data-expansion-v2.1.md` §5.1 ranks `cape_jkg` first as a new-input
+disambiguator: the existing 30-day `instability_index` cannot tell a
+"stable W4 morning" from a "2500 J/kg W4 afternoon"; CAPE can.
+
+### Known limitation (also v2.1 design intent, recorded for future
+### Spec Editors review)
+
+The instability channel's outer weight (`wts.instability = 0.10`)
+attenuates CAPE's lift to ≤ +1 risk_score per case under the
+`min(1, base + cape_contrib)` aggregation. Round-3 hand-traces
+(see commit `7bd6e5f`) show CAL-004 saturates effective_instability
+to 1.0 but Δ risk_score is only +1, insufficient to cross the
+R-level boundary at score 41 or 66. **The wiring is correct; the
+metric ceiling at this round comes from channel narrowness, not
+implementation error.** Larger lift requires either (a) routing
+CAPE through a heavier additive channel parallel to `edr_adj` /
+`thunder_add`, or (b) adding the v2.1.x companion fields
+`lightning_strikes_30min_5km` and `visibility_m` so multiple
+narrow channels combine. Both are deferred for separate RFCs.
+
+### DB ingest pipeline — out of scope here
+
+End-to-end CAPE ingestion (Open-Meteo `hourly=cape` request, DB column,
+`NormalizedForecast` schema, `queryWeatherToday` surfacing) requires
+changes across `packages/ingest-sources/`, `packages/ingest-types/`, a
+SQL migration, and `packages/ingest-builder/`. Deferred to a separate
+ticket. The engine path is fully unblocked: today's missions see
+`cape_jkg = null` and behave exactly as v2.0; the DB column lights up
+in a follow-up sprint.
+
+### Spec
+
+- §3.2 Appendix A `weather_today` table — `cape_jkg` row added.
+- §5.2.4 instability sub-score pseudo-code — adds CAPE-aware path
+  with explicit null-fallback note.
+- §5.2.4.1 (NEW, Unreleased banner) — `cape_to_instability_contribution`
+  helper definition + Taiwan reference values.
+
+### References
+
+- `docs/superpowers/plans/data-expansion-v2.1.md` §5.1
+- `docs/superpowers/plans/larm-engine-shape-rfc.md` §5
+- `docs/superpowers/plans/cwa-lightning-feed-verification.md` (related v2.1.x)
+- Round-3 autoresearch findings: commit `7bd6e5f`
+
+---
+
+## [Previous Unreleased] — 2026-05-05
 
 ### Added (additive params, behaviour-preserving)
 
