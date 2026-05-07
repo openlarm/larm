@@ -20,7 +20,9 @@ existing decisions.
 
 ## [Unreleased] — 2026-05-07
 
-### Added (v2.1 candidate field — additive, behaviour-preserving when null)
+### Added (v2.1 candidate fields — additive, behaviour-preserving when null)
+
+**`cape_jkg`** (committed earlier this branch):
 
 - `WeatherTodayInput.cape_jkg` (number | null) — Convective Available
   Potential Energy at the mission hour, J/kg. Forward-looking instability
@@ -31,7 +33,23 @@ existing decisions.
 - New helper export `capeToInstabilityContribution(cape_jkg, cfg)` from
   `@openlarm/core` (piecewise-linear).
 
-### Behaviour
+**`lightning_strikes_30min_5km`** (this commit):
+
+- `WeatherTodayInput.lightning_strikes_30min_5km` (number | null) —
+  cloud-to-ground (CG) lightning strike count within 5 km radius of the
+  mission site, observed in the past 30 minutes. Source: CWA opendata
+  O-A0039-001 (KMZ feed, OGDL-Taiwan licence, see
+  `docs/superpowers/plans/cwa-lightning-feed-verification.md`).
+  Cloud-to-cloud (IC) strikes excluded.
+- `WeatherRegimeParams.lightning_observation_config` (7 numeric fields:
+  `thunder_force_threshold`, `tier_1_max_exclusive`, `tier_2_max_exclusive`,
+  `tier_1_adj`, `tier_2_adj`, `tier_3_adj`, `max_adj`).
+- New helper exports `lightningForcesThunderRisk(strikes, cfg)` and
+  `lightningTierAdj(strikes, cfg)` from `@openlarm/core`.
+- New optional output field `RiskResult.lightning_adj` (only present
+  when > 0; mirrors the `edr_adj` pattern).
+
+### Behaviour — `cape_jkg`
 
 Engine integrates CAPE additively into the instability sub-component:
 `effective_instability = min(1, weather_30d.instability_index + cape_contrib)`.
@@ -49,6 +67,36 @@ Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical:
 `{ lower_breakpoint: 500, mid_breakpoint: 1500, upper_breakpoint: 2500,
 mid_value: 0.4, upper_value: 0.8 }`.
 
+### Behaviour — `lightning_strikes_30min_5km`
+
+Engine wires lightning observations through **two independent mechanisms**:
+
+1. **Mechanism A — thunder_risk forcing** (inside WeatherNow §5.2.6).
+   When `strikes >= thunder_force_threshold`, `effective_thunder_risk` is
+   forced to 1 regardless of `today.thunder_risk`. Activates the existing
+   `weather_now_weights.thunder_add` bonus (+5 default). Observation
+   overrides forecast.
+
+2. **Mechanism B — tier adder** (in §6.1, parallel to base components).
+   Piecewise tier adjustment added directly to the inner sum *before*
+   round/clamp. Defaults: tier 1 (1–2 strikes) +8; tier 2 (3–9 strikes)
+   +15; tier 3 (≥ 10 strikes) +20; capped at `max_adj=25`. Bypasses
+   `weather_now_cap=42` because lightning is qualitatively a different
+   channel (active threat signal, not atmospheric-state assessment).
+
+When `strikes` is `null` or `undefined`, both mechanisms are no-ops and
+the engine produces bit-identical v2.0 output. When `today.thunder_risk`
+is already 1, Mechanism A is a no-op (no double-count). Verified by:
+- All 10 existing TV-v2.0-001 through TV-v2.0-010 unchanged.
+- TV-v2.0-013/014 (cape vectors) unchanged — no lightning field.
+- TV-v2.0-015 (`strikes: null` produces same output as v2.0 baseline).
+- TV-v2.0-016 (`strikes: 5` from `thunder_risk: 0` base lifts
+  `risk_score` by exactly +20 = +5 forcing inside weather_now + +15
+  tier adder; clear separation of mechanisms).
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical
+(7-field block above).
+
 ### Why
 
 Round-3 autoresearch saturated at metric 0.7207, with 13 of the top
@@ -58,6 +106,13 @@ documented in `docs/superpowers/plans/larm-engine-shape-rfc.md` §5).
 `data-expansion-v2.1.md` §5.1 ranks `cape_jkg` first as a new-input
 disambiguator: the existing 30-day `instability_index` cannot tell a
 "stable W4 morning" from a "2500 J/kg W4 afternoon"; CAPE can.
+
+`lightning_strikes_30min_5km` (§5.2 of the same plan) is the second
+v2.1 candidate, and is specifically designed to compose additively
+with `cape_jkg`. CAPE alone could not move CAL-004 past the R2→R3
+boundary at 66 (cape lifted it 52 → 53). With lightning's tier-2
++15, CAL-004 now reaches 53 + 15 = 68 → R3 → COND, matching the
+expected case outcome.
 
 ### Known limitation (also v2.1 design intent, recorded for future
 ### Spec Editors review)
@@ -75,29 +130,46 @@ CAPE through a heavier additive channel parallel to `edr_adj` /
 `lightning_strikes_30min_5km` and `visibility_m` so multiple
 narrow channels combine. Both are deferred for separate RFCs.
 
-### DB ingest pipeline — out of scope here
+### DB ingest pipelines — out of scope here
 
-End-to-end CAPE ingestion (Open-Meteo `hourly=cape` request, DB column,
-`NormalizedForecast` schema, `queryWeatherToday` surfacing) requires
-changes across `packages/ingest-sources/`, `packages/ingest-types/`, a
-SQL migration, and `packages/ingest-builder/`. Deferred to a separate
-ticket. The engine path is fully unblocked: today's missions see
-`cape_jkg = null` and behave exactly as v2.0; the DB column lights up
-in a follow-up sprint.
+End-to-end ingestion for both v2.1 candidate fields is deferred:
+
+- **CAPE**: Open-Meteo `hourly=cape` request → `NormalizedForecast`
+  schema → DB column → `queryWeatherToday` surfacing. Spans
+  `packages/ingest-sources/`, `packages/ingest-types/`, a SQL
+  migration, and `packages/ingest-builder/`.
+- **Lightning**: CWA O-A0039-001 KMZ feed → KMZ parser →
+  `NormalizedLightningEvent` schema (new) → DB table (new) → spatial
+  query (within 5 km, last 30 min) → `queryWeatherToday` surfacing.
+  Spans the same packages plus a new ingest source and a new spatial
+  index. Probably also a tile cache for high-strike-rate days.
+
+Both deferred to follow-up tickets. The engine path is fully unblocked
+for both: today's missions see `cape_jkg = null` and
+`lightning_strikes_30min_5km = null`, behaving exactly as v2.0; the DB
+columns light up in follow-up sprints.
 
 ### Spec
 
-- §3.2 Appendix A `weather_today` table — `cape_jkg` row added.
+- §3.2 Appendix A `weather_today` table — `cape_jkg` and
+  `lightning_strikes_30min_5km` rows added.
 - §5.2.4 instability sub-score pseudo-code — adds CAPE-aware path
   with explicit null-fallback note.
 - §5.2.4.1 (NEW, Unreleased banner) — `cape_to_instability_contribution`
   helper definition + Taiwan reference values.
+- §5.2.6 thunder add-on — forward-reference paragraph to Mechanism A
+  thunder forcing under Unreleased banner.
+- §5.6 (NEW top-level, Unreleased banner) — Lightning observation
+  contribution: §5.6.1 Mechanism A (thunder forcing), §5.6.2
+  Mechanism B (tier adder), §5.6.3 defaults, §5.6.4 hard-stop note.
+- §6.1 R-score formula — `lightning_adj` added to inner sum under
+  Unreleased banner.
 
 ### References
 
-- `docs/superpowers/plans/data-expansion-v2.1.md` §5.1
+- `docs/superpowers/plans/data-expansion-v2.1.md` §5.1 (cape) + §5.2 (lightning)
 - `docs/superpowers/plans/larm-engine-shape-rfc.md` §5
-- `docs/superpowers/plans/cwa-lightning-feed-verification.md` (related v2.1.x)
+- `docs/superpowers/plans/cwa-lightning-feed-verification.md`
 - Round-3 autoresearch findings: commit `7bd6e5f`
 
 ---

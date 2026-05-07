@@ -41,8 +41,8 @@
       "weight": 2.0,
       "input": {
         "weather_30d": { "wind_mean_kmh": 10, "wind_p90_kmh": 22, "gust_p90_kmh": 28, "rain_days_30": 12, "heavy_rain_days_30": 3, "instability_index": 0.85, "predictability_score": 0.4 },
-        "weather_today": { "wind_now_kmh": 12, "gust_now_kmh": 20, "rain_prob_today_pct": 70, "rain_mmph_forecast": 6, "thunder_risk": 1, "forecast_confidence": 55, "cape_jkg": 2200 },
-        "building": { "site_altitude_m": 15, "building_floors": 12, "building_height_m": 42, "facade_complexity": "moderate", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "low", "region_exposure": null }
+        "weather_today": { "wind_now_kmh": 12, "gust_now_kmh": 20, "rain_prob_today_pct": 70, "rain_mmph_forecast": 6, "thunder_risk": 1, "forecast_confidence": 55, "cape_jkg": 2200, "lightning_strikes_30min_5km": 3 },
+        "building": { "site_altitude_m": 15, "building_floors": 12, "building_height_m": 42, "facade_complexity": "medium", "clearance_m": 3, "near_hv_power": 0, "near_base_station": 0, "wind_channel_effect": 0, "rooftop_condition": "good", "crowd_density": "low", "region_exposure": null }
       },
       "expected": { "decision": "COND", "r_level": "R3" }
     },
