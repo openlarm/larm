@@ -44,6 +44,19 @@ interface CalibCase {
     decision?: Decision
     r_level?: RLevel
     buffer_ratio_range?: [number, number]
+    /**
+     * Optional continuous-quality dimension. When present, case_loss adds
+     * a small penalty (×0.1) for `predicted_r_score` outside [low, high].
+     * Lets band-internal progress show up in the metric without overpowering
+     * the categorical signals (r_level_distance ×0.5, decision_cost ×1.0).
+     *
+     * Validation rules (enforced in validateCase()):
+     *   - exactly 2 integers in [0, 100]
+     *   - low ≤ high
+     *   - if r_level is also present, range MUST sit inside r_level's band
+     *     (e.g. r_level=R3 → range ⊆ [66, 85])
+     */
+    r_score_range?: [number, number]
   }
   // Optional per-case partial override. Deep-merged onto TAIWAN_PARAMS_V2_0
   // before passing to evaluateRisk. Scope: this case only — global params
@@ -72,6 +85,60 @@ function deepMerge<T>(base: T, override: DeepPartial<T>): T {
 
 const R_ORDER: Record<RLevel, number> = { R0: 0, R1: 1, R2: 2, R3: 3, R4: 4 }
 
+// Canonical R-level bands per spec §6.1 / mapping_r_level invariant.
+// Used by validateCase() to ensure r_score_range tuples stay inside the
+// expected r_level's band.
+const R_LEVEL_BANDS: Record<RLevel, { min: number; max: number }> = {
+  R0: { min: 0,  max: 20  },
+  R1: { min: 21, max: 40  },
+  R2: { min: 41, max: 65  },
+  R3: { min: 66, max: 85  },
+  R4: { min: 86, max: 100 },
+}
+
+// Validate a calibration case at load time. Throws on any constraint
+// violation; the runner catches and reports via metric_score=-1.
+// Strict by design — silent skips would re-create the typo-class bug
+// documented in CALIBRATION_LESSONS.md (2026-05-07 entry).
+function validateCase(c: CalibCase): void {
+  const e = c.expected
+  if (e.decision && !["GO", "COND", "NO_GO"].includes(e.decision)) {
+    throw new Error(`case ${c.id}: decision must be GO|COND|NO_GO, got ${JSON.stringify(e.decision)}`)
+  }
+  if (e.r_level && !["R0", "R1", "R2", "R3", "R4"].includes(e.r_level)) {
+    throw new Error(`case ${c.id}: r_level must be R0..R4, got ${JSON.stringify(e.r_level)}`)
+  }
+  if (e.buffer_ratio_range) {
+    const r = e.buffer_ratio_range
+    if (!Array.isArray(r) || r.length !== 2)
+      throw new Error(`case ${c.id}: buffer_ratio_range must be [low, high], got ${JSON.stringify(r)}`)
+    const [lo, hi] = r
+    if (typeof lo !== "number" || typeof hi !== "number")
+      throw new Error(`case ${c.id}: buffer_ratio_range entries must be numbers, got [${lo}, ${hi}]`)
+    if (lo < 0 || hi > 1) throw new Error(`case ${c.id}: buffer_ratio_range must be in [0, 1], got [${lo}, ${hi}]`)
+    if (lo > hi) throw new Error(`case ${c.id}: buffer_ratio_range low (${lo}) > high (${hi})`)
+  }
+  if (e.r_score_range) {
+    const r = e.r_score_range
+    if (!Array.isArray(r) || r.length !== 2)
+      throw new Error(`case ${c.id}: r_score_range must be [low, high], got ${JSON.stringify(r)}`)
+    const [lo, hi] = r
+    if (!Number.isInteger(lo) || !Number.isInteger(hi))
+      throw new Error(`case ${c.id}: r_score_range entries must be integers, got [${lo}, ${hi}]`)
+    if (lo < 0 || hi > 100)
+      throw new Error(`case ${c.id}: r_score_range must be in [0, 100], got [${lo}, ${hi}]`)
+    if (lo > hi)
+      throw new Error(`case ${c.id}: r_score_range low (${lo}) > high (${hi})`)
+    if (e.r_level) {
+      const band = R_LEVEL_BANDS[e.r_level]
+      if (lo < band.min)
+        throw new Error(`case ${c.id}: r_score_range low (${lo}) below ${e.r_level} band floor (${band.min})`)
+      if (hi > band.max)
+        throw new Error(`case ${c.id}: r_score_range high (${hi}) above ${e.r_level} band ceiling (${band.max})`)
+    }
+  }
+}
+
 // Asymmetric: under-calling risk costs more than over-calling.
 const DECISION_COST: Record<string, number> = {
   "GO|GO": 0.0,    "GO|COND": 0.3,    "GO|NO_GO": 1.0,
@@ -89,6 +156,10 @@ function bucket(d: string): Decision {
 function caseLoss(pred: any, expected: CalibCase["expected"]) {
   let loss = 0
   const detail: Record<string, any> = {}
+
+  // Always expose predicted_r_score for human triage of any worst_miss,
+  // regardless of whether r_score_range is set on the case.
+  detail.predicted_r_score = pred.risk_score
 
   if (expected.r_level) {
     const predR = pred.risk_level as RLevel
@@ -117,6 +188,19 @@ function caseLoss(pred: any, expected: CalibCase["expected"]) {
     loss += 0.3 * pen
     detail.predicted_buffer_ratio = b
     detail.buffer_penalty = pen
+  }
+
+  // r_score_range: continuous-quality dimension. Penalty 0.1 × distance/100
+  // outside the band. Designed deliberately quiet so categorical signals
+  // (r_level_distance ×0.5, decision_cost ×1.0) stay dominant.
+  if (expected.r_score_range) {
+    const [lo, hi] = expected.r_score_range
+    let pen = 0
+    if (pred.risk_score < lo) pen = (lo - pred.risk_score) / 100
+    else if (pred.risk_score > hi) pen = (pred.risk_score - hi) / 100
+    loss += 0.1 * pen
+    detail.expected_r_score_range = [lo, hi]
+    detail.r_score_range_penalty = pen
   }
 
   return { loss, detail }
@@ -149,6 +233,21 @@ function main() {
   let weightedLoss = 0
   const perCase: any[] = []
   let worst: any = null
+
+  // Validate every case up-front. Strict by design: a single bad case
+  // fails the whole run rather than silently skipping (see
+  // CALIBRATION_LESSONS.md 2026-05-07 entry on why silent fall-through
+  // was the prior failure mode).
+  try {
+    for (const c of cases) validateCase(c)
+  } catch (e) {
+    console.log("METRIC_JSON: " + JSON.stringify({
+      metric_score: -1,
+      error: `case validation failed: ${String(e instanceof Error ? e.message : e)}`,
+      n_cases: cases.length,
+    }))
+    process.exit(2)
+  }
 
   for (const c of cases) {
     let pred

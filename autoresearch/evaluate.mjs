@@ -222,7 +222,19 @@ if (calibration.n_cases != null) {
 }
 if (calibration.worst_miss) {
   const wm = calibration.worst_miss
-  console.log(`worst_miss        : ${wm.id} (loss=${wm.loss}, pred ${wm.predicted_decision || "?"}/${wm.predicted_r_level || "?"}, exp ${wm.expected_decision || "?"}/${wm.expected_r_level || "?"})`)
+  const headline = `worst_miss        : ${wm.id} (loss=${wm.loss}, pred ${wm.predicted_decision || "?"}/${wm.predicted_r_level || "?"}, exp ${wm.expected_decision || "?"}/${wm.expected_r_level || "?"})`
+  console.log(headline)
+  if (wm.predicted_r_score != null) {
+    const parts = [`predicted r_score ${wm.predicted_r_score}`]
+    if (wm.expected_r_score_range) {
+      const [lo, hi] = wm.expected_r_score_range
+      parts.push(`expected range [${lo}, ${hi}]`)
+      if (wm.r_score_range_penalty != null && wm.r_score_range_penalty > 0) {
+        parts.push(`range penalty +${(0.1 * wm.r_score_range_penalty).toFixed(3)}`)
+      }
+    }
+    console.log(`                    ${parts.join(", ")}`)
+  }
 }
 console.log(`elapsed_sec       : ${out.elapsed_sec}`)
 
