@@ -5,6 +5,72 @@ A log of methodology corrections applied to
 
 ---
 
+## 2026-05-07 — Systemic `facade_complexity` typo across 20 of 29 cases
+
+`cases.json` was authored with `"facade_complexity": "moderate"` (16 cases) and
+`"complex"` (4 cases), but the `Complexity` TypeScript enum is
+`"light" | "medium" | "heavy"`. The engine's lookup
+`complexityMap[b.facade_complexity] ?? 0` silently fell through to **0**
+instead of 4 (medium) or 6 (heavy).
+
+**Affected cases** (20 of 29):
+- "moderate" → "medium": CAL-005, 006, 010, 013, 014, 016, 020, 021, 022, 023, 024, 025, 026, 027, 028, 029
+- "complex" → "heavy": CAL-003, 007, 008, 015
+
+The CAL-004 instance was found and fixed earlier in the same day (commit
+`1a87141`, lightning task) because it was needed to verify the lightning
+integration's predicted +1 risk_score. The full sweep happened in commit
+**`<sweep-commit>`**.
+
+### Metric impact: smaller than expected
+
+- Pre-sweep metric: 0.7402 (after lightning + cape + W0/buffer round-3 keeps)
+- Post-sweep metric: **0.7431** (Δ = **+0.0029**)
+
+The user predicted +0.05–0.10 from the sweep. Reality was 17× smaller. **Why
+the predicted jump didn't materialize**: most affected cases have
+`risk_score` sitting deeper inside an R-band than the +4 (medium) or +6
+(heavy) lift can close to the next integer R-level boundary. Decision cost
+(0.3 for GO/COND mismatch) is the dominant loss term, and decision is
+gated on R-level — so within-band score lifts don't reduce loss. Only
+**CAL-007** (35F supertall canyon, R2→R3, +6 from "complex"→"heavy" was
+enough to cross the 65→66 boundary) moved a full R-level. CAL-020
+partially improved (R0→R1) but stayed wrong on decision.
+
+### Implication for round-1/2/3 conclusions
+
+Round-1 (`metric_score 0.9286` ceiling), round-2 (0.7956), and round-3
+(0.7207) were all computed against the corrupted cases. The conclusions
+hold qualitatively (engine-shape limits, R1→R2 cliff, governance review
+items) but the absolute metric numbers in those reports are slightly off
+from what the engine would produce against correct data. Re-running those
+rounds against the corrected cases would produce the same shape of
+findings with a small constant offset.
+
+### Worst_miss reshuffle
+
+None substantive. Top losses post-sweep:
+
+1. CAL-023 (engine-shape, unchanged)
+2. CAL-016 wind-just-below-hard-stop (unchanged)
+3. CAL-003, 008, 012, 013, 014, 021, 025, 027, 028 — all R1/GO → R2/COND
+   at loss 0.425, the persistent R1→R2 cliff that round-3 documented and
+   that v2.1's narrow-channel features can't break alone.
+
+CAL-007 dropped from the worst_miss list (now at 0.125), demonstrating
+that getting the *correct* enum value matters when the case's score is
+near a boundary.
+
+### Process going forward
+
+Add to round-4 program: a Zod-or-equivalent validation step at
+`calibration-runner.mts` startup that asserts every `cases.json` input
+parses against the `LARMInput` type. This class of bug should fail the
+load, not silently degrade the test suite. Tracked as a follow-up in
+`docs/superpowers/plans/`.
+
+---
+
 ## 2026-05-05 — CAL-029 unresolvable via env-hazards alone; not a calibration target
 
 When implementing the params_override mechanism in `calibration-runner.mts`,
