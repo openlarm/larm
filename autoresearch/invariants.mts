@@ -284,6 +284,35 @@ function add(name: string, passed: boolean, msg: string) {
       `cape upper_value=${cfg.upper_value} > 1.0 (would be silently capped by min(1, ·) in engine, wasting the excess)`)
 }
 
+// 7g. v2.1 candidate (Unreleased): lightning_observation_config sanity.
+//     Defends against the autoresearch agent setting nonsensical
+//     thresholds, adjustments, or caps that would either silently
+//     cap a tier (max_adj < tier_3_adj) or saturate a single channel
+//     (unbounded max_adj). The piecewise tier contract requires
+//     thunder_force_threshold ≤ tier_1_max_exclusive < tier_2_max_exclusive
+//     and 0 ≤ tier_1_adj ≤ tier_2_adj ≤ tier_3_adj.
+{
+  const lc = P.lightning_observation_config
+  add("lightning_observation_thresholds_ordered",
+      lc.thunder_force_threshold <= lc.tier_1_max_exclusive
+      && lc.tier_1_max_exclusive < lc.tier_2_max_exclusive,
+      `lightning thresholds not ordered: force=${lc.thunder_force_threshold} ` +
+      `tier_1_max_exclusive=${lc.tier_1_max_exclusive} tier_2_max_exclusive=${lc.tier_2_max_exclusive}`)
+  add("lightning_observation_thresholds_realistic",
+      lc.thunder_force_threshold >= 0 && lc.tier_2_max_exclusive <= 50,
+      `lightning thresholds unrealistic: force=${lc.thunder_force_threshold} (must be ≥0), ` +
+      `tier_2_max_exclusive=${lc.tier_2_max_exclusive} (must be ≤50)`)
+  add("lightning_observation_adj_ordered",
+      lc.tier_1_adj >= 0 && lc.tier_1_adj <= lc.tier_2_adj && lc.tier_2_adj <= lc.tier_3_adj,
+      `lightning adj not ordered: tier_1=${lc.tier_1_adj} tier_2=${lc.tier_2_adj} tier_3=${lc.tier_3_adj}`)
+  add("lightning_observation_max_adj_bounded",
+      lc.max_adj <= 30,
+      `lightning max_adj=${lc.max_adj} > 30 (defends against unbounded single-channel saturation)`)
+  add("lightning_observation_max_adj_at_least_tier_3",
+      lc.max_adj >= lc.tier_3_adj,
+      `lightning max_adj=${lc.max_adj} < tier_3_adj=${lc.tier_3_adj} (silently caps tier 3, defeating its purpose)`)
+}
+
 // 7b. ROUND-2 LOCK: regime base_score ordering. The W-regimes are
 //     ordered by background risk: W0 (clear) lowest, W5 (typhoon)
 //     highest. base_score must respect that ordering — agent should

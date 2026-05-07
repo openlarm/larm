@@ -1,0 +1,51 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-015",
+  "name": "lightning_strikes_fallback_when_null",
+  "description": "v2.1 candidate (Unreleased): lightning_strikes_30min_5km is a nullable WeatherTodayInput field. When null, both Mechanism A (thunder_risk forcing) and Mechanism B (tier adder) are skipped — engine produces bit-identical output to v2.0 baseline. lightningForcesThunderRisk(null, ...) = false, lightningTierAdj(null, ...) = 0. This vector clones TV-001's input verbatim, adds lightning_strikes_30min_5km: null, and asserts the same GO + W0 outcome. Spec: §5.6 (Unreleased).",
+  "spec_section": "§5.6",
+  "tags": ["lightning", "v2.1", "fallback", "back-compat"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80,
+      "lightning_strikes_30min_5km": null
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "GO",
+    "risk_level_in": ["R0", "R1"],
+    "w_code": "W0",
+    "regime_confidence": 1
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}
