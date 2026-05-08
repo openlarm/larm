@@ -5,6 +5,49 @@ A log of methodology corrections applied to
 
 ---
 
+## 2026-05-07 — Visibility v2.1 candidate field landed; `hard_stop_reason` RFC opportunity surfaced
+
+`visibility_m` landed as the third v2.1 candidate input (alongside
+`cape_jkg` and `lightning_strikes_30min_5km`). Two channels: a §7.1(4)
+VLOS hard-stop gate (`visibility_m < visibility_m_min` ⇒ `NO_GO`) and a
+§5.7 `risk_score` tier adder (marginal/poor bands). Default Taiwan
+parameters: `visibility_m_min = 1500` m, tier thresholds 5000/3000/1500 m,
+adders +5/+10, capped at +15.
+
+**`hard_stop_reason` RFC opportunity (out of scope for this task).**
+During planning, the agent discovered that `hard_stop_reason` does **not**
+exist anywhere in the codebase or spec — hard-stop information is currently
+surfaced **only** through the human-readable Chinese text in
+`result.controls[]`. TV-002 (wind), TV-003 (rain), TV-005 (EDR), and the
+new TV-019 (visibility) all use `controls_match_regex` to identify which
+gate fired. Introducing a structured optional field
+`hard_stop_reason?: "wind" | "rain" | "edr" | "visibility"` on `RiskResult`
+would be a cross-cutting RFC that:
+
+- adds a new optional output field to `RiskResult` (back-compat-safe);
+- retroactively updates TV-002/003/005 to also assert the new field;
+- gives downstream consumers (ops dashboards, calibration runners) a stable
+  identifier for the firing gate without parsing localized text;
+- becomes a useful classifier for the calibration runner's
+  `classifyHardStop()` function in `packages/validator/src/runner.ts`,
+  which currently does Chinese-text substring matching.
+
+This is **explicitly out of scope** for the visibility v2.1 candidate task
+(which is intentionally scoped to a single new input field plus its two
+channels). It is logged here as a future spec hygiene opportunity for
+Spec Editors to consider.
+
+**Metric impact (visibility-specific).** Projected and observed delta
+≈ +0.0002 (0.7413 → 0.7415). Driver is CAL-007 `r_score_range_penalty`
+dropping from 0.17 → 0.12 as `risk_score` lifts 53 → 58 (still R2/COND,
+loss 0.142 → 0.137). CAL-009 and CAL-013 do **not** improve under
+visibility alone because of the documented R1→R2 cliff and the
+`wr_matrix.W3.R1 = "nogo"` lock; the visibility input is still added to
+those cases for operational realism (meiyu visibility reduction, monsoon
+haze) per the §10.2.3 visibility-floor band justification.
+
+---
+
 ## 2026-05-07 — Metric design RFC: `r_score_range` dimension added
 
 The categorical `case_loss` formula (r_level_distance × 0.5 +
