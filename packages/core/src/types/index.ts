@@ -85,6 +85,28 @@ export interface WeatherTodayInput {
    *   (B) Mechanism B — tiered direct adder applied to risk_score after aggregation
    */
   lightning_strikes_30min_5km?: number | null
+  /**
+   * v2.1 candidate (Unreleased): horizontal visibility at the mission
+   * location/hour, in metres. Drives both:
+   *   - VLOS preflight gate (Channel 1, §7.1) — hard stop NO_GO when
+   *     visibility_m < P.thresholds.hard_stop.visibility_m_min (default 1500 m).
+   *   - r_score tier adder (Channel 2, §5.7) — additive contribution
+   *     mapped through P.visibility_observation_config tiers.
+   *
+   * Sources: Open-Meteo /v1/forecast hourly=visibility (m, instant);
+   * NOAA aviation-weather METAR (RCTP/RCSS); CWA O-A0003-001.
+   *
+   * NULL when unavailable; both channels skip and the engine produces
+   * bit-identical v2.0 output.
+   *
+   * Range: number ≥ 0 (typical max in practice ~50000 m). Taiwan
+   * operational reference bands:
+   *   < 1500   → hard stop (VLOS regulatory floor)
+   *   1500–3000 → poor (+10 r_score)
+   *   3000–5000 → marginal (+5 r_score)
+   *   ≥ 5000   → healthy (+0)
+   */
+  visibility_m?: number | null
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
   jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }
@@ -245,6 +267,7 @@ export interface RiskResult {
   ground_consequence?: number     // SORA GRC ground consequence (0..6)
   // ── v2.1 candidate (Unreleased) ───────────────────────────────────────────
   lightning_adj?: number          // Lightning observation tier adder (0..max_adj, default cap 25)
+  visibility_adj?: number          // Visibility tier adder (0..max_adj, default cap 15)
 }
 
 /** W regime classification result with confidence */

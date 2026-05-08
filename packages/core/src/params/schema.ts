@@ -137,6 +137,34 @@ export interface LightningObservationConfig {
   max_adj: number                    // cap on the contribution (default 25)
 }
 
+// v2.1 candidate (Unreleased): visibility-observation contribution config.
+// Two channels feed off two separate config blocks:
+//   (Channel 1) thresholds.hard_stop.visibility_m_min — gate. Distinct
+//       from this block because it lives in the existing hard-stop record.
+//   (Channel 2) the tier adder below — applied to risk_score AFTER
+//       component aggregation but BEFORE clamp/r_level mapping.
+//
+// Tier semantics (defaults: healthy_min=5000, marginal_min=3000, poor_min=1500):
+//   visibility_m == null OR ≥ healthy_min  → 0
+//   visibility_m ≥ marginal_min            → marginal_adj  (+5)
+//   visibility_m ≥ poor_min                → poor_adj      (+10)
+//   (visibility_m < poor_min is unreachable from this helper because
+//    the gate at thresholds.hard_stop.visibility_m_min returns NO_GO
+//    first; the tier helper returns poor_adj for that range as a
+//    defensive default in case a region adapter sets visibility_m_min
+//    below poor_min.)
+//
+// Bounded above by max_adj. See spec §5.7 (Unreleased) and
+// docs/superpowers/plans/data-expansion-v2.1.md §5.3.
+export interface VisibilityObservationConfig {
+  healthy_min: number    // metres at/above which contribution = 0  (default 5000)
+  marginal_min: number   // metres at/above which contribution = marginal_adj (default 3000)
+  poor_min: number       // metres at/above which contribution = poor_adj (default 1500)
+  marginal_adj: number   // points added in marginal band  (default 5)
+  poor_adj: number       // points added in poor band      (default 10)
+  max_adj: number        // cap on the contribution        (default 15)
+}
+
 // v2.1 candidate (Unreleased): CAPE-driven instability contribution config.
 // Piecewise-linear mapping from cape_jkg (J/kg) to a 0..1 instability-equivalent
 // value, additively combined with weather_30d.instability_index in the engine
@@ -168,7 +196,7 @@ export interface WeatherRegimeParams {
       rule_2: { rain_prob_gte_pct: number; rain_prob_lte_pct: number; or_mmph_gte: number; or_mmph_lte: number; score: number }
       rule_3: { rain_prob_gt_pct: number; or_mmph_gt: number; score: number }
     }
-    hard_stop: { wind_kmh: number; rain_mmph: number; rain_prob_pct: number; edr_threshold: number }
+    hard_stop: { wind_kmh: number; rain_mmph: number; rain_prob_pct: number; edr_threshold: number; visibility_m_min?: number }
     mapping_r_level: RLevelRow[]
   }
   wr_matrix: Record<WCode, Record<RLevelKey, WRDecision>>
@@ -184,6 +212,7 @@ export interface WeatherRegimeParams {
   // v2.1 candidate (Unreleased)
   cape_contribution_config: CapeContributionConfig
   lightning_observation_config: LightningObservationConfig
+  visibility_observation_config: VisibilityObservationConfig
   w5_typhoon_trend_threshold: number   // default 3.6 (avg annual typhoons)
   w5_typhoon_trend_bonus: number       // default 2
   r4_nogo_threshold: number            // default 92 (R4 score above this = hard NO-GO)

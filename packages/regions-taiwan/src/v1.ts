@@ -66,7 +66,7 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
       rule_2: { rain_prob_gte_pct: 40, rain_prob_lte_pct: 60, or_mmph_gte: 3,  or_mmph_lte: 10, score: 25 },
       rule_3: { rain_prob_gt_pct: 60, or_mmph_gt: 10, score: 45 },
     },
-    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 999 },
+    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 999, visibility_m_min: 1500 },
     mapping_r_level: [
       { min: 0,  max: 20,  r_level: "R0" },
       { min: 21, max: 40,  r_level: "R1" },
@@ -124,6 +124,17 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
     tier_2_adj: 15,
     tier_3_adj: 20,
     max_adj: 25,
+  },
+  // v2.1 candidate (Unreleased): visibility observation contribution.
+  // v1.0 inputs won't carry visibility_m, but the param block must exist
+  // so the engine doesn't crash when v1.0 params are passed.
+  visibility_observation_config: {
+    healthy_min: 5000,
+    marginal_min: 3000,
+    poor_min: 1500,
+    marginal_adj: 5,
+    poor_adj: 10,
+    max_adj: 15,
   },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 0,

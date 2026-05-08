@@ -16,6 +16,7 @@ import {
   capeToInstabilityContribution,
   lightningForcesThunderRisk,
   lightningTierAdj,
+  visibilityTierAdj,
 } from "./model-helpers.js"
 import type { WeatherRegimeParams } from "../params/schema.ts"
 
@@ -419,6 +420,22 @@ function computeGating(
     return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: [`EDR ${today.edr.toFixed(2)} > ${hs.edr_threshold}（極端湍流），禁止起飛`] }
   }
 
+  // v2.1 candidate (Unreleased): visibility (VLOS) hard stop.
+  // See spec §7.1 (Unreleased). When visibility_m_min is unset on the
+  // params record (older region adapters), this is a no-op.
+  if (
+    today.visibility_m != null &&
+    hs.visibility_m_min != null &&
+    today.visibility_m < hs.visibility_m_min
+  ) {
+    return {
+      decision: "NO_GO",
+      requires_approval: false,
+      conditional_tier: null,
+      controls: [`能見度 ${today.visibility_m} m < ${hs.visibility_m_min} m（VLOS 下限），禁止起飛`],
+    }
+  }
+
   // [Bug 2] R4 split: >92 = hard NO-GO, 86–92 = CONDITIONAL-D2
   if (risk_score > P.r4_nogo_threshold) {
     return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: [`綜合風險 R4（${risk_score}分 > ${P.r4_nogo_threshold}），任務不可排程`] }
@@ -555,13 +572,30 @@ export function evaluateRisk(
   const lightning_adj = lightningTierAdj(
     weather_today.lightning_strikes_30min_5km, P.lightning_observation_config,
   )
-  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + g_score + o_score + e_score + lightning_adj)))
+  // v2.1 candidate (Unreleased): visibility tier adder (Channel 2). Added
+  // to the inner sum BEFORE the round/clamp, in parallel with lightning_adj.
+  // When visibility_m is null/missing OR ≥ healthy_min, visibility_adj = 0
+  // and the formula collapses to the previous shape. See spec §5.7.
+  const visibility_adj = visibilityTierAdj(
+    weather_today.visibility_m, P.visibility_observation_config,
+  )
+  const risk_score = Math.min(100, Math.max(0, Math.round(
+    base_w + weather_now + g_score + o_score + e_score + lightning_adj + visibility_adj,
+  )))
   if (lightning_adj > 0) {
     expl.push({
       factor: "閃電觀測加成",
       value: `${weather_today.lightning_strikes_30min_5km} 次/30min/5km`,
       score: lightning_adj,
       note: "觀測級閃電活動 — 直接加在 r_score, 不受 weather_now_cap 限制",
+    })
+  }
+  if (visibility_adj > 0) {
+    expl.push({
+      factor: "能見度修正",
+      value: `${weather_today.visibility_m} m`,
+      score: visibility_adj,
+      note: "低能見度（VLOS 邊界） — 直接加在 r_score, 不受 weather_now_cap 限制",
     })
   }
   const risk_level = mapToRLevel(risk_score, P)
@@ -597,5 +631,6 @@ export function evaluateRisk(
     tke_proxy,
     ground_consequence,
     lightning_adj: lightning_adj > 0 ? lightning_adj : undefined,
+    visibility_adj: visibility_adj > 0 ? visibility_adj : undefined,
   }
 }

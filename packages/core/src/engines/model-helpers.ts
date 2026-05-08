@@ -4,7 +4,12 @@
 // Step5Weather.tsx. They are now the single source of truth, reading
 // thresholds from WeatherRegimeParams so the /admin/params UI can override them.
 
-import type { WeatherRegimeParams, CapeContributionConfig, LightningObservationConfig } from "../params/schema.ts"
+import type {
+  WeatherRegimeParams,
+  CapeContributionConfig,
+  LightningObservationConfig,
+  VisibilityObservationConfig,
+} from "../params/schema.ts"
 import type { WeatherTodayInput, Weather30dInput, WeatherType, RiskLevel } from "../types/index.ts"
 
 /** UI-side W-code inference from a single forecast day + 30-day background.
@@ -116,5 +121,52 @@ export function lightningTierAdj(
   if (strikes < cfg.tier_1_max_exclusive)      adj = cfg.tier_1_adj
   else if (strikes < cfg.tier_2_max_exclusive) adj = cfg.tier_2_adj
   else                                         adj = cfg.tier_3_adj
+  return Math.min(cfg.max_adj, adj)
+}
+
+/**
+ * v2.1 candidate (Unreleased): does observed visibility trigger the
+ * VLOS hard-stop gate? Returns true iff visibility_m is non-null and
+ * strictly less than the configured minimum. Used by the gating engine
+ * path to short-circuit to NO_GO with a visibility-named control.
+ *
+ * When `visibility_m_min` is undefined on the params record (e.g. older
+ * region-adapter literals), the gate is a no-op — returns false.
+ *
+ * See spec §7.1 (Unreleased).
+ */
+export function visibilityForcesNoGo(
+  visibility_m: number | null | undefined,
+  visibility_m_min: number | undefined,
+): boolean {
+  if (visibility_m == null || visibility_m_min == null) return false
+  return visibility_m < visibility_m_min
+}
+
+/**
+ * v2.1 candidate (Unreleased): tiered direct adder applied to risk_score
+ * after component aggregation but before clamp/r_level mapping. Returns
+ * 0 for null/undefined or healthy visibility. Capped above by max_adj
+ * (defends against single-channel saturation). See spec §5.7.
+ *
+ * Tier mapping (defaults: healthy_min=5000, marginal_min=3000, poor_min=1500,
+ *                         marginal_adj=5, poor_adj=10, max_adj=15):
+ *   null OR visibility_m ≥ healthy_min   → 0
+ *   visibility_m ≥ marginal_min          → marginal_adj
+ *   visibility_m ≥ poor_min              → poor_adj
+ *   visibility_m < poor_min              → poor_adj  (defensive — gate
+ *                                                     normally fires first)
+ *
+ * Boundary semantics: lower-bound inclusive (`≥`), parallel to
+ * edr_thresholds. visibility_m == healthy_min returns 0 (healthy band).
+ */
+export function visibilityTierAdj(
+  visibility_m: number | null | undefined,
+  cfg: VisibilityObservationConfig,
+): number {
+  if (visibility_m == null || visibility_m >= cfg.healthy_min) return 0
+  let adj: number
+  if (visibility_m >= cfg.marginal_min) adj = cfg.marginal_adj
+  else                                  adj = cfg.poor_adj
   return Math.min(cfg.max_adj, adj)
 }

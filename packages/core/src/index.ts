@@ -51,6 +51,7 @@ export type {
   EScoreConfig,
   CapeContributionConfig,
   LightningObservationConfig,
+  VisibilityObservationConfig,
   RLevelKey,
   WRDecision,
   WeatherRegimeParams,
@@ -80,4 +81,6 @@ export {
   capeToInstabilityContribution,
   lightningForcesThunderRisk,
   lightningTierAdj,
+  visibilityForcesNoGo,
+  visibilityTierAdj,
 } from "./engines/model-helpers.js"
