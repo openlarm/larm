@@ -313,6 +313,43 @@ function add(name: string, passed: boolean, msg: string) {
       `lightning max_adj=${lc.max_adj} < tier_3_adj=${lc.tier_3_adj} (silently caps tier 3, defeating its purpose)`)
 }
 
+// 7h. v2.1 candidate (Unreleased): visibility_observation_config sanity.
+//     Defends against the autoresearch agent setting nonsensical
+//     thresholds, adjustments, or caps that would either silently
+//     cap a tier (max_adj < poor_adj) or saturate a single channel
+//     (unbounded max_adj).
+{
+  const vc = P.visibility_observation_config
+  add("visibility_observation_thresholds_ordered",
+      vc.poor_min < vc.marginal_min && vc.marginal_min < vc.healthy_min,
+      `visibility thresholds not ascending: poor=${vc.poor_min} ` +
+      `marginal=${vc.marginal_min} healthy=${vc.healthy_min}`)
+  add("visibility_observation_thresholds_realistic",
+      vc.poor_min >= 500 && vc.healthy_min <= 10000,
+      `visibility thresholds unrealistic: poor=${vc.poor_min} (must be ≥500), ` +
+      `healthy=${vc.healthy_min} (must be ≤10000)`)
+  add("visibility_observation_adj_ordered",
+      vc.marginal_adj >= 0 && vc.marginal_adj <= vc.poor_adj,
+      `visibility adj not ordered: marginal=${vc.marginal_adj} poor=${vc.poor_adj}`)
+  add("visibility_observation_max_adj_bounded",
+      vc.max_adj <= 20,
+      `visibility max_adj=${vc.max_adj} > 20 (defends against unbounded saturation)`)
+  add("visibility_observation_max_adj_at_least_poor",
+      vc.max_adj >= vc.poor_adj,
+      `visibility max_adj=${vc.max_adj} < poor_adj=${vc.poor_adj} (silently caps poor band)`)
+}
+
+// 7i. v2.1 candidate (Unreleased): hard_stop.visibility_m_min sanity.
+//     Behavioural invariant: visibility_m < visibility_m_min must always
+//     force NO_GO regardless of everything else.
+{
+  const hs = P.thresholds.hard_stop
+  add("hard_stop_visibility_floor",
+      hs.visibility_m_min == null
+      || (hs.visibility_m_min >= 500 && hs.visibility_m_min <= 3000),
+      `hard_stop.visibility_m_min=${hs.visibility_m_min} outside [500, 3000]`)
+}
+
 // 7b. ROUND-2 LOCK: regime base_score ordering. The W-regimes are
 //     ordered by background risk: W0 (clear) lowest, W5 (typhoon)
 //     highest. base_score must respect that ordering — agent should
@@ -419,6 +456,21 @@ try {
       `rain=15mm/h@85% returned decision=${r.decision}, expected NO_GO`)
 } catch (e) {
   add("rain_hard_stop_triggers", false, `evaluateRisk threw: ${String(e)}`)
+}
+
+// 13. v2.1 candidate (Unreleased): visibility < visibility_m_min must always force NO_GO
+try {
+  const r = evaluateRisk(
+    {
+      ...benignInput,
+      weather_today: { ...benignInput.weather_today, visibility_m: 800 } as any,
+    },
+    { params: P },
+  )
+  add("visibility_hard_stop_triggers", r.decision === "NO_GO",
+      `visibility_m=800 returned decision=${r.decision}, expected NO_GO`)
+} catch (e) {
+  add("visibility_hard_stop_triggers", false, `evaluateRisk threw: ${String(e)}`)
 }
 
 // 11. risk_score monotonic in wind_now_kmh

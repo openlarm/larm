@@ -1,0 +1,51 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-019",
+  "name": "visibility_hard_stop",
+  "description": "v2.1 candidate (Unreleased): visibility_m=800 is below the §7.1(4) VLOS hard-stop floor of 1500 m. Engine MUST return decision=NO_GO with conditional_tier=null and a controls entry naming visibility/VLOS/能見度. The gate fires before the R4-threshold check. result.visibility_adj is populated alongside the NO_GO (the engine still runs §5.7 even when the gate fires; see §5.7.4 for rationale). Spec: §7.1(4) (Unreleased).",
+  "spec_section": "§7.1",
+  "tags": ["visibility", "v2.1", "hard-stop", "VLOS"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.2,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 5,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 10,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80,
+      "visibility_m": 800
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "NO_GO",
+    "conditional_tier": null,
+    "requires_approval": false,
+    "controls_match_regex": "能見度|VLOS|800|1500"
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}
