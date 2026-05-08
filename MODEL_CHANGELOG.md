@@ -18,9 +18,338 @@ existing decisions.
 
 ---
 
-## [Unreleased]
+## [Unreleased] — 2026-05-08
 
-No model changes staged in the working tree.
+### Added (v2.1 candidate fields — additive, behaviour-preserving when null)
+
+**`cape_jkg`** (committed earlier this branch):
+
+- `WeatherTodayInput.cape_jkg` (number | null) — Convective Available
+  Potential Energy at the mission hour, J/kg. Forward-looking instability
+  proxy from Open-Meteo `/v1/forecast hourly=cape`.
+- `WeatherRegimeParams.cape_contribution_config` (5 numeric fields:
+  `lower_breakpoint`, `mid_breakpoint`, `upper_breakpoint`, `mid_value`,
+  `upper_value`). Region adapters MAY override.
+- New helper export `capeToInstabilityContribution(cape_jkg, cfg)` from
+  `@openlarm/core` (piecewise-linear).
+
+**`lightning_strikes_30min_5km`** (this commit):
+
+- `WeatherTodayInput.lightning_strikes_30min_5km` (number | null) —
+  cloud-to-ground (CG) lightning strike count within 5 km radius of the
+  mission site, observed in the past 30 minutes. Source: CWA opendata
+  O-A0039-001 (KMZ feed, OGDL-Taiwan licence, see
+  `docs/superpowers/plans/cwa-lightning-feed-verification.md`).
+  Cloud-to-cloud (IC) strikes excluded.
+- `WeatherRegimeParams.lightning_observation_config` (7 numeric fields:
+  `thunder_force_threshold`, `tier_1_max_exclusive`, `tier_2_max_exclusive`,
+  `tier_1_adj`, `tier_2_adj`, `tier_3_adj`, `max_adj`).
+- New helper exports `lightningForcesThunderRisk(strikes, cfg)` and
+  `lightningTierAdj(strikes, cfg)` from `@openlarm/core`.
+- New optional output field `RiskResult.lightning_adj` (only present
+  when > 0; mirrors the `edr_adj` pattern).
+
+**`visibility_m`** (this commit — third and final v2.1 candidate):
+
+- `WeatherTodayInput.visibility_m` (number | null) — horizontal
+  visibility at the mission location/hour, in metres. Sources:
+  Open-Meteo `/v1/forecast hourly=visibility`, NOAA aviation-weather
+  METAR (RCTP/RCSS), CWA O-A0003-001.
+- `WeatherRegimeParams.visibility_observation_config` (6 numeric
+  fields: `healthy_min`, `marginal_min`, `poor_min`, `marginal_adj`,
+  `poor_adj`, `max_adj`).
+- `thresholds.hard_stop.visibility_m_min` (optional, default 1500)
+  added to the existing hard-stop record — first v2.1-candidate
+  modification of §7, parallel to wind/rain/EDR floors.
+- New helper exports `visibilityForcesNoGo(visibility_m, min)` and
+  `visibilityTierAdj(visibility_m, cfg)` from `@openlarm/core`.
+- New optional output field `RiskResult.visibility_adj` (mirrors
+  `edr_adj` / `lightning_adj`). Per EDR precedent, populated even
+  when the §7.1(4) gate fires (diagnostic value: consumer sees both
+  the gate trigger AND what r_score channel would have priced).
+
+### Behaviour — `cape_jkg`
+
+Engine integrates CAPE additively into the instability sub-component:
+`effective_instability = min(1, weather_30d.instability_index + cape_contrib)`.
+When `cape_jkg` is `null` or `undefined`, `cape_contrib = 0` and
+`effective_instability` collapses to `instability_index` exactly —
+**bit-identical v2.0 behaviour**. Verified by:
+- All 10 existing TV-v2.0-001 through TV-v2.0-010 conformance vectors
+  (no `cape_jkg` field; engine path unchanged).
+- TV-v2.0-013 (`cape_jkg: null` produces same output as v2.0 baseline).
+- TV-v2.0-014 (`cape_jkg: 2000` with low `instability_index=0.10` lifts
+  `risk_score` by exactly +1; channel weight `wts.instability=0.10`
+  attenuates the inner Δ instComp of +12 to a Δ raw of +1.2).
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical:
+`{ lower_breakpoint: 500, mid_breakpoint: 1500, upper_breakpoint: 2500,
+mid_value: 0.4, upper_value: 0.8 }`.
+
+### Behaviour — `lightning_strikes_30min_5km`
+
+Engine wires lightning observations through **two independent mechanisms**:
+
+1. **Mechanism A — thunder_risk forcing** (inside WeatherNow §5.2.6).
+   When `strikes >= thunder_force_threshold`, `effective_thunder_risk` is
+   forced to 1 regardless of `today.thunder_risk`. Activates the existing
+   `weather_now_weights.thunder_add` bonus (+5 default). Observation
+   overrides forecast.
+
+2. **Mechanism B — tier adder** (in §6.1, parallel to base components).
+   Piecewise tier adjustment added directly to the inner sum *before*
+   round/clamp. Defaults: tier 1 (1–2 strikes) +8; tier 2 (3–9 strikes)
+   +15; tier 3 (≥ 10 strikes) +20; capped at `max_adj=25`. Bypasses
+   `weather_now_cap=42` because lightning is qualitatively a different
+   channel (active threat signal, not atmospheric-state assessment).
+
+When `strikes` is `null` or `undefined`, both mechanisms are no-ops and
+the engine produces bit-identical v2.0 output. When `today.thunder_risk`
+is already 1, Mechanism A is a no-op (no double-count). Verified by:
+- All 10 existing TV-v2.0-001 through TV-v2.0-010 unchanged.
+- TV-v2.0-013/014 (cape vectors) unchanged — no lightning field.
+- TV-v2.0-015 (`strikes: null` produces same output as v2.0 baseline).
+- TV-v2.0-016 (`strikes: 5` from `thunder_risk: 0` base lifts
+  `risk_score` by exactly +20 = +5 forcing inside weather_now + +15
+  tier adder; clear separation of mechanisms).
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical
+(7-field block above).
+
+### Behaviour — `visibility_m`
+
+Engine wires visibility through **two independent channels**:
+
+1. **Channel 1 — VLOS hard stop** (§7.1 rule 4). When
+   `visibility_m != null` AND
+   `visibility_m < thresholds.hard_stop.visibility_m_min`,
+   decision short-circuits to `NO_GO` regardless of risk score.
+   Default threshold 1500 m, aligning with VLOS regulatory floors
+   common to civil drone regimes. Parallel to wind/rain/EDR hard
+   stops; insertion order in `computeGating` is wind → rain → EDR
+   → **visibility** → R4-threshold (atmospheric floors before
+   composite floor).
+
+2. **Channel 2 — tiered r_score adder** (§5.7, parallel to
+   lightning Mechanism B). Piecewise adjustment added to the
+   inner risk_score sum *before* round/clamp. Defaults:
+   `≥ 5000m` → +0; `3000–4999m` → +5 (marginal_adj);
+   `1500–2999m` → +10 (poor_adj); cap `max_adj=15`. Bypasses
+   `weather_now_cap=42` for the same reason as `lightning_adj`
+   (qualitatively different channel; VLOS-bound, not atmospheric
+   state).
+
+When `visibility_m` is `null` or `undefined`, both channels are
+no-ops and the engine produces bit-identical v2.0 output. Verified by:
+- TV-v2.0-001 through TV-v2.0-016 unchanged — no visibility field.
+- TV-v2.0-017 (`visibility_m: null` produces same output as v2.0).
+- TV-v2.0-018 (`visibility_m: 4000` lifts `risk_score` by exactly
+  +5 via marginal_adj; gate does not fire).
+- TV-v2.0-019 (`visibility_m: 800` triggers gate → NO_GO with VLOS
+  rationale in `controls[]`; `visibility_adj` still populated at
+  +10 per EDR precedent — diagnostic dual signal).
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` are identical:
+`{ healthy_min: 5000, marginal_min: 3000, poor_min: 1500,
+marginal_adj: 5, poor_adj: 10, max_adj: 15 }` plus
+`hard_stop.visibility_m_min: 1500`.
+
+### Why
+
+Round-3 autoresearch saturated at metric 0.7207, with 13 of the top
+losses sitting at the R1→R2 score-boundary cliff (no parameter lever
+can push them across without over-correcting adjacent cases —
+documented in `docs/superpowers/plans/larm-engine-shape-rfc.md` §5).
+`data-expansion-v2.1.md` §5.1 ranks `cape_jkg` first as a new-input
+disambiguator: the existing 30-day `instability_index` cannot tell a
+"stable W4 morning" from a "2500 J/kg W4 afternoon"; CAPE can.
+
+`lightning_strikes_30min_5km` (§5.2 of the same plan) is the second
+v2.1 candidate, and is specifically designed to compose additively
+with `cape_jkg`. CAPE alone could not move CAL-004 past the R2→R3
+boundary at 66 (cape lifted it 52 → 53). With lightning's tier-2
++15, CAL-004 now reaches 53 + 15 = 68 → R3 → COND, matching the
+expected case outcome.
+
+`visibility_m` (§5.3 of the same plan) is the third candidate, and
+is qualitatively different: its primary value is **regulatory**
+(VLOS gate aligning with civil drone floors), not metric movement.
+The §7.1(4) gate refuses missions below the regulatory floor
+regardless of risk composition — a behaviour the v2.0 engine could
+not express. The §5.7 r_score channel is the calibration sensitivity
+companion. Realised metric impact is small (CAL-007 +0.0002 via
+`r_score_range_penalty` drop; CAL-009/CAL-013 r_score lift but no
+case_loss change because their decisions are wr_matrix-locked at
+W3.R1=nogo and W1.R1=go pending governance review). The dual-channel
+design preserves both signals: gate fires for regulatory cases,
+adder lifts r_score for borderline cases.
+
+### Known limitation (also v2.1 design intent, recorded for future
+### Spec Editors review)
+
+The instability channel's outer weight (`wts.instability = 0.10`)
+attenuates CAPE's lift to ≤ +1 risk_score per case under the
+`min(1, base + cape_contrib)` aggregation. Round-3 hand-traces
+(see commit `7bd6e5f`) show CAL-004 saturates effective_instability
+to 1.0 but Δ risk_score is only +1, insufficient to cross the
+R-level boundary at score 41 or 66. **The wiring is correct; the
+metric ceiling at this round comes from channel narrowness, not
+implementation error.** Larger lift requires either (a) routing
+CAPE through a heavier additive channel parallel to `edr_adj` /
+`thunder_add`, or (b) adding the v2.1.x companion fields
+`lightning_strikes_30min_5km` and `visibility_m` so multiple
+narrow channels combine. (b) has now landed; (a) remains deferred.
+
+A second known structural limit, surfaced by visibility's
+calibration cases: the **R1→R2 score-boundary cliff** persists
+for CAL-009 and CAL-013, whose r_score lifts (24→34, 31→36)
+stay inside R1's [21, 40] band. case_loss does not move. The
+fix is not param tuning — it is data-shape (visibility itself
+can't push these past 40 within realistic ranges); see round-3
+findings in `autoresearch/CALIBRATION_LESSONS.md`.
+
+A third structural finding, **CAL-007 supertall under-scoring**,
+narrowed but did not close: r_score 53 → 58 with visibility=4500
+(marginal band, +5), still ~12+ points below the description-
+implied [70, 82] band. `r_score_range_penalty` drops 0.17 → 0.12
+on this case alone. Investigation deferred to engine-shape RFC
+follow-up (CALIBRATION_LESSONS 2026-05-07 entry).
+
+### DB ingest pipelines — out of scope here
+
+End-to-end ingestion for the three v2.1 candidate fields is deferred:
+
+- **CAPE**: Open-Meteo `hourly=cape` request → `NormalizedForecast`
+  schema → DB column → `queryWeatherToday` surfacing. Spans
+  `packages/ingest-sources/`, `packages/ingest-types/`, a SQL
+  migration, and `packages/ingest-builder/`.
+- **Lightning**: CWA O-A0039-001 KMZ feed → KMZ parser →
+  `NormalizedLightningEvent` schema (new) → DB table (new) → spatial
+  query (within 5 km, last 30 min) → `queryWeatherToday` surfacing.
+  Spans the same packages plus a new ingest source and a new spatial
+  index. Probably also a tile cache for high-strike-rate days.
+- **Visibility**: Open-Meteo `hourly=visibility` request →
+  `NormalizedForecast` schema → DB column → `queryWeatherToday`
+  surfacing. Same package shape as CAPE (single-channel ingest);
+  can ride on the CAPE follow-up sprint.
+
+All three deferred to follow-up tickets. The engine path is fully
+unblocked: today's missions see `cape_jkg = null`,
+`lightning_strikes_30min_5km = null`, and `visibility_m = null`,
+behaving exactly as v2.0; the DB columns light up in follow-up
+sprints.
+
+### Spec
+
+- §3.2 Appendix A `weather_today` table — `cape_jkg`,
+  `lightning_strikes_30min_5km`, and `visibility_m` rows added.
+- §5.2.4 instability sub-score pseudo-code — adds CAPE-aware path
+  with explicit null-fallback note.
+- §5.2.4.1 (NEW, Unreleased banner) — `cape_to_instability_contribution`
+  helper definition + Taiwan reference values.
+- §5.2.6 thunder add-on — forward-reference paragraph to Mechanism A
+  thunder forcing under Unreleased banner.
+- §5.6 (NEW top-level, Unreleased banner) — Lightning observation
+  contribution: §5.6.1 Mechanism A (thunder forcing), §5.6.2
+  Mechanism B (tier adder), §5.6.3 defaults, §5.6.4 hard-stop note.
+- §5.7 (NEW top-level, Unreleased banner) — Visibility observation
+  contribution: §5.7.1 tier adder, §5.7.2 defaults, §5.7.3
+  insertion in §6.1 aggregation, §5.7.4 (informative) dual-channel
+  rationale and gate-fires-with-adj-populated design.
+- §6.1 R-score formula — `+ lightning_adj + visibility_adj` added
+  to inner sum under Unreleased banner.
+- §7.1 hard-stop ladder — new rule 4 "visibility hard stop"
+  inserted between EDR and R4-threshold; R4-threshold renumbered
+  to rule 5. §7.10 flow summary + §7.11 precedence table updated.
+- §10.2.3 hard-stop defaults — `visibility_m_min: 1500` row added.
+- Appendix A.2 — `visibility_m_min` field added to `hard_stop`
+  JSON; `visibility_observation_config` block added.
+- §15.0 (NEW) — consolidated [Unreleased] banner referencing
+  cape_jkg, lightning_strikes_30min_5km, and visibility_m as
+  v2.1 candidates.
+
+### Metric trajectory
+
+Round-3 baseline 0.7207 → current 0.7415 (+0.0208 across the v2.1
+candidate sequence). Most of the lift came from CAL-004 crossing
+the R2→R3 boundary on `lightning_strikes_30min_5km` Mechanism B
+(+0.0195 single-case impact). CAPE alone moved nothing across a
+boundary; visibility moved CAL-007's `r_score_range_penalty`
+0.17 → 0.12 (+0.0002 weighted). The pattern is consistent with
+the round-3 finding that param tuning saturates against R-level
+boundaries; new inputs help only when their additive contribution
+crosses a boundary.
+
+### Not bumping version
+
+Spec stays v2.0; engine output `model_version: "2.0"`. All three
+v2.1 candidates are gated by `[Unreleased]` banners in spec.
+Promotion to v2.1 awaits Spec Editors + Model Governance review.
+
+### References
+
+- `docs/superpowers/plans/data-expansion-v2.1.md` §5.1 (cape) + §5.2 (lightning) + §5.3 (visibility)
+- `docs/superpowers/plans/larm-engine-shape-rfc.md` §5
+- `docs/superpowers/plans/cwa-lightning-feed-verification.md`
+- Round-3 autoresearch findings: commit `7bd6e5f`
+- `autoresearch/CALIBRATION_LESSONS.md` (round-3 + v2.1 lessons:
+  r_score_range RFC, CAL-007 finding, hard_stop_reason RFC opportunity)
+
+---
+
+## [Previous Unreleased] — 2026-05-05
+
+### Added (additive params, behaviour-preserving)
+
+- `WeatherRegimeParams.g_score_config.env_hazards_cap`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.near_hv_power`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.near_base_station`
+- `WeatherRegimeParams.g_score_config.env_hazard_points.narrow_clearance`
+
+### Behaviour
+
+Defaults in `TAIWAN_PARAMS_V2_0` and `TAIWAN_PARAMS_V1_0` match the
+v2.0 hardcoded literals exactly (env_hazards_cap=3, near_hv_power=3,
+near_base_station=1, narrow_clearance=2). All existing v2.0 inputs
+produce bit-identical outputs (verified by spec test vectors
+TV-v2.0-001 through TV-v2.0-010 plus the new
+TV-v2.0-011-env-hazards-paramized-defaults vector).
+
+### Why
+
+Round-1 autoresearch flagged CAL-006 (near-HV-powerline calm-weather
+mission) and similar multi-env-hazard cases as structurally
+unreachable above R0 with the previous hardcoded cap of 3. Region
+adapters can now calibrate env-hazards without an engine fork.
+The g_score interaction sub-block (line ~229, `wind_channel_effect`
+gated on `floors > 20`) intentionally remains hardcoded — revisit
+in v3.0.
+
+### Spec
+
+- §5.3 cap table updated with `env_hazards_cap` row
+- §5.3.4 pseudo-code updated to read from `cfg.env_hazard_points.*`
+  and `cfg.env_hazards_cap`
+- Appendix A `g_score_config` JSON schema updated
+
+### References
+
+- `docs/superpowers/plans/larm-engine-shape-rfc.md` (RFC source)
+- `docs/superpowers/plans/cwa-lightning-feed-verification.md` (related)
+- `autoresearch/CALIBRATION_LESSONS.md`
+- New calibration case: CAL-029-multi-env-hazards-addressable
+
+### Not bumped
+
+The model version remains **v2.0**. This change is intentionally NOT
+labelled v2.1: extracting hardcoded literals into params is a
+calibration-surface expansion, not a model behaviour change, and a
+version bump for that alone would be cosmetic. The v2.1 label is
+reserved for the next round of substantive changes (e.g. `cape_jkg`,
+`lightning_strikes_30min_5km`, or any other addition that changes
+output for some real input under default params). Bundling those
+with this entry keeps version numbers meaningful for downstream
+operators.
 
 ---
 

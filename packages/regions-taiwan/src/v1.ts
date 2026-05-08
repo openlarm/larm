@@ -66,7 +66,7 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
       rule_2: { rain_prob_gte_pct: 40, rain_prob_lte_pct: 60, or_mmph_gte: 3,  or_mmph_lte: 10, score: 25 },
       rule_3: { rain_prob_gt_pct: 60, or_mmph_gt: 10, score: 45 },
     },
-    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 999 },
+    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 999, visibility_m_min: 1500 },
     mapping_r_level: [
       { min: 0,  max: 20,  r_level: "R0" },
       { min: 21, max: 40,  r_level: "R1" },
@@ -77,9 +77,65 @@ export const TAIWAN_PARAMS_V1_0: WeatherRegimeParams = {
   },
   // v2.0 fields with v1.0-compatible defaults
   edr_thresholds: [],
-  g_score_config: { structural_cap: 25, ground_consequence_cap: 0, tke_proxy_cap: 0, env_interaction_cap: 14, total_cap: 25 },
+  g_score_config: {
+    structural_cap: 25, ground_consequence_cap: 0, tke_proxy_cap: 0,
+    env_interaction_cap: 14, total_cap: 25,
+    env_hazards_cap: 3,
+    env_hazard_points: { near_hv_power: 3, near_base_station: 1, narrow_clearance: 2 },
+  },
   e_score_config: { cap: 10, block_points: 4, warn_points: 2 },
   o_score_cap: 15,
+  o_score_flag_points: {
+    night: 5,
+    weekend: 2,
+    road_closure: 3,
+    urgent_critical: 5,
+    urgent_warn: 3,
+    urgent_critical_max_days: 3,
+    urgent_warn_max_days: 7,
+    crowd_high: 3,
+    crowd_medium: 2,
+    operator_junior: 2,
+    operator_mid: 0,
+    operator_senior: 0,
+    long_mission_critical: 3,
+    long_mission_warn: 2,
+    long_mission_critical_min_days: 7,
+    long_mission_warn_min_days: 4,
+  },
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // v1.0 inputs won't carry cape_jkg, but the param block must exist so the
+  // engine doesn't crash when v1.0 params are passed.
+  cape_contribution_config: {
+    lower_breakpoint: 500,
+    mid_breakpoint: 1500,
+    upper_breakpoint: 2500,
+    mid_value: 0.4,
+    upper_value: 0.8,
+  },
+  // v2.1 candidate (Unreleased): lightning observation contribution.
+  // v1.0 inputs won't carry lightning_strikes_30min_5km, but the param
+  // block must exist so the engine doesn't crash when v1.0 params are passed.
+  lightning_observation_config: {
+    thunder_force_threshold: 1,
+    tier_1_max_exclusive: 3,
+    tier_2_max_exclusive: 10,
+    tier_1_adj: 8,
+    tier_2_adj: 15,
+    tier_3_adj: 20,
+    max_adj: 25,
+  },
+  // v2.1 candidate (Unreleased): visibility observation contribution.
+  // v1.0 inputs won't carry visibility_m, but the param block must exist
+  // so the engine doesn't crash when v1.0 params are passed.
+  visibility_observation_config: {
+    healthy_min: 5000,
+    marginal_min: 3000,
+    poor_min: 1500,
+    marginal_adj: 5,
+    poor_adj: 10,
+    max_adj: 15,
+  },
   w5_typhoon_trend_threshold: 3.6,
   w5_typhoon_trend_bonus: 0,
   r4_nogo_threshold: 86,

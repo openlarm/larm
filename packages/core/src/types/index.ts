@@ -50,6 +50,63 @@ export interface WeatherTodayInput {
   wind_direction_deg?: number    // Wind direction in degrees (0=N, 90=E, 180=S, 270=W)
   edr?: number | null            // v2.0: Eddy Dissipation Rate (turbulence, 0–1+)
   local_hour?: number | null     // v2.0: local hour (0–23) for W4 time-of-day multiplier
+  /**
+   * v2.1 candidate (Unreleased): Convective Available Potential Energy at the
+   * mission hour, J/kg. From Open-Meteo /v1/forecast hourly=cape. Forward-looking
+   * instability proxy. NULL is acceptable for inputs from sources that do not
+   * provide CAPE; engine falls back to `weather_30d.instability_index` alone.
+   *
+   * Typical Taiwan summer ranges:
+   *   0–500 J/kg   stable
+   *   500–1500     marginal
+   *   1500–2500    moderate, thunderstorm potential
+   *   2500+        severe
+   */
+  cape_jkg?: number | null
+  /**
+   * v2.1 candidate (Unreleased): cloud-to-ground (CG) lightning strike count
+   * within 5 km radius of the mission site, observed in the past 30 minutes.
+   * From CWA opendata O-A0039-001 (KMZ feed). NOT a forecast — observed
+   * ground-truth signal. Cloud-to-cloud (IC) strikes are excluded; CG is
+   * what threatens drones at altitude.
+   *
+   * NULL when unavailable; engine falls back to forecast-only thunder_risk
+   * with no lightning adder.
+   *
+   * Range: integer >= 0.
+   * Typical Taiwan ranges:
+   *   0      clear / no activity
+   *   1–2    distant
+   *   3–9    active storm in vicinity
+   *   10+    intense activity
+   *
+   * Two engine effects (see spec §5.6):
+   *   (A) Mechanism A — forces thunder_risk = 1 when strikes ≥ thunder_force_threshold
+   *   (B) Mechanism B — tiered direct adder applied to risk_score after aggregation
+   */
+  lightning_strikes_30min_5km?: number | null
+  /**
+   * v2.1 candidate (Unreleased): horizontal visibility at the mission
+   * location/hour, in metres. Drives both:
+   *   - VLOS preflight gate (Channel 1, §7.1) — hard stop NO_GO when
+   *     visibility_m < P.thresholds.hard_stop.visibility_m_min (default 1500 m).
+   *   - r_score tier adder (Channel 2, §5.7) — additive contribution
+   *     mapped through P.visibility_observation_config tiers.
+   *
+   * Sources: Open-Meteo /v1/forecast hourly=visibility (m, instant);
+   * NOAA aviation-weather METAR (RCTP/RCSS); CWA O-A0003-001.
+   *
+   * NULL when unavailable; both channels skip and the engine produces
+   * bit-identical v2.0 output.
+   *
+   * Range: number ≥ 0 (typical max in practice ~50000 m). Taiwan
+   * operational reference bands:
+   *   < 1500   → hard stop (VLOS regulatory floor)
+   *   1500–3000 → poor (+10 r_score)
+   *   3000–5000 → marginal (+5 r_score)
+   *   ≥ 5000   → healthy (+0)
+   */
+  visibility_m?: number | null
   cwa_cross?: CWACrossValidation // CWA cross-validation data for this day
   jma_cross?: JMACrossValidation // JMA cross-validation data for this day
 }
@@ -208,6 +265,9 @@ export interface RiskResult {
   edr_adj?: number                // EDR turbulence adjustment (0..20)
   tke_proxy?: number              // TKE proxy add (0..3)
   ground_consequence?: number     // SORA GRC ground consequence (0..6)
+  // ── v2.1 candidate (Unreleased) ───────────────────────────────────────────
+  lightning_adj?: number          // Lightning observation tier adder (0..max_adj, default cap 25)
+  visibility_adj?: number          // Visibility tier adder (0..max_adj, default cap 15)
 }
 
 /** W regime classification result with confidence */

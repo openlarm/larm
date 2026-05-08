@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schemas/test-vector.schema.json",
+  "id": "TV-v2.0-018",
+  "name": "visibility_marginal_tier",
+  "description": "v2.1 candidate (Unreleased): visibility_m=4000 sits in the marginal band (3000 ≤ x < 5000). §7.1(4) gate does NOT fire (4000 ≥ 1500). §5.7 tier adder returns marginal_adj=+5. Δ risk_score = +5, no decision flip from baseline. Spec: §5.7 (Unreleased).",
+  "spec_section": "§5.7",
+  "tags": ["visibility", "v2.1", "binding", "marginal"],
+  "input": {
+    "weather_30d": {
+      "wind_mean_kmh": 8,
+      "wind_p90_kmh": 20,
+      "gust_p90_kmh": null,
+      "rain_days_30": 3,
+      "heavy_rain_days_30": 0,
+      "instability_index": 0.10,
+      "predictability_score": 0.85
+    },
+    "weather_today": {
+      "wind_now_kmh": 18,
+      "gust_now_kmh": null,
+      "rain_prob_today_pct": 30,
+      "rain_mmph_forecast": 0,
+      "thunder_risk": 0,
+      "forecast_confidence": 80,
+      "visibility_m": 4000
+    },
+    "building_site": {
+      "site_altitude_m": 15,
+      "building_floors": 5,
+      "building_height_m": 18,
+      "facade_complexity": "light",
+      "clearance_m": 3,
+      "near_hv_power": 0,
+      "near_base_station": 0,
+      "wind_channel_effect": 0,
+      "rooftop_condition": "good",
+      "crowd_density": "low",
+      "region_exposure": null
+    },
+    "operational_context": null,
+    "equipment": null
+  },
+  "params_ref": "@openlarm/regions-taiwan@2.0.0",
+  "expected": {
+    "decision": "GO",
+    "w_code": "W0",
+    "narrative_contains": ["能見度修正"]
+  },
+  "tolerance": { "floating_point_epsilon": 0.01 }
+}

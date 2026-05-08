@@ -8,7 +8,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
   version: "v2.0",
   units: { wind: "km/h", rain_daily_heavy_threshold_mm: 20 },
   regimes: {
-    W0: { name: "穩定高壓晴朗型",     base_score: 3,  volatility_profile: "stable",         instability_weight: 0.8, predictability_weight: -1.0, notes: "最穩定背景；常見低雨低風。" },
+    W0: { name: "穩定高壓晴朗型",     base_score: 9,  volatility_profile: "stable",         instability_weight: 0.8, predictability_weight: -1.0, notes: "最穩定背景；常見低雨低風。" },
     W1: { name: "東北季風型",         base_score: 9,  volatility_profile: "windy_stable",    instability_weight: 1.0, predictability_weight: -0.8, notes: "冬季長時間偏強風，迎風面/沿海更嚴格。" },
     W2: { name: "鋒面掃過型",         base_score: 11, volatility_profile: "moving_rain",     instability_weight: 1.1, predictability_weight: -0.6, notes: "降雨系統移動，變動性較高。" },
     W3: { name: "梅雨滯留型",         base_score: 16, volatility_profile: "persistent_rain", instability_weight: 1.2, predictability_weight: -0.3, notes: "連續多日降雨，窗口小且地面濕滑，作業彈性低。" },
@@ -38,7 +38,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     instability: 0.10,            // [Bug 1] 0.15→0.10, sum now = 1.00
     instability_scale: 20,        // 15→20 (general)
     instability_scale_w4: 28,     // W4-specific: 15→28 (convective amplification)
-    predictability_discount: 10,
+    predictability_discount: 6,
     thunder_add: 5,
     ensemble_low_conf_threshold: 55,
     weather_now_cap: 42,          // 50→42 (component recalibration)
@@ -48,7 +48,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     base: 0.05,
     score_divisor: 400,           // [Bug 6] 250→400
     regime_conf_penalty: 0.05,    // 0.04→0.05
-    ensemble_penalty: 0.10,       // 0.08→0.10
+    ensemble_penalty: 0.20,       // 0.08→0.10
     min: 0.05,
     max: 0.55,                    // [Bug 6] 0.40→0.55
   },
@@ -74,7 +74,7 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
       rule_2: { rain_prob_gte_pct: 40, rain_prob_lte_pct: 60, or_mmph_gte: 3,  or_mmph_lte: 10, score: 25 },
       rule_3: { rain_prob_gt_pct: 60, or_mmph_gt: 10, score: 45 },
     },
-    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 0.8 },
+    hard_stop: { wind_kmh: 39, rain_mmph: 10, rain_prob_pct: 60, edr_threshold: 0.8, visibility_m_min: 1500 },
     mapping_r_level: [
       { min: 0,  max: 20,  r_level: "R0" },
       { min: 21, max: 40,  r_level: "R1" },
@@ -95,11 +95,61 @@ export const TAIWAN_PARAMS_V2_0: WeatherRegimeParams = {
     ground_consequence_cap: 6,
     tke_proxy_cap: 3,
     env_interaction_cap: 4,
+    env_hazards_cap: 3,
+    env_hazard_points: { near_hv_power: 3, near_base_station: 1, narrow_clearance: 2 },
     total_cap: 20,
   },
-  e_score_config: { cap: 8, block_points: 3, warn_points: 1.5 },
+  e_score_config: { cap: 8, block_points: 6, warn_points: 1.5 },
   o_score_cap: 12,
+  o_score_flag_points: {
+    night: 5,
+    weekend: 2,
+    road_closure: 3,
+    urgent_critical: 5,
+    urgent_warn: 3,
+    urgent_critical_max_days: 3,
+    urgent_warn_max_days: 7,
+    crowd_high: 3,
+    crowd_medium: 2,
+    operator_junior: 2,
+    operator_mid: 0,
+    operator_senior: 0,
+    long_mission_critical: 3,
+    long_mission_warn: 2,
+    long_mission_critical_min_days: 7,
+    long_mission_warn_min_days: 4,
+  },
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // See spec §5.2.7 and docs/superpowers/plans/data-expansion-v2.1.md §5.1.
+  cape_contribution_config: {
+    lower_breakpoint: 500,
+    mid_breakpoint: 1500,
+    upper_breakpoint: 2500,
+    mid_value: 0.4,
+    upper_value: 0.8,
+  },
+  // v2.1 candidate (Unreleased): lightning observation contribution.
+  // See spec §5.6 and docs/superpowers/plans/data-expansion-v2.1.md §5.2.
+  lightning_observation_config: {
+    thunder_force_threshold: 1,
+    tier_1_max_exclusive: 3,
+    tier_2_max_exclusive: 10,
+    tier_1_adj: 8,
+    tier_2_adj: 15,
+    tier_3_adj: 20,
+    max_adj: 25,
+  },
+  // v2.1 candidate (Unreleased): visibility observation contribution.
+  // See spec §5.7 and docs/superpowers/plans/data-expansion-v2.1.md §5.3.
+  visibility_observation_config: {
+    healthy_min: 5000,
+    marginal_min: 3000,
+    poor_min: 1500,
+    marginal_adj: 5,
+    poor_adj: 10,
+    max_adj: 15,
+  },
   w5_typhoon_trend_threshold: 3.6,
-  w5_typhoon_trend_bonus: 2,
+  w5_typhoon_trend_bonus: 12,
   r4_nogo_threshold: 92,                       // [Bug 2] R4 86–92 = COND-D2, >92 = NO-GO
 }

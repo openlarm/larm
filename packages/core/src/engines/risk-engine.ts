@@ -12,6 +12,12 @@ import type {
 } from "../types/index.ts"
 import { resolveParams } from "../params/merge.js"
 import { ACTIVE_PARAMS_VERSION } from "../params/registry.js"
+import {
+  capeToInstabilityContribution,
+  lightningForcesThunderRisk,
+  lightningTierAdj,
+  visibilityTierAdj,
+} from "./model-helpers.js"
 import type { WeatherRegimeParams } from "../params/schema.ts"
 
 // ─── Options type ─────────────────────────────────────────────────────────────
@@ -137,9 +143,28 @@ function computeWeatherNow(
 
   // v2.0: W4-specific instability scale
   const instScale = w_code === "W4" ? wts.instability_scale_w4 : wts.instability_scale
-  const instComp   = w30.instability_index * instScale
+
+  // v2.1 candidate (Unreleased): CAPE-driven instability contribution.
+  // effective_instability = min(1, instability_index + cape_contrib)
+  // When cape_jkg is null/missing, cape_contrib = 0 and effective_instability
+  // collapses to instability_index — bit-identical v2.0 behaviour. See spec §5.2.7.
+  const cape_contrib = capeToInstabilityContribution(today.cape_jkg, P.cape_contribution_config)
+  const base_instability = w30.instability_index ?? 0
+  const effective_instability = Math.min(1, base_instability + cape_contrib)
+  const instComp   = effective_instability * instScale
   const predDisc   = -(w30.predictability_score * wts.predictability_discount)
-  const thunder    = today.thunder_risk === 1 ? wts.thunder_add : 0
+
+  // v2.1 candidate (Unreleased): observed lightning forces thunder_risk=1
+  // when strikes ≥ thunder_force_threshold (default 1). Ground-truth
+  // observation overrides forecast layer. When lightning_strikes_30min_5km
+  // is null/missing, this is a no-op and effective_thunder_risk equals the
+  // input thunder_risk exactly. See spec §5.6.1.
+  const lightning_forces = lightningForcesThunderRisk(
+    today.lightning_strikes_30min_5km, P.lightning_observation_config,
+  )
+  const effective_thunder_risk: 0 | 1 | null =
+    lightning_forces ? 1 : today.thunder_risk
+  const thunder    = effective_thunder_risk === 1 ? wts.thunder_add : 0
 
   // v2.0: EDR turbulence adjustment
   const edrAdj = computeEDRAdj(today.edr, P)
@@ -168,9 +193,17 @@ function computeWeatherNow(
     : `wind_score=${windScore} ×0.8 ×0.55`
   expl.push({ factor: "風速", value: `${effectiveWindKmh} km/h`, score: Math.round(wts.wind * windComp * 10) / 10, note: windNote })
   expl.push({ factor: "降雨", value: `${today.rain_prob_today_pct}% / ${today.rain_mmph_forecast} mm/h`, score: Math.round(wts.rain * rainScore * 10) / 10, note: `rain_score=${rainScore} ×${wts.rain}` })
-  expl.push({ factor: "不穩定指數", value: w30.instability_index.toFixed(2), score: Math.round(wts.instability * instComp * 10) / 10, note: `×${instScale} ×${wts.instability}${w_code === "W4" ? " (W4增強)" : ""}` })
+  expl.push({ factor: "不穩定指數", value: effective_instability.toFixed(2), score: Math.round(wts.instability * instComp * 10) / 10, note: `×${instScale} ×${wts.instability}${w_code === "W4" ? " (W4增強)" : ""}${cape_contrib > 0 ? " (含CAPE加成)" : ""}` })
+  if (cape_contrib > 0) {
+    expl.push({ factor: "CAPE 不穩定加成", value: `${today.cape_jkg} J/kg`, score: 0, note: `對流潛勢 → +${cape_contrib.toFixed(2)} 不穩定貢獻 (與 30d index 加成 取 min(1, ·))` })
+  }
   expl.push({ factor: "預測性折扣", value: w30.predictability_score.toFixed(2), score: Math.round(predDisc * 10) / 10, note: `predictability×(-10)` })
-  if (thunder > 0) expl.push({ factor: "雷雨加成", value: 1, score: thunder, note: "+5" })
+  if (thunder > 0) {
+    const thunderNote = lightning_forces && today.thunder_risk !== 1
+      ? `+${wts.thunder_add} (閃電觀測強制 thunder_risk=1: ${today.lightning_strikes_30min_5km} 次/30min/5km)`
+      : `+${wts.thunder_add}`
+    expl.push({ factor: "雷雨加成", value: 1, score: thunder, note: thunderNote })
+  }
   if (edrAdj > 0) expl.push({ factor: "EDR湍流修正", value: today.edr?.toFixed(2) ?? "N/A", score: edrAdj, note: `EDR=${today.edr} → +${edrAdj}` })
   if (region_exposure && regionWeight !== 1.0) {
     expl.push({ factor: "地形曝露乘數", value: region_exposure, score: 0, note: `×${regionWeight} (${w_code})` })
@@ -219,11 +252,12 @@ function computeGScore(
   const tkeProxy = Math.min(cfg.tke_proxy_cap, Math.floor(floorTkeFactor * tkeWindF * tkeCorridorF))
 
   // Sub-dimension 4: Environment Hazards + Interaction (cap 4)
+  const envPts = cfg.env_hazard_points
   let envRaw = 0
-  if (b.near_hv_power === 1)       envRaw += 3
-  if (b.near_base_station === 1)   envRaw += 1
-  if (b.clearance_m != null && b.clearance_m < 5) envRaw += 2
-  const envScore = Math.min(3, envRaw)
+  if (b.near_hv_power === 1)       envRaw += envPts.near_hv_power
+  if (b.near_base_station === 1)   envRaw += envPts.near_base_station
+  if (b.clearance_m != null && b.clearance_m < 5) envRaw += envPts.narrow_clearance
+  const envScore = Math.min(cfg.env_hazards_cap, envRaw)
 
   let interaction = 0
   if (floors > 20 && b.wind_channel_effect === 1) interaction += 2
@@ -245,10 +279,10 @@ function computeGScore(
   }
   if (envScore > 0) {
     const parts: string[] = []
-    if (b.near_hv_power === 1) parts.push("高壓電+3")
-    if (b.near_base_station === 1) parts.push("基地台+1")
-    if (b.clearance_m != null && b.clearance_m < 5) parts.push(`狹窄${b.clearance_m}m+2`)
-    expl.push({ factor: "環境危害", value: envRaw, score: envScore, note: parts.join(", ") + "（上限3）" })
+    if (b.near_hv_power === 1) parts.push(`高壓電+${envPts.near_hv_power}`)
+    if (b.near_base_station === 1) parts.push(`基地台+${envPts.near_base_station}`)
+    if (b.clearance_m != null && b.clearance_m < 5) parts.push(`狹窄${b.clearance_m}m+${envPts.narrow_clearance}`)
+    expl.push({ factor: "環境危害", value: envRaw, score: envScore, note: parts.join(", ") + `（上限${cfg.env_hazards_cap}）` })
   }
   if (interactionCapped > 0) {
     const parts: string[] = []
@@ -268,23 +302,45 @@ function computeOperationalScore(
   expl: RiskExplanation[],
   P: WeatherRegimeParams,
 ): number {
+  const fp = P.o_score_flag_points
   const parts: string[] = []
   let score = 0
 
-  if (ops.time_window === "night")                { score += 5; parts.push("夜間+5") }
-  if (ops.weekend === 1)                          { score += 2; parts.push("週末+2") }
-  if (ops.road_closure_needed === 1)              { score += 3; parts.push("封路+3") }
+  if (ops.time_window === "night" && fp.night > 0) {
+    score += fp.night; parts.push(`夜間+${fp.night}`)
+  }
+  if (ops.weekend === 1 && fp.weekend > 0) {
+    score += fp.weekend; parts.push(`週末+${fp.weekend}`)
+  }
+  if (ops.road_closure_needed === 1 && fp.road_closure > 0) {
+    score += fp.road_closure; parts.push(`封路+${fp.road_closure}`)
+  }
   if (ops.urgent_days != null) {
-    const pts = ops.urgent_days <= 3 ? 5 : ops.urgent_days <= 7 ? 3 : 0
+    const pts =
+      ops.urgent_days <= fp.urgent_critical_max_days ? fp.urgent_critical
+      : ops.urgent_days <= fp.urgent_warn_max_days   ? fp.urgent_warn
+      : 0
     if (pts > 0) { score += pts; parts.push(`急件(${ops.urgent_days}d)+${pts}`) }
   }
-  if (crowd_density === "high")                   { score += 3; parts.push("高人流+3") }
-  else if (crowd_density === "medium")            { score += 2; parts.push("中人流+2") }
-  if (ops.operator_experience_level === "junior") { score += 2; parts.push("初級操作員+2") }
+  if (crowd_density === "high" && fp.crowd_high > 0) {
+    score += fp.crowd_high; parts.push(`高人流+${fp.crowd_high}`)
+  } else if (crowd_density === "medium" && fp.crowd_medium > 0) {
+    score += fp.crowd_medium; parts.push(`中人流+${fp.crowd_medium}`)
+  }
+  if (ops.operator_experience_level === "junior" && fp.operator_junior > 0) {
+    score += fp.operator_junior; parts.push(`初級操作員+${fp.operator_junior}`)
+  } else if (ops.operator_experience_level === "mid" && fp.operator_mid > 0) {
+    score += fp.operator_mid; parts.push(`中級操作員+${fp.operator_mid}`)
+  } else if (ops.operator_experience_level === "senior" && fp.operator_senior > 0) {
+    score += fp.operator_senior; parts.push(`資深操作員+${fp.operator_senior}`)
+  }
 
   // Personnel fatigue
   if (ops.mission_days != null) {
-    const fatigue = ops.mission_days >= 7 ? 3 : ops.mission_days >= 4 ? 2 : 0
+    const fatigue =
+      ops.mission_days >= fp.long_mission_critical_min_days ? fp.long_mission_critical
+      : ops.mission_days >= fp.long_mission_warn_min_days   ? fp.long_mission_warn
+      : 0
     if (fatigue > 0) { score += fatigue; parts.push(`長工期疲勞(${ops.mission_days}天)+${fatigue}`) }
   }
 
@@ -362,6 +418,22 @@ function computeGating(
   // v2.0: EDR hard stop
   if (today.edr != null && today.edr > hs.edr_threshold) {
     return { decision: "NO_GO", requires_approval: false, conditional_tier: null, controls: [`EDR ${today.edr.toFixed(2)} > ${hs.edr_threshold}（極端湍流），禁止起飛`] }
+  }
+
+  // v2.1 candidate (Unreleased): visibility (VLOS) hard stop.
+  // See spec §7.1 (Unreleased). When visibility_m_min is unset on the
+  // params record (older region adapters), this is a no-op.
+  if (
+    today.visibility_m != null &&
+    hs.visibility_m_min != null &&
+    today.visibility_m < hs.visibility_m_min
+  ) {
+    return {
+      decision: "NO_GO",
+      requires_approval: false,
+      conditional_tier: null,
+      controls: [`能見度 ${today.visibility_m} m < ${hs.visibility_m_min} m（VLOS 下限），禁止起飛`],
+    }
   }
 
   // [Bug 2] R4 split: >92 = hard NO-GO, 86–92 = CONDITIONAL-D2
@@ -489,8 +561,43 @@ export function evaluateRisk(
   // E — equipment score
   const e_score = computeEquipmentScore(equipment, expl, P)
 
-  // C
-  const risk_score = Math.min(100, Math.max(0, Math.round(base_w + weather_now + g_score + o_score + e_score)))
+  // C — risk_score aggregation
+  // v2.1 candidate (Unreleased): observed-lightning tier adder is added to
+  // the inner sum BEFORE the round/clamp. Applied here (outside WeatherNow)
+  // because the contribution is a separate channel — observed ground-truth
+  // active-threat signal, qualitatively different from the atmospheric-state
+  // assessment in WeatherNow. Capped above at lightning_observation_config.max_adj.
+  // When lightning_strikes_30min_5km is null/missing, lightning_adj = 0 and
+  // this collapses to the v2.0 expression. See spec §5.6.2.
+  const lightning_adj = lightningTierAdj(
+    weather_today.lightning_strikes_30min_5km, P.lightning_observation_config,
+  )
+  // v2.1 candidate (Unreleased): visibility tier adder (Channel 2). Added
+  // to the inner sum BEFORE the round/clamp, in parallel with lightning_adj.
+  // When visibility_m is null/missing OR ≥ healthy_min, visibility_adj = 0
+  // and the formula collapses to the previous shape. See spec §5.7.
+  const visibility_adj = visibilityTierAdj(
+    weather_today.visibility_m, P.visibility_observation_config,
+  )
+  const risk_score = Math.min(100, Math.max(0, Math.round(
+    base_w + weather_now + g_score + o_score + e_score + lightning_adj + visibility_adj,
+  )))
+  if (lightning_adj > 0) {
+    expl.push({
+      factor: "閃電觀測加成",
+      value: `${weather_today.lightning_strikes_30min_5km} 次/30min/5km`,
+      score: lightning_adj,
+      note: "觀測級閃電活動 — 直接加在 r_score, 不受 weather_now_cap 限制",
+    })
+  }
+  if (visibility_adj > 0) {
+    expl.push({
+      factor: "能見度修正",
+      value: `${weather_today.visibility_m} m`,
+      score: visibility_adj,
+      note: "低能見度（VLOS 邊界） — 直接加在 r_score, 不受 weather_now_cap 限制",
+    })
+  }
   const risk_level = mapToRLevel(risk_score, P)
 
   // D — gating with risk_score for R4 split
@@ -523,5 +630,7 @@ export function evaluateRisk(
     edr_adj,
     tke_proxy,
     ground_consequence,
+    lightning_adj: lightning_adj > 0 ? lightning_adj : undefined,
+    visibility_adj: visibility_adj > 0 ? visibility_adj : undefined,
   }
 }
