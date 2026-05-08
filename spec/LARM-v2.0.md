@@ -324,6 +324,7 @@ Today's forecast or real-time weather.
 | `local_hour` | integer \| null \| optional | `[0, 23]` | — | Local hour for W4 time-of-day multiplier. |
 | `cape_jkg` | number \| null \| optional | `[0, ∞)` or null | J/kg | **v2.1 candidate (Unreleased)** — Convective Available Potential Energy at the mission hour. NULL falls back to v2.0 behaviour (instability_index alone). See §5.2.4.1. |
 | `lightning_strikes_30min_5km` | integer \| null \| optional | `[0, ∞)` or null | count | **v2.1 candidate (Unreleased)** — Cloud-to-ground (CG) lightning strikes within 5 km observed in the past 30 minutes. CG only (IC excluded). NULL falls back to v2.0 behaviour. See §5.6. |
+| `visibility_m` | number \| null \| optional | `[0, ∞)` or null | m | **v2.1 candidate (Unreleased)** — Horizontal visibility at the mission location/hour. Drives both the §7.1(4) VLOS hard stop and the §5.7 r_score channel. NULL falls back to v2.0 behaviour. See §5.7. |
 | `cwa_cross` | object \| optional | — | — | CWA cross-validation payload (opaque; informative). |
 | `jma_cross` | object \| optional | — | — | JMA cross-validation payload (opaque; informative). |
 
@@ -1516,6 +1517,90 @@ hard-stop trigger at high strike count is a governance question for
 Spec Editors (modifies §7.1) and is deferred. This v2.1 candidate
 adds risk_score *contributions* only, leaving §7 unchanged.
 
+### §5.7 Visibility observation contribution (v2.1 candidate, Unreleased)
+
+> **v2.1 candidate (Unreleased)** — Conformance with v2.0
+> (TV-001..TV-016) is unaffected: when
+> `today.visibility_m` is `null`/missing, both channels below
+> are no-ops and engine output is bit-identical to v2.0. New TVs
+> TV-017 (null fallback), TV-018 (marginal binding) and TV-019
+> (VLOS gate) verify the new shape.
+
+The `weather_today.visibility_m` input (v2.1 candidate) drives
+**two** independent channels:
+
+- **Channel 1 — VLOS preflight gate (§7.1, normative).** When
+  `visibility_m < P.thresholds.hard_stop.visibility_m_min`, the
+  engine returns `NO_GO` regardless of risk composition. See
+  §7.1(4) for normative text. Default `visibility_m_min = 1500` m.
+- **Channel 2 — r_score tier adder (§5.7.1, normative).** A piecewise
+  tiered direct adder applied to `risk_score` after component
+  aggregation but before clamp/r_level mapping.
+
+The two channels are intentionally separate: Channel 1 is a regulatory
+floor; Channel 2 is a continuous risk contribution.
+
+#### §5.7.1 Tier adder (v2.1 candidate)
+
+```
+# Channel 2 — applied to risk_score after aggregation
+visibility_tier_adj(visibility_m, cfg):
+    if visibility_m is None or visibility_m >= cfg.healthy_min:
+        return 0
+    if visibility_m >= cfg.marginal_min:
+        adj = cfg.marginal_adj
+    else:
+        # includes the (defensive) sub-poor_min case;
+        # in normal operation Channel 1 has already returned NO_GO.
+        adj = cfg.poor_adj
+    return min(cfg.max_adj, adj)
+```
+
+Boundary semantics: lower-bound inclusive (`≥`). `visibility_m == healthy_min`
+returns 0 (healthy band). `visibility_m == marginal_min` returns
+`marginal_adj`. `visibility_m == poor_min` returns `poor_adj` because
+the §7.1(4) gate uses strict `<` and the boundary therefore falls
+through to this helper.
+
+#### §5.7.2 Defaults (Taiwan v2.0 reference, informative)
+
+| Parameter             | Default | Notes |
+|-----------------------|--------:|-------|
+| `healthy_min`         |  5000 m | at/above which contribution = 0 [heuristic, no empirical source] |
+| `marginal_min`        |  3000 m | at/above which contribution = `marginal_adj` [heuristic, no empirical source] |
+| `poor_min`            |  1500 m | at/above which contribution = `poor_adj` (and matches §7.1(4) gate floor) [heuristic, no empirical source] |
+| `marginal_adj`        |       5 | points added in marginal band [heuristic, no empirical source] |
+| `poor_adj`            |      10 | points added in poor band [heuristic, no empirical source] |
+| `max_adj`             |      15 | cap on the contribution [heuristic, no empirical source] |
+
+All six are heuristic; derived from VLOS regulatory bands and the
+operational ranges in `docs/superpowers/plans/data-expansion-v2.1.md`
+§5.3. Region adapters MAY override any of the six via
+`WeatherRegimeParams.visibility_observation_config`.
+
+#### §5.7.3 Insertion in the §6.1 aggregation
+
+`visibility_adj` is added to the inner sum of `risk_score` in parallel
+with `lightning_adj`. See updated pseudocode in §6.1.
+
+#### §5.7.4 Relationship to §7.1 (4) (informative)
+
+When `visibility_m` is below the gate floor (`< visibility_m_min`),
+both channels engage:
+
+- Channel 1 short-circuits the gating engine to `decision = NO_GO`
+  with a `controls[]` entry naming the visibility/VLOS threshold.
+- Channel 2 still computes `visibility_adj` (the helper returns
+  `poor_adj` defensively for sub-`poor_min` values) and the engine
+  populates `result.visibility_adj` alongside the `NO_GO` decision.
+
+This dual-population matches the existing EDR precedent (`result.edr_adj`
+keeps its tier value when EDR > 0.8 fires the hard stop). The diagnostic
+benefit is that consumers see both *which* gate fired and *what* the
+r_score channel would have priced the input at if the gate had been
+higher. There is no double-counting of risk because the gate
+short-circuits to `NO_GO` regardless of the r_score contribution.
+
 ## §6 Risk Score Aggregation
 
 ### §6.1 R-score and R-level (normative)
@@ -1527,8 +1612,14 @@ adds risk_score *contributions* only, leaving §7 unchanged.
 lightning_adj = lightning_tier_adj(today.lightning_strikes_30min_5km,
                                     P.lightning_observation_config)
 
+# v2.1 candidate (Unreleased): visibility_adj added inside the round.
+# When today.visibility_m is null/missing OR visibility_m ≥ healthy_min,
+# visibility_adj = 0 and the formula collapses to the previous shape.
+visibility_adj = visibility_tier_adj(today.visibility_m,
+                                      P.visibility_observation_config)
+
 risk_score = clamp(round(base_w + weather_now + g_score + o_score + e_score
-                         + lightning_adj),
+                         + lightning_adj + visibility_adj),
                    0, 100)
 
 risk_level = first row r in P.thresholds.mapping_r_level
@@ -1623,17 +1714,38 @@ are:
    `today.edr != null`
    **AND** `today.edr > P.thresholds.hard_stop.edr_threshold`.
    Default `edr_threshold = 0.8`.
-4. **R4 hard-NO-GO threshold.**
+4. **Visibility hard stop (v2.1 candidate, Unreleased).**
+   `today.visibility_m != null`
+   **AND** `P.thresholds.hard_stop.visibility_m_min != null`
+   **AND** `today.visibility_m < P.thresholds.hard_stop.visibility_m_min`.
+   Default `visibility_m_min = 1500` m.
+
+   Rationale: a flight at horizontal visibility below 1500 m violates
+   the VLOS (Visual Line of Sight) regulatory floor adopted by most
+   civil drone regimes, and is non-overridable regardless of risk
+   composition. The gate uses strict less-than comparison so that
+   `visibility_m == 1500` is the boundary and falls through to the
+   §5.7 tier adder (which assigns it to the "poor" band), not the
+   hard stop. Region adapters MAY tune `visibility_m_min`; if a region
+   adapter sets `visibility_m_min` below the §5.7 `poor_min`, the
+   tier adder's defensive default of returning `poor_adj` for sub-
+   `poor_min` values means the score still receives the maximum
+   visibility contribution before NO_GO fires.
+
+   When `visibility_m` is null OR `visibility_m_min` is absent on the
+   parameter record, this rule is a no-op and the engine MUST fall
+   back to v2.0 behaviour.
+5. **R4 hard-NO-GO threshold.**
    `risk_score > P.r4_nogo_threshold`.
    Default `r4_nogo_threshold = 92`.
 
-**Exact boundary semantics for rule 4.** The comparison is strictly
+**Exact boundary semantics for rule 5.** The comparison is strictly
 greater-than. A `risk_score` of exactly `92` does **not** trigger
 the hard stop and MUST be handled by the R4 CONDITIONAL-D2 branch
 of §7.2. Conversely, any `risk_score >= 93` under the default
 parameters triggers the hard NO-GO, regardless of `risk_level`.
 
-All four hard stops are **non-overridable**: no WR-matrix entry,
+All five hard stops are **non-overridable**: no WR-matrix entry,
 conditional-tier, or tier-A downgrade can convert them into any
 other decision.
 
@@ -1757,19 +1869,20 @@ Inputs: risk_level, risk_score, today, building, ops,
 │ 1. wind hard stop?        → NO_GO                │
 │ 2. rain hard stop?        → NO_GO                │
 │ 3. edr hard stop?         → NO_GO                │
-│ 4. risk_score > r4_nogo?  → NO_GO                │
-│ 5. risk_level == "R4"?    → COND-D2              │
-│ 6. risk_level == "R3"?    → COND-D1              │
-│ 7. wr_matrix == "nogo"?   → NO_GO                │
-│ 8. e_score >= cap?        → COND-C               │
-│ 9. risk_level == "R2"?    → GO or COND-A/C       │
-│10. e_score >= 6?          → COND-C               │
-│11. wr_matrix == "cond"?   → COND-A               │
-│12. default                → GO                   │
+│ 4. visibility hard stop?  → NO_GO  (v2.1 cand.)  │
+│ 5. risk_score > r4_nogo?  → NO_GO                │
+│ 6. risk_level == "R4"?    → COND-D2              │
+│ 7. risk_level == "R3"?    → COND-D1              │
+│ 8. wr_matrix == "nogo"?   → NO_GO                │
+│ 9. e_score >= cap?        → COND-C               │
+│10. risk_level == "R2"?    → GO or COND-A/C       │
+│11. e_score >= 6?          → COND-C               │
+│12. wr_matrix == "cond"?   → COND-A               │
+│13. default                → GO                   │
 └──────────────────────────────────────────────────┘
 ```
 
-Note that steps 5 and 6 execute **before** the matrix is consulted;
+Note that steps 6 and 7 execute **before** the matrix is consulted;
 this is the short-circuit described in §7.2 and §14.1.
 
 ### §7.11 Precedence table (informative)
@@ -1783,7 +1896,8 @@ when it fires first:
 | §7.1 (1) | wind hard stop | NO_GO | — |
 | §7.1 (2) | rain hard stop | NO_GO | — |
 | §7.1 (3) | EDR hard stop | NO_GO | — |
-| §7.1 (4) | `risk_score > r4_nogo_threshold` | NO_GO | — |
+| §7.1 (4) | visibility hard stop (v2.1 candidate, Unreleased) | NO_GO | — |
+| §7.1 (5) | `risk_score > r4_nogo_threshold` | NO_GO | — |
 | §7.2 (R4) | `risk_level == "R4"` and earlier did not fire | CONDITIONAL | D2 |
 | §7.2 (R3) | `risk_level == "R3"` | CONDITIONAL | D1 |
 | §7.3 nogo | WR-matrix cell at R0–R2 is `"nogo"` | NO_GO | — |
@@ -2194,6 +2308,7 @@ All values [heuristic, no empirical source].
 | `rain_mmph`      | 10  |
 | `rain_prob_pct`  | 60  |
 | `edr_threshold`  | 0.8 |
+| `visibility_m_min` (v2.1 candidate, Unreleased) | 1500 |
 | `r4_nogo_threshold` | 92 |
 
 The wind threshold is chosen to align with the Beaufort `> 7`
@@ -2726,6 +2841,12 @@ with its own pre-processing.
 
 ## §15 Changelog
 
+### §15.0 [Unreleased] (v2.1 candidates)
+
+- Added `cape_jkg` to `WeatherTodayInput`; new §5.2.4.1 CAPE-to-instability contribution.
+- Added `lightning_strikes_30min_5km` to `WeatherTodayInput`; new §5.6 lightning observation contribution (Mechanism A: thunder forcing; Mechanism B: tier adder).
+- Added `visibility_m` to `WeatherTodayInput`; new §7.1(4) VLOS hard-stop rule and §5.7 r_score tier adder.
+
 ### §15.1 v2.0 (this document) — superset of v1.1
 
 This document supersedes the never-published draft `LARM-v1.1.md`.
@@ -3064,7 +3185,8 @@ this specification refer to values in this JSON.
       "wind_kmh": 39,
       "rain_mmph": 10,
       "rain_prob_pct": 60,
-      "edr_threshold": 0.8
+      "edr_threshold": 0.8,
+      "visibility_m_min": 1500
     },
     "mapping_r_level": [
       { "min": 0,  "max": 20,  "r_level": "R0" },
@@ -3118,6 +3240,15 @@ this specification refer to values in this JSON.
     "long_mission_warn_min_days": 4
   },
   "quote_max_multiplier": 4.5,
+  "visibility_observation_config": {
+    "_comment": "v2.1 candidate (Unreleased) — see §5.7",
+    "healthy_min": 5000,
+    "marginal_min": 3000,
+    "poor_min": 1500,
+    "marginal_adj": 5,
+    "poor_adj": 10,
+    "max_adj": 15
+  },
   "w5_typhoon_trend_threshold": 3.6,
   "w5_typhoon_trend_bonus": 2,
   "r4_nogo_threshold": 92,
